@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ['claude/youthful-mayer-n4f7oy', 'agent/**']
+    branches: ['claude/youthful-mayer-n4f7oy']
   pull_request:
 
 permissions:
