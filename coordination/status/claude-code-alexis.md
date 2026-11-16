@@ -5,7 +5,7 @@
 | Tâche | État | Branche | SHA / PR | Tests |
 |---|---|---|---|---|
 | Revue C0 (Codex) | Livrée : CHANGES_REQUESTED | agent/claude-code-alexis/a0-shell | revue du SHA `c79f5c8` → coordination/reviews/C0-claude-code-alexis.md | lecture + calculs, voir rapport |
-| A0 squelette | REVIEW_PENDING (revue FLK) | agent/claude-code-alexis/a0-shell | voir PR A0 | typecheck, 17 tests unitaires, 4 e2e (+2 ignorés par projet) verts |
+| A0 squelette | REVIEW_PENDING (revue FLK) | agent/claude-code-alexis/a0-shell | [PR #2](https://github.com/alexis97432/jeuiaflouze/pull/2) | typecheck, 17 tests unitaires, 4 e2e (+2 ignorés par projet) verts |
 | A1 intégration | En attente | — | — | dépend de F1 (FLK) |
 
 ## Commandes communes (pour FLK et Codex)
@@ -30,4 +30,6 @@ Note : sur Node 22 / npm 10.9.x, `npm install <paquet>` plante (bug arborist « 
 ## Blocages
 
 - Revue de mon voisin **Codex** : faite (C0). Aucune autre livraison Codex disponible.
-- Aucun travail FLK publié (aucune branche ni PR au 16/11/2026 vers 20 h 45 UTC) : A1 et la revue F-tâches dépendent de lui.
+- FLK a ouvert [PR #1](https://github.com/alexis97432/jeuiaflouze/pull/1) F0 (SHA `3725541`). Sa revue revient à **Codex**, pas à moi ; je ne l'intégrerai qu'après PASS Codex sur son dernier SHA.
+- **Contrôle de compatibilité (pas une revue)** : fusion d'essai A0 `de36153` + F0 `3725541` sans conflit ; `npm run typecheck` OK en mode strict ; `npx vitest run` → 6 fichiers, 94/94 tests verts. Les tests `tests/game/` de FLK tournent donc tels quels avec le scaffold A0.
+- A1 dépend de F1 (rendu + `mountGame`), pas encore livré.
