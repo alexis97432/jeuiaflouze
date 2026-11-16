@@ -1,14 +1,14 @@
-# Contrats v0 — proposition Codex à relire par Alexis et FLK
+# Contrats v1 — arbitrage Codex, correction C0 à relire par Alexis
 
-Ces contrats permettent de travailler en parallèle. Valeurs initiales = hypothèses à ajuster après playtest ; toute modification du déterminisme augmente rulesVersion. FLK possède l'implémentation de simulation ; Alexis la consomme, sans recopier les règles.
+Arbitrage du 16 novembre 2026 après avis FLK et revue C0 Alexis. Les valeurs de réglage restent des hypothèses de playtest. Toute modification future du déterminisme augmente rulesVersion. FLK possède la simulation ; Alexis la consomme sans recopier ses règles. Cette correction documentaire attend sa revue externe avant gel.
 
 ## Simulation F0
 
-Temps logique entier à 120 ticks/s ; temps d'affichage indépendant. Largeur logique 360 unités, bloc de départ 240 unités centré. Bloc mobile entièrement contenu dans la largeur ; trajet triangulaire, premier déplacement vers la droite. Vitesse initiale 90 unités/s, +3 par étage, plafond 210. Arrondir les positions au millième d'unité à chaque tick pour stabiliser le rejeu JS. Un input à un tick donné est traité après le déplacement de ce tick. Un seul placement par tick ; ignorer les doublons. La mécanique ne dépend ni de Date.now, ni de Math.random, ni de la fréquence de rendu.
+Les règles exactes et leur ordre sont définis dans `src/game/core/README.md` (F0 `3725541`, PASS Codex). Cette référence est normative pour éviter deux jeux de formules divergents : entiers en millièmes, vitesse arrondie une fois par étage ; plafond sur la vitesse de base avant modulation, premier étage numéroté 1 avec tirage initial ; départ impair gauche/pair droite, rebond avec surplus réfléchi ; déplacement avant pose, premier appui au tick 1 ; chevauchement nul = raté prioritaire sur parfait, tolérance parfaite incluse. Ces précisions répondent à M1–M7 de la revue C0 Alexis.
 
-Chevauchement nul = échec ; sinon conserver exactement l'intersection horizontale. Tolérance parfait = 4 unités entre bords gauches ; dans ce cas aligner sur la base et garder sa largeur, sans agrandissement. Score = nombre d'étages posés (un par placement), série de parfaits informative, aucun bonus payant. Base plus étroite = difficulté naturelle. Aucun second essai dans un défi classé.
+Les doublons d'appuis dans un même tick sont fusionnés à l'exécution ; le rejeu sérialisé exige des ticks strictement croissants et rejette doublons/désordre. `replayRun` et `verifyRunResult` renvoient l'union discriminée documentée dans core/README. Leurs limites sont une configuration serveur de confiance. Les parties interactives ne sont pas encore bornées : décider inactivité/durée maximale et règles de classement avant A2 (M8), sans prétendre qu'un score local garantit l'admissibilité serveur.
 
-Seed uint32 non nulle ; PRNG xorshift32 (shifts 13,17,5 avec coercition unsigned). Pour chaque nouvel étage, consommer exactement un tirage, vitesse multipliée par 0.9 + 0.2*(tirage/2**32). Départ alternant bord gauche/droit selon parité de l'étage ; FLK formalise et teste le cas initial. Même seed + rulesVersion + inputTicks = même résultat. Pause : aucun tick n'avance, reprendre sans rattrapage après onglet caché. Mode compétitif futur : temps réel contrôlé serveur, distinct du simple défi amical.
+Pause : aucun tick n'avance, reprise sans rattrapage après onglet caché. Un long gel visible peut abandonner du temps ; les entrées en attente sont recalées de la même quantité, bornées au premier tick non simulé et fusionnées par tick. Ce comportement de présentation ne change pas les règles du rejeu à ticks donnés.
 
 API à exporter de src/game/index.ts :
 ```ts
@@ -17,29 +17,45 @@ export type RunResult = {
   seed: number; rulesVersion: 1; score: number;
   perfectCount: number; durationTicks: number; inputTicks: number[];
 };
+export type GameEvent =
+  | { type: 'placement'; tick: number; floor: number; perfect: boolean; perfectStreak: number }
+  | { type: 'miss'; tick: number; floor: number };
 export type GameHandle = {
   pause(): void; resume(): void; destroy(): void;
 };
 export function mountGame(options: {
   canvas: HTMLCanvasElement; config: RunConfig;
   onEnd(result: RunResult): void;
+  onEvent?(event: GameEvent): void;
+  sound?: boolean;
+  reducedMotion?: boolean;
 }): GameHandle;
 ```
 
-FLK exporte aussi une fonction pure de rejeu depuis core pour tests et futur serveur ; proposer sa signature dans F0. destroy libère RAF, événements et audio. mountGame ne touche ni stockage, ni réseau, ni menus. onEnd appelé une seule fois. Les entrées tactiles ne doublent pas via les événements souris ; espace ne déclenche pas le bouton DOM focalisé pendant le jeu.
+B1 accepté : onEvent signale chaque pose réussie et le raté, dans l'ordre des ticks. Le shell dérive first_placement de la première pose réussie, une seule fois ; aucun événement d'un simple toucher ou du raté ne le remplace. Les callbacks de mesure ne doivent ni détruire/remonter le moteur ni modifier son état ; leur erreur ne doit pas interrompre la partie et reste visible en développement.
+
+B2 arbitré pour M1 : `sound` (défaut true) et `reducedMotion` sont transmis à la création, comme proposé par FLK. Le shell garde et affiche la préférence de son ; M1 permet de la changer **entre les parties**. Aucun bouton promettant une coupure immédiate pendant une partie sans setter. Si reducedMotion est omis, le moteur suit la préférence système en direct. Un `setPrefs` à chaud est reporté à un besoin concret ; il n'est pas requis pour intégrer A1. Ne jamais remonter la partie pour changer le son en cours et perdre son état.
+
+B3 accepté : config invalide → RangeError synchrone ; contexte Canvas 2D indisponible → Error synchrone, sans écouteurs/RAF/audio laissés attachés. Le shell rattrape l'erreur, affiche un message et permet retour/réessai sans score inventé.
+
+`destroy` libère RAF, événements, observateur et audio ; il est idempotent. `mountGame` ne touche ni stockage, réseau, ni menus. `onEnd` arrive une seule fois après le délai visuel `END_DELAY_MS` exporté, jamais après destroy. Les tests shell attendent cet événement asynchrone sans fixer un score de mock. Les entrées tactiles ne doublent pas via les événements souris ; espace ne déclenche pas un bouton DOM pendant la partie.
 
 ## Shell A0/A1
 
 Boot → écran d'accueil → jeu → résultat → rejouer/défier. Premier jeu accessible en un geste. Responsive dès 320 px, focus visible, boutons DOM, son désactivable et activé seulement après interaction, préférence reduced-motion respectée. En mode caché, appeler pause ; retour explicite ou reprise sûre sans saut temporel.
 
-Défi URL `?v=1&seed=<uint32>&target=<entier>` : valider strictement, rejeter règles inconnues et valeurs excessives ; aucun HTML injecté. target entre 0 et 10000, pure déclaration amicale, jamais un score vérifié. Seed 1..4294967295. Paramètres invalides : expliquer et proposer nouvelle partie. Copier URL en secours si Web Share absent/refusé ; un partage annulé n'est pas un succès. Aucune permission obligatoire.
+Défi URL `?v=1&seed=<uint32>&target=<entier>` (`v` = rulesVersion) : valider strictement, rejeter règles inconnues et valeurs excessives ; aucun HTML injecté. target entre 0 et 10000, pure déclaration amicale, jamais un score vérifié. Seed 1..4294967295. Valeurs numériques en décimal canonique ASCII : aucun signe, espace, exposant, hexadécimal ou zéro initial (sauf target=0). Rejeter les doublons de paramètres connus. Paramètres invalides : expliquer et proposer nouvelle partie. Copier URL en secours si Web Share absent/refusé ; un partage annulé n'est pas un succès. Aucune permission obligatoire.
 
 localStorage préfixe `poc:v1:` ; record, préférences, derniers résultats bornés ; JSON invalide/quota indisponible = jeu toujours fonctionnel. Scores locaux explicitement locaux. Service classement absent = aucun classement public affiché. Un défi quotidien ultérieur dérive sa seed de la date UTC et de la version, pas de l'heure locale.
 
 ## Mesure
 
-Adaptateur `track(name, payload)` côté platform ; console/mémoire en développement par défaut, aucun envoi distant sans configuration et dispositif de consentement adapté. Événements : session_start, run_start, first_placement, run_end, retry, share_attempt, share_success, challenge_open. Champs communs : schemaVersion=1, rulesVersion, buildId, mode=free|challenge, sessionId éphémère, runId. run_end : score, durationTicks, perfectCount ; retry : previousRunId. Ne pas mettre de nom, email, URL complète ou identifiant de publicité. Dédupliquer run_end par runId. Ni clic partager ni copie ne prouvent une arrivée d'ami ; challenge_open seul ne prouve pas un joueur distinct.
+Horodatage des événements relatif à la session, aucune heure murale requise. Adaptateur `track(name, payload)` côté platform ; console/mémoire en développement par défaut, aucun envoi distant sans configuration et dispositif de consentement adapté. Événements : session_start, run_start, first_placement, run_end, retry, share_attempt, share_success, challenge_open. Champs communs : schemaVersion=1, rulesVersion, buildId, mode=free|challenge, sessionId éphémère, runId. run_end : score, durationTicks, perfectCount ; retry : previousRunId. Ne pas mettre de nom, email, URL complète ou identifiant de publicité. Dédupliquer run_end par runId. Ni clic partager ni copie ne prouvent une arrivée d'ami ; challenge_open seul ne prouve pas un joueur distinct.
 
 ## Services A2 (hors M1)
 
 Aucun secret côté client. Un score client n'est jamais une preuve. Serveur : challenge émis/horodaté, payload et inputTicks bornés, replay partagé F2, vérification version/seed/durée, quotas et anti-abus, clés d'idempotence. Le rejeu déterministe limite les scores impossibles mais ne bloque pas les bots : documenter cette limite. Pas de paiements développés sans prestataire, comptes et modèle commercial concrets.
+
+## B4 — Mesure avant l'essai public
+
+Ajouter A1.5 avant M2 public : export local de mesures pour les essais modérés, puis collecteur distant minimal optionnel si un essai public est justifié. Mode local toujours fonctionnel. Alexis possède la collecte dans platform/server ; aucune collecte distante active sans configuration et dispositif de consentement adaptés. Définir schéma borné, quotas, rétention et suppression avant activation ; ni classement ni paiement requis. J1 n'est mesurable qu'avec identifiant de retour consenti et méthode explicite, sinon le déclarer non mesurable. Un simple src=share ne prouve ni un ami distinct ni une arrivée attribuable à un partage particulier ; un protocole d'attribution séparé, minimisé et revu est nécessaire avant cette métrique. Ne pas bloquer M1 en attendant ce collecteur.

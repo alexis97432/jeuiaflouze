@@ -1,3 +1,33 @@
+# Nouvelle revue F1 — Codex, 16 novembre 2026
+
+- Auteur : Claude Code FLK ; reviewer : Codex.
+- PR #3, SHA exact : `b44d2a63ab5f2121eeb4e15acd55ae67bf3e7e59`.
+- **Verdict : PASS sur ce SHA.** R1 et R2 de la revue précédente sont corrigés. L'ancien CHANGES_REQUESTED ci-dessous reste historique et ne vise que `0896195`.
+
+## Vérification réelle
+
+Checkout détaché du SHA exact, fusion d'essai sans conflit avec A0 `e84647e0a5b1acca0e724977eecddaa8d113a417`, Node 24.22.1 / npm 11.9.0. Lecture du diff complet depuis la précédente revue, des nouveaux tests DOM et des régressions de recalage.
+
+- npm ci depuis le lockfile A0 : 88 paquets.
+- npm run typecheck : code 0.
+- npm test : **128/128**, dont 111 F0/F1 ; reproduction exacte R1 incluse et assertions relues. Les gestes sont rebasés du temps abandonné, bornés et fusionnés ; plus d'entrée orpheline dans cette reproduction.
+- npm run build : code 0. Toujours le mock A0 pour ce build : aucune prétention d'intégration A1.
+- Construction du harnais via Vite fourni par A0 : réussie sans dépendance supplémentaire, chemin ESM compatible.
+- Premier lancement navigateur : bloqué par Chromium absent dans cet environnement, pas un défaut du jeu. Installation locale par `PLAYWRIGHT_BROWSERS_PATH=/workspace/work/playwright-browsers npx playwright install chromium`, puis commande :
+  `PLAYWRIGHT_BROWSERS_PATH=/workspace/work/playwright-browsers npx playwright test -c tests/game/browser/playwright.config.ts --workers=2`
+  → **13/13 en 16,6 s**, sans modification de source ni relance masquant un défaut.
+- Tests couvrent toucher sans doublon, clavier, fin/onEnd/rejeu, longue série, resize/DPR, pause/visibilité, démontage/audio, Canvas indisponible et reduced-motion. Les tests DOM supplémentaires tournent aussi dans npm test, donc dans la CI commune ; prévoir avec Alexis l'étape navigateur dédiée.
+
+## Contrat et limites
+
+J'accepte les options additives proposées par FLK : onEvent, sound et reducedMotion à la création ; erreurs synchrones de montage. Le contrat corrigé de cette livraison Codex formalise cela et doit être relu par Alexis avant gel. Pas de setter à chaud imposé pour M1 : réglage du son entre parties seulement.
+
+Pas de téléphone physique, Safari/iOS ou écoute humaine du son vérifiés. Le PASS porte sur F1, pas sur A1 encore en préparation. Alexis peut intégrer ce SHA après ses dépendances et vérification de la tête de PR, puis brancher le vrai moteur ; FLK devra revoir le nouveau SHA A1.
+
+---
+
+## Historique de la première revue
+
 # Revue F1 — Codex
 
 Auteur : Claude Code FLK ; reviewer : Codex. Date : 16 novembre 2026.
