@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { metrics, noHorizontalOverflow, tapUntilResult, trackErrors } from './helpers';
+import { lastScore, metrics, noHorizontalOverflow, tapUntilResult, trackErrors } from './helpers';
 
-// Moteur simulé : score = seed % 5. Seed 4242 → 2 étages.
-const CHALLENGE = '/?v=1&seed=4242&target=1';
+// Vrai moteur : le score n'est pas prévisible, mais le premier étage ne peut pas être raté
+// (src/game/core/README.md), donc toute partie vaut au moins 1 et bat un défi annoncé à 0.
+const CHALLENGE = '/?v=1&seed=4242&target=0';
 
 let errors: string[] = [];
 test.beforeEach(({ page, isMobile }) => {
@@ -15,19 +16,22 @@ test.afterEach(() => {
 
 test('défi par lien : même seed, comparaison, record persistant', async ({ page }) => {
   await page.goto(CHALLENGE);
-  await expect(page.getByTestId('challenge-invite')).toContainText('1 étage');
+  await expect(page.getByTestId('challenge-invite')).toContainText('0 étage');
   await page.getByRole('button', { name: 'Relever le défi' }).tap();
   await expect(page.getByTestId('target')).toBeVisible();
   await tapUntilResult(page);
-  await expect(page.getByTestId('score')).toHaveText('2 étages');
-  await expect(page.getByTestId('challenge-outcome')).toHaveText('Défi relevé : 2 contre 1 annoncés.');
+  const score = await lastScore(page);
+  expect(score).toBeGreaterThanOrEqual(1);
+  const floors = `${score} étage${score > 1 ? 's' : ''}`;
+  await expect(page.getByTestId('score')).toHaveText(floors);
+  await expect(page.getByTestId('challenge-outcome')).toHaveText(`Défi relevé : ${score} contre 0 annoncés.`);
   await expect(page.getByTestId('new-record')).toBeVisible();
   const names = (await metrics(page)).map((e) => e.name);
   expect(names).toEqual(['session_start', 'challenge_open', 'run_start', 'first_placement', 'run_end']);
-  expect((await metrics(page)).find((e) => e.name === 'run_end')).toMatchObject({ mode: 'challenge', score: 2 });
+  expect((await metrics(page)).find((e) => e.name === 'run_end')).toMatchObject({ mode: 'challenge' });
 
   await page.goto('/');
-  await expect(page.getByTestId('record')).toHaveText('Record sur cet appareil : 2 étages');
+  await expect(page.getByTestId('record')).toHaveText(`Record sur cet appareil : ${floors}`);
 });
 
 test('le lien partagé ouvre le même défi dans un autre navigateur', async ({ page, browser }) => {
@@ -93,7 +97,7 @@ test('ni partage ni presse-papiers : lien affiché pour copie manuelle', async (
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
   const input = page.getByTestId('challenge-link');
   await expect(input).toBeFocused();
-  await expect(input).toHaveValue(/\/\?v=1&seed=4242&target=2$/);
+  await expect(input).toHaveValue(new RegExp(`/\\?v=1&seed=4242&target=${await lastScore(page)}$`));
   await noHorizontalOverflow(page);
 });
 
@@ -138,7 +142,8 @@ test('stockage corrompu ou plein : le jeu reste jouable', async ({ page }) => {
   await page.getByRole('button', { name: 'Relever le défi' }).tap();
   await tapUntilResult(page);
   await expect(page.getByTestId('new-record')).toBeVisible();
-  await expect(page.getByTestId('record')).toContainText('2 étages (sauvegarde indisponible)');
+  await expect(page.getByTestId('record')).toContainText(`${await lastScore(page)} étage`);
+  await expect(page.getByTestId('record')).toContainText('(sauvegarde indisponible)');
 });
 
 test('le réglage du son survit au rechargement', async ({ page }) => {

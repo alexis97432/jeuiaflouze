@@ -12,7 +12,6 @@ test.afterEach(() => {
 test('parcours complet au clavier', async ({ page, isMobile }) => {
   test.skip(isMobile, 'parcours clavier testé sur desktop');
   await page.goto('/');
-  await expect(page.getByTestId('mock-banner')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Jouer' })).toBeFocused();
 
   await page.keyboard.press('Enter');
@@ -39,6 +38,28 @@ test('parcours complet au clavier', async ({ page, isMobile }) => {
   ]);
   expect(names.filter((n) => n === 'first_placement').length).toBeLessThanOrEqual(1);
   if (names.includes('first_placement')) expect(names.indexOf('first_placement')).toBe(2);
+});
+
+test('vrai moteur : rendu Canvas adapté à la densité de pixels, sans mock', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Jouer' }).click();
+  const canvas = page.getByTestId('game-canvas');
+  await expect(canvas).toBeVisible();
+  await expect(page.getByTestId('mock-banner')).toHaveCount(0);
+  // Le moteur F1 dimensionne le canvas en pixels physiques et y dessine la pile.
+  await expect
+    .poll(() =>
+      canvas.evaluate((c: HTMLCanvasElement) => {
+        const dpr = Math.min(window.devicePixelRatio, 3);
+        const ctx = c.getContext('2d');
+        if (!ctx || Math.abs(c.width - c.clientWidth * dpr) > 2) return 'taille';
+        const { data } = ctx.getImageData(0, 0, c.width, c.height);
+        const colors = new Set<number>();
+        for (let i = 0; i < data.length; i += 4 * 97) colors.add((data[i]! << 16) | (data[i + 1]! << 8) | data[i + 2]!);
+        return colors.size > 2 ? 'dessiné' : 'vide';
+      }),
+    )
+    .toBe('dessiné');
 });
 
 test('parcours tactile sans débordement horizontal', async ({ page, isMobile }) => {

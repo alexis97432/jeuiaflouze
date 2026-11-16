@@ -5,6 +5,14 @@ export type Metric = { name: string; [key: string]: unknown };
 export const metrics = (page: Page) =>
   page.evaluate(() => (window as unknown as { __metrics: Metric[] }).__metrics.map((e) => ({ ...e })));
 
+/** Score de la dernière partie terminée, lu dans la mesure run_end (le vrai moteur n'est pas prévisible). */
+export async function lastScore(page: Page): Promise<number> {
+  const ends = (await metrics(page)).filter((e) => e.name === 'run_end');
+  const score = ends.at(-1)?.score;
+  if (typeof score !== 'number') throw new Error('aucun run_end');
+  return score;
+}
+
 /**
  * Joue jusqu'à l'écran de résultat. Ne suppose pas que onEnd arrive dans le geste :
  * le vrai moteur l'appelle END_DELAY_MS (650 ms) après le raté. Les appuis ne visent jamais

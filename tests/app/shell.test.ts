@@ -72,7 +72,6 @@ function setup(overrides: Partial<ShellOptions> = {}) {
     share,
     newSeed: () => seed++,
     newRunId: () => `run${++run}`,
-    isMockGame: false,
     now: () => clock.t,
     ...overrides,
   });
@@ -369,8 +368,4 @@ describe('robustesse', () => {
     expect(game.mounts[0]!.pause).toBe(0);
   });
 
-  it('affiche le bandeau quand le moteur est simulé', () => {
-    const { text } = setup({ isMockGame: true });
-    expect(text('mock-banner')).toMatch(/simulé/);
-  });
 });

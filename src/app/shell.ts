@@ -36,7 +36,6 @@ export type ShellOptions = {
   share: (data: ShareData) => Promise<ShareOutcome>;
   newSeed: () => number;
   newRunId: () => string;
-  isMockGame: boolean;
   doc?: Document;
   /** Horloge monotone (ms) ; injectable pour les tests. */
   now?: () => number;
@@ -94,16 +93,6 @@ export function createShell(options: ShellOptions): Shell {
   const announce = (message: string) => {
     live.textContent = message;
   };
-
-  const mockBanner = () =>
-    options.isMockGame
-      ? el(
-          doc,
-          'p',
-          { class: 'mock-banner', role: 'note', 'data-testid': 'mock-banner' },
-          'Version de développement : moteur simulé, pas le vrai jeu.',
-        )
-      : null;
 
   const show = (next: Screen, children: (HTMLElement | null)[], focus: HTMLElement) => {
     screen = next;
@@ -172,7 +161,7 @@ export function createShell(options: ShellOptions): Shell {
       const alert = el(doc, 'p', { role: 'alert', class: 'alert', 'data-testid': 'invalid-link' },
         INVALID_MESSAGES[invalidReason]);
       const play = button('Nouvelle partie', playFree, true);
-      show('home', [mockBanner(), title, alert, play, recordLine(), soundToggle()], play);
+      show('home', [title, alert, play, recordLine(), soundToggle()], play);
       return;
     }
     if (challenge) {
@@ -181,13 +170,13 @@ export function createShell(options: ShellOptions): Shell {
       const note = el(doc, 'p', { class: 'hint' }, 'Score déclaré par votre ami, non vérifié.');
       const accept = button('Relever le défi', () => startRun(null), true);
       const free = button('Partie libre', playFree);
-      show('home', [mockBanner(), title, invite, note, accept, free, recordLine(), soundToggle()], accept);
+      show('home', [title, invite, note, accept, free, recordLine(), soundToggle()], accept);
       return;
     }
     const rules = el(doc, 'p', {},
       'Touchez l’écran ou appuyez sur Espace pour poser le bloc. Ce qui dépasse tombe.');
     const play = button('Jouer', () => startRun(null), true);
-    show('home', [mockBanner(), title, rules, play, recordLine(), soundToggle()], play);
+    show('home', [title, rules, play, recordLine(), soundToggle()], play);
   };
 
   const stopRun = () => {
@@ -228,7 +217,7 @@ export function createShell(options: ShellOptions): Shell {
       ? el(doc, 'p', { class: 'hint', 'data-testid': 'target' }, `Objectif : plus de ${floors(challenge.target)}`)
       : null;
 
-    show('game', [mockBanner(), heading, target, stage], canvas);
+    show('game', [heading, target, stage], canvas);
     if (previous) tracker.track('retry', { mode, runId, previousRunId: previous.runId });
     tracker.track('run_start', { mode, runId });
     announce('Partie commencée.');
@@ -260,7 +249,7 @@ export function createShell(options: ShellOptions): Shell {
         'Le jeu n’a pas pu démarrer sur cet appareil.');
       const retry = button('Réessayer', () => startRun(null), true);
       const home = button('Accueil', renderHome);
-      show('home', [mockBanner(), msg, retry, home], retry);
+      show('home', [msg, retry, home], retry);
     }
   };
 
@@ -285,7 +274,7 @@ export function createShell(options: ShellOptions): Shell {
   const renderResult = (current: RunState, result: RunResult, isRecord: boolean) => {
     const title = el(doc, 'h2', { tabindex: '-1' }, 'Partie terminée');
     const score = el(doc, 'p', { class: 'score', 'data-testid': 'score' }, floors(result.score));
-    const parts: (HTMLElement | null)[] = [mockBanner(), title, score];
+    const parts: (HTMLElement | null)[] = [title, score];
     let summary = `Partie terminée. Score : ${result.score}.`;
 
     if (isRecord) {

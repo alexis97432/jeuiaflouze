@@ -1,32 +1,10 @@
 /**
- * Copie TEMPORAIRE des types de docs/CONTRACTS.md (API de src/game/index.ts, possédée par FLK).
- * Le shell n'importe que d'ici ; en A1, ce fichier ré-exportera simplement src/game/index.ts
- * et le typecheck signalera toute divergence entre le contrat et l'implémentation réelle.
+ * Types du contrat (docs/CONTRACTS.md v1), importés de l'API publique du moteur de FLK.
+ * Aucune copie locale : toute divergence entre le shell et `src/game/index.ts` casse le typecheck.
  */
+import type { RunConfig } from '../game';
 
-export type RunConfig = { seed: number; rulesVersion: 1 };
+export type { GameEvent, GameHandle, MountOptions, RunConfig, RunResult } from '../game';
 
-export type RunResult = {
-  seed: number;
-  rulesVersion: 1;
-  score: number;
-  perfectCount: number;
-  durationTicks: number;
-  inputTicks: number[];
-};
-
-export type GameHandle = {
-  pause(): void;
-  resume(): void;
-  destroy(): void;
-};
-
-export type MountGameOptions = {
-  canvas: HTMLCanvasElement;
-  config: RunConfig;
-  onEnd(result: RunResult): void;
-};
-
-export type MountGame = (options: MountGameOptions) => GameHandle;
-
-export const RULES_VERSION = 1 as const;
+/** `src/game/index.ts` n'exporte pas RULES_VERSION ; le type ci-dessous l'aligne sur RunConfig. */
+export const RULES_VERSION: RunConfig['rulesVersion'] = 1;
