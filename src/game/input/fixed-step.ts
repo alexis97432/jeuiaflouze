@@ -81,10 +81,15 @@ export class FixedStepDriver {
     if (!this.running) return 0;
     let target = Math.floor(this.ticksAt(now));
     if (target - this.sim.tick > MAX_CATCHUP_TICKS) {
-      // Temps perdu abandonné : on recale l'ancre sur `now`.
+      // Temps perdu abandonné : on recale l'ancre sur `now`…
+      const dropped = target - (this.sim.tick + MAX_CATCHUP_TICKS);
       target = this.sim.tick + MAX_CATCHUP_TICKS;
       this.anchor = now;
       this.baseTick = target;
+      // … et on retire le même temps des appuis en attente (revue Codex R1).
+      // Sinon un geste fait pendant le gel resterait dans le futur logique et
+      // déclencherait plus tard une pose fantôme, sans nouveau geste.
+      this.rebasePending(dropped);
     }
     let steps = 0;
     while (this.sim.tick < target && this.sim.status === 'running') {
@@ -103,6 +108,22 @@ export class FixedStepDriver {
       this.pending = [];
     }
     return steps;
+  }
+
+  /**
+   * Décale les appuis en attente de `dropped` ticks vers le passé. L'ordre et les
+   * écarts sont conservés ; un appui qui tomberait dans le passé simulé est borné au
+   * premier tick non simulé, et les appuis ramenés sur un même tick sont fusionnés
+   * (une seule pose par tick, comme en temps normal).
+   */
+  private rebasePending(dropped: number): void {
+    const first = this.sim.tick + 1;
+    const rebased: number[] = [];
+    for (const tick of this.pending) {
+      const t = Math.max(first, tick - dropped);
+      if (rebased.length === 0 || t > rebased[rebased.length - 1]!) rebased.push(t);
+    }
+    this.pending = rebased;
   }
 
   /** Fraction écoulée du tick suivant, dans [0, 1], pour interpoler l'affichage. */

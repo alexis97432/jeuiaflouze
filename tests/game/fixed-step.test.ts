@@ -163,3 +163,68 @@ describe('pas fixe : pause, rattrapage et interpolation', () => {
     expect(sim.result()?.inputTicks).toEqual([177, 433, 434]);
   });
 });
+
+describe('pas fixe : appuis pendant une image gelée (revue Codex R1)', () => {
+  it('reproduction Codex : appui pendant le gel → une pose dans l’image du recalage, pas une pose fantôme plus tard', () => {
+    const sim = new Simulation({ seed: 1, rulesVersion: 1 });
+    const d = new FixedStepDriver(sim);
+    d.resume(0);
+    d.press(1000); // mémorise le tick 120 de l'ancienne échelle
+    d.advance(1000); // gel : 30 ticks seulement, recalage de l'ancre
+    for (let t = 1010; t <= 1300; t += 10) d.advance(t);
+    expect(sim.inputTicks).toEqual([MAX_CATCHUP_TICKS]);
+    expect(d.pendingPresses).toEqual([]);
+  });
+
+  it('plusieurs appuis pendant un gel : ordre et écarts conservés, temps abandonné retiré', () => {
+    const sim = new Simulation({ seed: 1, rulesVersion: 1 });
+    const d = new FixedStepDriver(sim);
+    d.resume(0);
+    expect(d.press(800)).toBe(96);
+    expect(d.press(900)).toBe(108);
+    expect(d.press(1000)).toBe(120);
+    d.advance(1000); // 120 ticks dus, 30 simulés : 90 abandonnés
+    expect(sim.inputTicks).toEqual([6, 18, 30]);
+  });
+
+  it('appui en tout début de gel : borné au premier tick non simulé, sans fusion abusive', () => {
+    const sim = new Simulation({ seed: 1, rulesVersion: 1 });
+    const d = new FixedStepDriver(sim);
+    d.resume(0);
+    d.press(10); // tick 2
+    d.press(50); // tick 6
+    d.advance(1000); // abandon de 90 ticks : 2−90 et 6−90 bornés à 1 → fusion en une seule pose
+    expect(sim.inputTicks).toEqual([1]);
+  });
+
+  it('gestes livrés après le gel avec un horodatage ancien : appliqués au tick suivant', () => {
+    const sim = new Simulation({ seed: 1, rulesVersion: 1 });
+    const d = new FixedStepDriver(sim);
+    d.resume(0);
+    d.advance(1000); // gel sans geste
+    const t = sim.tick;
+    expect(d.press(500)).toBe(t + 1); // événement mis en file pendant le gel
+    d.advance(1010);
+    expect(sim.inputTicks).toEqual([t + 1]);
+  });
+
+  it('plusieurs gels successifs avec gestes : rejeu valide et aucun appui orphelin', () => {
+    const sim = new Simulation({ seed: 9, rulesVersion: 1 });
+    const d = new FixedStepDriver(sim);
+    d.resume(0);
+    let now = 0;
+    for (let k = 0; k < 6 && sim.status === 'running'; k++) {
+      for (let i = 0; i < 40; i++) { now += 1000 / 60; d.advance(now); }
+      d.press(now + 200);
+      d.press(now + 450);
+      now += 700; // gel de 700 ms
+      d.advance(now);
+      expect(d.pendingPresses.every((p) => p > sim.tick)).toBe(true);
+    }
+    for (let i = 0; i < 60; i++) { now += 1000 / 60; d.advance(now); }
+    expect(d.pendingPresses).toEqual([]);
+    expect(sim.inputTicks.length).toBeGreaterThanOrEqual(6);
+    const ticks = sim.inputTicks;
+    for (let i = 1; i < ticks.length; i++) expect(ticks[i]!).toBeGreaterThan(ticks[i - 1]!);
+  });
+});
