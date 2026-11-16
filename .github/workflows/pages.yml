@@ -1,0 +1,80 @@
+name: Publier sur GitHub Pages
+
+# Publication MANUELLE et traçable (coordination/V2.md § Acceptation 8, arbitrage C5).
+# Jamais déclenchée par un push : un humain choisit le commit à publier.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit (SHA) ou branche à publier — doit être déjà intégré à claude/youthful-mayer-n4f7oy"
+        required: true
+        default: claude/youthful-mayer-n4f7oy
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Refuser un commit non intégré (donc non revu)
+        run: |
+          git fetch origin claude/youthful-mayer-n4f7oy
+          git merge-base --is-ancestor HEAD origin/claude/youthful-mayer-n4f7oy || {
+            echo "::error::$(git rev-parse HEAD) n'est pas sur la branche d'intégration : publication refusée."
+            exit 1
+          }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+      - name: Construire et vérifier le site
+        run: scripts/build-pages.sh "$RUNNER_TEMP/site"
+
+      - name: Publier sur la branche gh-pages
+        env:
+          SITE: ${{ runner.temp }}/site
+        run: |
+          SHA=$(git rev-parse HEAD)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages
+          git worktree add "$RUNNER_TEMP/gh-pages" origin/gh-pages
+          cd "$RUNNER_TEMP/gh-pages"
+          git switch -c publish-tmp
+          git rm -rq --ignore-unmatch .
+          cp -R "$SITE/." .
+          git add -A
+          git commit -m "Publie $SHA sur GitHub Pages (workflow manuel)"
+          git push origin HEAD:gh-pages
+
+      - name: Vérifier la version en ligne (HTTPS)
+        run: |
+          SHA=$(git rev-parse HEAD)
+          URL="https://alexis97432.github.io/jeuiaflouze/"
+          for i in $(seq 1 30); do
+            online=$(curl -fsS "${URL}source-commit.txt?nocache=$i" || true)
+            if [ "$online" = "$SHA" ]; then
+              curl -fsS -o /dev/null "$URL" && echo "En ligne : $URL ($SHA)" && exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::Après 10 min, $URL ne sert pas encore $SHA (vérifier Settings > Pages : source = branche gh-pages)."
+          exit 1
