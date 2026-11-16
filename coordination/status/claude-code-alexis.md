@@ -4,45 +4,29 @@
 
 | Tâche | État | Branche | SHA / PR | Tests |
 |---|---|---|---|---|
-| Revue C0 v1 (Codex, PR #7) | **PASS** sur `3fdccac`, mineurs | a1-integration | coordination/reviews/C0v1-claude-code-alexis.md | confrontation au code F0/F1 |
-| A0 squelette | PASS FLK sur `e84647e` ; **fusion par FLK attendue** (ordre PLAN : A0 → F0 → F1 → A1) | agent/claude-code-alexis/a0-shell | [PR #2](https://github.com/alexis97432/jeuiaflouze/pull/2) | CI verte |
-| A1 intégration | **Vrai moteur branché** ; REVIEW_PENDING (FLK) | agent/claude-code-alexis/a1-integration | [PR #6](https://github.com/alexis97432/jeuiaflouze/pull/6), SHA dans la PR | voir ci-dessous |
-| Revue C1 (Codex, PR #4) | PASS sur `f18e5d4`, intégrée | — | coordination/reviews/C1-claude-code-alexis.md | — |
-| Revue protocole autonomie (Codex, PR #5) | PASS sur `df88ba5`, intégrée ; mineurs traités dans #7 | — | coordination/reviews/AUTONOMIE-claude-code-alexis.md | — |
+| A0 squelette | **DONE** : PASS FLK, intégré par FLK (`3c5ecf8`) | — | [PR #2](https://github.com/alexis97432/jeuiaflouze/pull/2) | CI verte |
+| A1 intégration | **DONE** : PASS FLK sur `7df764d` (PR #8), intégré (`0add695`) ; validation produit et téléphones physiques à faire | — | [PR #6](https://github.com/alexis97432/jeuiaflouze/pull/6) | CI verte sur `0add695` |
+| Intégration F0 / F1 | Faite dans l'ordre du PLAN : F0 `3725541` → `bcf6f79`, F1 `b44d2a6` → `650fe5d` (PASS Codex) | — | PR #1, PR #3 | CI verte après chaque fusion |
+| Guide de test téléphone (M1) | REVIEW_PENDING : accord Codex (propriétaire de `docs/`) et revue FLK | agent/claude-code-alexis/m1-test-telephone | PR à venir | paysage vérifié en émulation |
+| Revues Codex (C0 v1, C1, autonomie) | PASS, intégrées | — | coordination/reviews/*-claude-code-alexis.md | — |
 
-## A1 — état
+## Intégration du 16 novembre 2026
 
-- **Moteur réel :** ma branche contient F1 `b44d2a6` (PASS Codex, F0 `3725541` inclus), fusionné par un commit de merge qui conserve les SHA revus. Tant que A0, F0 et F1 ne sont pas dans l'intégration, le diff de la PR #6 les montre aussi. Une fois fusionnés, il ne restera que le diff A1.
-- `src/app/game-contract.ts` importe désormais les types de `src/game/index.ts` (aucune copie locale). `src/app/game-loader.ts` est un adaptateur pur (`createStartGame`) :
-  - `sound = !muted` ;
-  - `reducedMotion` omis, pour suivre la préférence système ;
-  - `first_placement` = première pose réussie (`onEvent`), jamais un raté.
-- **Mock supprimé** (`mock-game.ts` et son test) avec le bandeau. Un e2e vérifie l'absence de bandeau et que le canvas est dimensionné au DPR et réellement dessiné.
-- i1 (voile de pause en double) : le voile DOM du shell est opaque, un seul message est visible. Contrôle visuel sur une capture Pixel 7, sans changement d'API.
-- Son : réglable à l'accueil, donc entre les parties seulement (CONTRACTS v1, B2).
-- Tests navigateur F1 de FLK : appelés par `npm run test:e2e` (script `test:game-browser`), donc présents dans la CI.
-- Contenu préparé avant la bascule, inchangé : URL de défi stricte, stockage `poc:v1:` tolérant aux pannes, partage avec repli, délai de garde de 500 ms sur le résultat.
-- Tests réels (SHA et sorties dans la PR) :
-  - typecheck OK ;
-  - `npm test` : 11 fichiers, 184/184 (A1 + F0/F1) ;
-  - e2e A1 : 25 réussis, 125/125 sur 5 répétitions ;
-  - navigateur F1 : 13/13 ;
-  - 2 mutations de la bascule détectées.
-- Limites :
-  - aucun téléphone physique, Safari/WebKit ou Firefox ;
-  - son non écouté ;
-  - aucun playtest humain.
+- Ordre suivi : A0 (FLK) → F0 #1 → F1 #3 → A1 #6, en merges classiques qui conservent les SHA revus.
+- A1 : l'API GitHub refusait la fusion pour un conflit (« dirty »). Ni `ort` ni `recursive` ne le reproduisent en local : deux bases de fusion, `b44d2a6` et `e84647e`. J'ai donc fait la même fusion classique en local (`0add695`, parents `650fe5d` et `7df764d`, la tête revue reste inchangée).
+  - Avant de pousser : chaîne complète sur l'arbre fusionné (`npm ci`, typecheck, 184 tests unitaires, build 9,98 Ko gzip, 25 e2e et 13 tests navigateur F1, exit 0).
+  - `git diff 7df764d 0add695` sur le code et la configuration : vide. Seuls diffèrent les documents Codex déjà présents sur l'intégration.
+  - GitHub a marqué la PR #6 comme fusionnée. CI d'intégration : run 14, success.
 
 ## Prochain pas
 
-1. Revue FLK du nouveau SHA A1 ; corriger ses remarques.
-2. Après la fusion d'A0 par FLK : intégrer F0 #1 puis F1 #3 (PASS Codex sur leurs têtes `3725541` et `b44d2a6`), en vérifiant les têtes de PR et la CI après chaque fusion.
-3. Ensuite, M1 sur téléphones physiques iOS/Android, puis A1.5 (export local des mesures pour le premier playtest).
+1. **m1 de la revue A1 de FLK**, avant A1.5 : n'émettre `retry`/`run_start` qu'après un montage réussi.
+2. **Tests sur téléphones physiques** selon `docs/TEST-TELEPHONE.md`. Ils demandent un humain et des appareils ; aucun résultat n'est inventé ici.
+3. **A1.5** (export local des mesures pour le premier playtest), après m1.
 
 ## Blocages
 
-- Fusion d'A0 (#2) par FLK : préalable à F0/F1 dans l'ordre du PLAN.
-- Validation sur appareil réel : nécessite un humain et des téléphones.
+- Validation sur appareils réels et playtest : action humaine requise.
 
 ## Avis indépendant sur le concept (inchangé, ≤ 15 lignes)
 
