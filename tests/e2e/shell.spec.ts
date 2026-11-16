@@ -101,3 +101,25 @@ test('paysage téléphone : actions du résultat visibles sans défiler', async 
   await noHorizontalOverflow(page);
   await context.close();
 });
+
+test('jeu en pleine page sur téléphone, anneau de focus seulement au clavier', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'mise en page téléphone');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  const canvas = page.getByTestId('game-canvas');
+  await expect(canvas).toBeFocused();
+  const box = (await canvas.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(Math.round(box.width)).toBe(viewport.width);
+  expect(box.height).toBeGreaterThan(viewport.height * 0.9);
+  expect(await canvas.evaluate((c) => getComputedStyle(c).outlineStyle)).toBe('none');
+});
+
+test('au clavier, le canvas focalisé garde un anneau visible', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'clavier testé sur desktop');
+  await page.goto('/');
+  await page.keyboard.press('Enter');
+  const canvas = page.getByTestId('game-canvas');
+  await expect(canvas).toBeFocused();
+  expect(await canvas.evaluate((c) => getComputedStyle(c).outlineStyle)).toBe('solid');
+});

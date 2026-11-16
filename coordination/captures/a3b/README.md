@@ -9,3 +9,5 @@ Formats : 390×844 et 320×568 en portrait, 844×390 en paysage. Écrans : accue
 Progression préparée pour les captures : objectifs « 5 étages » et « 2 parfaits consécutifs » accomplis, apparence Bonbon sélectionnée.
 
 Le rendu de la partie (canvas) est encore celui de F1 : le visuel du jeu lui-même relève de F3/F4 (FLK). L'avant n'a pas d'écran collection.
+
+Ajout après la revue F3 de FLK : `apres-390x844-jeu.png` (pleine page en portrait) et `apres-844x390-jeu.png` (colonne portrait centrée en paysage). Rendu F1 encore actif dans cette branche ; les univers F3 s'afficheront après intégration de la PR #15.

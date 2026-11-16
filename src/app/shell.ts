@@ -123,6 +123,7 @@ export function createShell(options: ShellOptions): Shell {
     delete view.dataset.inputReady;
     view.replaceChildren(...children.filter((c): c is HTMLElement => c !== null));
     view.dataset.screen = next;
+    root.dataset.screen = next; // mise en page pleine page pendant la partie
     focus.focus();
   };
 
@@ -491,6 +492,19 @@ export function createShell(options: ShellOptions): Shell {
     announce(summary);
   };
 
+  // Modalité de la dernière interaction : l'anneau de focus du canvas n'apparaît qu'au clavier
+  // (proposition FLK, revue F3) ; au toucher, rien ne se superpose au jeu.
+  const onPointer = () => {
+    root.dataset.input = 'pointer';
+  };
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key === 'Tab' || event.key === 'Enter' || event.key === ' ' || event.key.startsWith('Arrow')) {
+      root.dataset.input = 'keyboard';
+    }
+  };
+  doc.addEventListener('pointerdown', onPointer, true);
+  doc.addEventListener('keydown', onKey, true);
+
   const onVisibility = () => {
     if (screen !== 'game' || !run?.handle) return;
     if (doc.visibilityState === 'hidden' && !pausedByVisibility) {
@@ -516,6 +530,10 @@ export function createShell(options: ShellOptions): Shell {
       clearTimeout(guardTimer);
       stopRun();
       doc.removeEventListener('visibilitychange', onVisibility);
+      doc.removeEventListener('pointerdown', onPointer, true);
+      doc.removeEventListener('keydown', onKey, true);
+      delete root.dataset.screen;
+      delete root.dataset.input;
       root.replaceChildren();
     },
   };

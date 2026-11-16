@@ -155,23 +155,29 @@ h1 { font-size: clamp(2.2rem, 11vw, 3.1rem); line-height: 1; letter-spacing: -0.
 .swatch-precision { background: radial-gradient(circle, var(--coral) 0 7px, #fff 7px 13px, var(--coral) 13px 19px, #fff 19px 25px, transparent 26px), var(--cream-deep); --block: transparent; }
 .swatch-touriste-des-nuages .swatch-block, .swatch-precision .swatch-block { box-shadow: none; }
 
-/* --- Jeu --------------------------------------------------------------------------------- */
-.view[data-screen='game'] { max-width: 460px; }
-/* Bordure et ombre sur le conteneur, jamais sur le canvas : le moteur dimensionne son tampon
-   avec getBoundingClientRect(), une bordure fausserait l'échelle (rendu flou). */
-.stage {
-  position: relative; width: fit-content; max-width: 100%; margin: 0 auto;
-  border: 2px solid var(--ink); border-radius: var(--radius); box-shadow: 0 6px 0 var(--ink);
-  overflow: hidden; background: var(--night);
+/* --- Jeu : pleine page sur téléphone (proposition FLK, revue F3) ------------------------ */
+/* Bordure et ombre jamais sur le canvas : le moteur dimensionne son tampon avec
+   getBoundingClientRect(), une bordure fausserait l'échelle (rendu flou). */
+#app[data-screen='game'] { padding: 0; place-items: stretch; }
+.view[data-screen='game'] { max-width: none; height: 100dvh; gap: 0; }
+.view[data-screen='game'] [data-testid='target'] {
+  position: absolute; z-index: 1; top: max(8px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  background: rgb(255 244 219 / 0.92); color: var(--ink); border: 2px solid var(--ink);
+  border-radius: 999px; padding: 4px 12px; font-weight: 700; white-space: nowrap;
 }
-.game-canvas {
-  display: block; width: min(100%, calc((100dvh - 130px) * 9 / 16)); height: auto;
-  aspect-ratio: 9 / 16; touch-action: none; background: var(--night);
+.stage { position: relative; flex: 1; width: 100%; min-height: 0; margin: 0 auto; background: var(--night); }
+.game-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+/* Focus du canvas : visible au clavier seulement. */
+.game-canvas:focus, .game-canvas:focus-visible { outline: none; }
+#app[data-input='keyboard'] .game-canvas:focus { outline: 4px solid var(--focus); outline-offset: -4px; }
+/* Grand écran ou paysage : colonne centrée au format portrait, sans cadre sombre. */
+@media (min-width: 600px), (orientation: landscape) {
+  .stage { max-width: calc(100dvh * 9 / 16); }
 }
-.game-canvas:focus-visible { outline-offset: 4px; }
 .pause {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   background: var(--cream); /* opaque : masque le voile dessiné par le moteur (un seul message) */
+  z-index: 2;
 }
 .pause[hidden] { display: none; }
 
@@ -188,8 +194,7 @@ h1 { font-size: clamp(2.2rem, 11vw, 3.1rem); line-height: 1; letter-spacing: -0.
   .view[data-screen='result'] [data-testid='share-status'],
   .view[data-screen='result'] .fallback { grid-column: 2; }
   .view[data-screen='collection'] { grid-template-columns: 1fr; }
-  .view[data-screen='game'] { grid-template-columns: 1fr; max-width: 460px; }
-  .game-canvas { width: min(100%, calc((100dvh - 80px) * 9 / 16)); }
+  .view[data-screen='game'] { display: flex; max-width: none; }
   .logo { display: none; }
 }
 
