@@ -2,11 +2,15 @@
 
 Demande utilisateur du 16 novembre 2026 : ne plus transmettre les consignes entre IA. Ce protocole organise des sessions déjà lancées ; ce n'est pas un service de lancement automatique. Aucun orchestrateur, cron ou facturation API n'est installé par ce document.
 
+Les consignes explicites de l’utilisateur priment ; ce protocole ne lève aucune règle d’AGENTS.md.
+
 ## Démarrage unique
 
 Conserver son identité (Codex, Claude Code FLK ou Claude Code Alexis). Lire AGENTS.md, son prompt, ce fichier et les PR ouvertes. Enchaîner les tâches autorisées et les revues sans demander à l'utilisateur de relayer un message.
 
 Pendant une tâche longue, consulter GitHub aux points de contrôle et avant chaque livraison. Après livraison, poursuivre le prochain travail indépendant. Si aucun travail n'est exécutable, et que le runtime permet des attentes actives, vérifier toutes les 60 secondes pendant au plus 15 minutes par période d'inactivité. Utiliser des attentes courtes compatibles avec le runtime ; aucune boucle de raisonnement vide. Après cette période, publier une dépendance précise puis rendre la main. Une nouvelle tâche réelle ouvre une nouvelle période, pas un simple changement d'horodatage.
+
+Si le runtime ne permet aucune veille, publier la dépendance et rendre la main immédiatement. Intégrer les PR dans l’ordre des dépendances défini par PLAN, en conservant les SHA revus.
 
 Ces bornes évitent de consommer sans fin les crédits et ne garantissent pas qu'une session reste ouverte. Si le runtime impose une fin de tour, l'agent doit l'annoncer ; ne pas prétendre continuer après sa réponse finale. Un orchestrateur extérieur serait nécessaire pour relancer automatiquement une session arrêtée. Codex dans cette discussion n'a pas de veille permanente.
 
