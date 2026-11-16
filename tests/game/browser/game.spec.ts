@@ -45,8 +45,12 @@ test.describe('entrées tactiles', () => {
       await page.waitForTimeout(250);
       expect((await state(page)).inputTicks.length).toBe(i);
     }
-    expect((await state(page)).score).toBe(3);
-    expect(await page.evaluate(() => (window as any).__flk.touchAction())).toBe('none');
+    // Les touchers tombent selon le minutage : le 3e étage peut être raté si les deux
+    // premières poses ont beaucoup rogné la base. Ce test prouve « une entrée par toucher »,
+    // pas un score : 3 poses, ou 2 poses + 1 raté (échec isolé observé une fois avant ce correctif).
+    const s = await state(page);
+    expect(s.score + (s.status === 'ended' ? 1 : 0)).toBe(3);
+    expect(await page.evaluate(() => (window as any).__flk.touchAction())).toBe('none'); // restauré seulement au destroy
   });
 });
 
