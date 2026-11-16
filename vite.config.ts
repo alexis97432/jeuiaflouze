@@ -1,6 +1,10 @@
 import { execSync } from 'node:child_process';
 import { defineConfig } from 'vitest/config';
 
+// Tests unitaires dans un fuseau très éloigné d'UTC (UTC+14) : une date locale prise pour une
+// date UTC (Tour du jour) devient visible. Hérité par les workers Vitest.
+process.env.TZ ??= 'Pacific/Kiritimati';
+
 function buildId(): string {
   if (process.env.BUILD_ID) return process.env.BUILD_ID;
   try {

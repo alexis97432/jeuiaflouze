@@ -6,13 +6,15 @@
 
 export const METRICS_SCHEMA_VERSION = 1;
 
-export type Mode = 'free' | 'challenge';
+/** `daily` : proposition additive (revue C3 m1), à confirmer par Codex avant A1.5. */
+export type Mode = 'free' | 'challenge' | 'daily';
 
 type RunFields = { mode: Mode; runId: string };
 
 export type EventPayloads = {
   session_start: Record<string, never>;
-  run_start: RunFields;
+  /** `day` (YYYY-MM-DD UTC) seulement pour une Tour du jour : date publique, non personnelle. */
+  run_start: RunFields & { day?: string };
   first_placement: RunFields;
   run_end: RunFields & { score: number; durationTicks: number; perfectCount: number };
   retry: RunFields & { previousRunId: string };

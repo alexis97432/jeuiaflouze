@@ -173,3 +173,25 @@ test('onglet caché : pause puis reprise explicite', async ({ page }) => {
   await expect(page.getByTestId('pause')).toBeHidden();
   await tapUntilResult(page);
 });
+
+test('Tour du jour : seed de la date UTC, record du jour, objectifs affichés', async ({ page }) => {
+  const { dailySeed, utcDateKey } = await import('../../src/platform/daily');
+  await page.goto('/');
+  const day = utcDateKey(new Date());
+  await expect(page.getByTestId('daily-hint')).toContainText(day);
+  await expect(page.getByTestId('goals').locator('li')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Tour du jour' }).tap();
+  await expect(page.getByTestId('target')).toContainText(`Tour du jour · ${day}`);
+  await tapUntilResult(page);
+  const score = await lastScore(page);
+  await expect(page.getByTestId('daily-outcome')).toHaveText(`Nouveau record du jour (${day}) !`);
+  const starts = (await metrics(page)).filter((e) => e.name === 'run_start');
+  expect(starts.at(-1)).toMatchObject({ mode: 'daily', day });
+  // Le lien de défi d'une Tour du jour porte la seed explicite du jour.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+  });
+  await page.getByRole('button', { name: 'Défier un ami' }).tap();
+  await expect(page.getByTestId('challenge-link')).toHaveValue(new RegExp(`seed=${dailySeed(day)}&target=${score}$`));
+});
