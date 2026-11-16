@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { verifyRunResult } from '../../src/game/core';
 import { END_DELAY_MS, mountGame, type GameEvent, type GameHandle, type MountOptions } from '../../src/game';
 import type { RunResult } from '../../src/game/core';
+import { createGame } from '../../src/game/render/mount';
+import { THEME_IDS } from '../../src/game/render/themes';
 
 const TICK_MS = 1000 / 120;
 
@@ -18,7 +20,7 @@ function fakeContext(): CanvasRenderingContext2D {
   return new Proxy(store, {
     get(target, prop) {
       if (prop in target) return target[prop];
-      if (prop === 'createLinearGradient') return () => ({ addColorStop() {} });
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient') return () => ({ addColorStop() {} });
       return () => {};
     },
     set(target, prop, value) {
@@ -286,5 +288,32 @@ describe('F1 en DOM (exécuté par npm test)', () => {
     expect([...liveListeners.values()].every((n) => n === 0)).toBe(true);
     expect(frames.size).toBe(0);
     expect(plain.style.touchAction).toBe('');
+  });
+});
+
+describe('V2 (F3) : l\'univers ne change jamais la partie', () => {
+  it('même séquence d\'appuis → même RunResult dans les trois univers et en variante voyage', () => {
+    const variants: { theme?: (typeof THEME_IDS)[number]; voyage?: boolean }[] = [
+      ...THEME_IDS.map((theme) => ({ theme })),
+      { voyage: true },
+    ];
+    const results: RunResult[] = [];
+    for (const variant of variants) {
+      const ends: RunResult[] = [];
+      const start = now;
+      const game = createGame({
+        canvas, config: { seed: 1, rulesVersion: 1 }, sound: false, onEnd: (r) => ends.push(r), ...variant,
+      });
+      handle = game;
+      for (const t of [177, 433, 434]) { run(start + (t - 0.5) * TICK_MS - now); pointer({ at: now }); run(TICK_MS); }
+      run(1500);
+      expect(ends).toHaveLength(1);
+      results.push(ends[0]!);
+      game.destroy();
+      handle = null;
+    }
+    for (const r of results) {
+      expect(r).toEqual({ seed: 1, rulesVersion: 1, score: 2, perfectCount: 0, durationTicks: 434, inputTicks: [177, 433, 434] });
+    }
   });
 });
