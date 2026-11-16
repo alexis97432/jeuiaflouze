@@ -29,9 +29,58 @@
 4. Raté prioritaire sur parfait ; bords qui se touchent = raté.
 5. Signature du rejeu : `replayRun(input: unknown, limits?) → { ok: true, result } | { ok: false, error, detail }`, plus `verifyRunResult`. Doublons et désordre sont rejetés, pas normalisés.
 
+## F1 — rendu Canvas, entrée, boucle
+
+- Revue Codex sur `0896195` : **CHANGES_REQUESTED** ([rapport](https://github.com/alexis97432/jeuiaflouze/blob/agent/codex/c1-review-f0/coordination/reviews/F1-codex.md)). Corrections :
+  - **R1 (vrai bogue, merci)** : un appui mémorisé pendant une image gelée restait dans l'ancienne échelle de temps, d'où une pose fantôme plus tard. Désormais, le temps abandonné est aussi retiré des appuis en attente : ordre et écarts conservés, bornés au premier tick non simulé, fusion par tick. Cinq tests de régression : la reproduction exacte de Codex, plusieurs gestes dans un gel, un geste en début de gel, un geste livré après le gel avec un horodatage ancien, et plusieurs gels successifs. Quatre échouaient avant la correction.
+  - **R2** : déjà corrigé dans `72a2aa9`, poussé juste après la revue. Le harnais est construit par Vite (A0), sans esbuild, et son chemin vient de `config.configFile`, sans `__dirname`. Vérifié depuis `npm ci` du lockfile A0 (voir ci-dessous).
+  - Exécution en CI, **partiellement fermée dans mes chemins** : `tests/game/mount.dom.test.ts` (jsdom, déjà inclus par `npm test` donc par la CI d'A0) couvre les frontières F1 en 9 tests :
+    - un toucher = une pose, `preventDefault`, clic droit ignoré ;
+    - espace bloqué au keydown et au keyup, répétition, champ éditable ;
+    - partie complète avec `onEvent` ordonné, `onEnd` unique après `END_DELAY_MS`, rejeu valide, espace rendu au DOM ;
+    - pause et reprise sans rattrapage, onglet caché ;
+    - destroy sans fuite, `onEnd` qui détruit, exception dans `onEvent`, échecs de montage.
+
+    Quatre mutations (detach oublié, keyup non bloqué, reprise onglet caché, `onEnd` multiple) font échouer `npm test`. Les specs Playwright restent la preuve en vrai navigateur (DPR, toucher réel, audio).
+  - Les specs Playwright, elles, ne sont pas lancées par la CI : la config Playwright racine et `package.json` appartiennent à Alexis. **Proposition à Alexis** : script `"test:game-browser": "playwright test -c tests/game/browser/playwright.config.ts --trace off"` et une étape CI après `test:e2e` ; ou un projet ajouté à la config racine avec `testDir: 'tests/game/browser'` et le `globalSetup` du harnais.
+  - `onEvent` reste une **proposition optionnelle** (Codex rappelle qu'aucun changement unilatéral d'API n'est permis). Aucun consommateur ne l'utilise ; je le retire si Codex le refuse.
+- État : **REVIEW_PENDING** (nouvelle revue Codex demandée sur le dernier SHA de la PR #3).
+- Vérification du dernier SHA sur la fusion d'essai avec A0 `e84647e` (`npm ci` propre) : `npm run typecheck` exit 0, `npm test` **128/128**. Branche `agent/claude-code-flk/f1-render`, construite sur F0 (`3725541`), qui n'est pas encore revu ni intégré. La PR F1 contient donc aussi le commit F0 ; seul le diff après `3725541` est propre à F1.
+- Compatibilité A0 vérifiée sur une fusion d'essai avec `e84647e` : TypeScript 7.0.2 strict + `noUnused*` OK, vitest 4.1.12 114/114, mes specs navigateur sous Vite 8.3.5 / ESM OK. Le harnais n'utilise plus esbuild : dépendance inutile, Vite d'A0 suffit.
+- Fichiers : `src/game/index.ts` (API publique), `src/game/input/` (fixed-step.ts, input.ts), `src/game/render/` (mount.ts, renderer.ts, audio.ts, README.md), `src/game/demo/` (démo intégrable), `tests/game/fixed-step.test.ts`, `tests/game/browser/` (harnais + specs Playwright + config locale).
+- Contrôles réels, le 16 novembre 2026, avec un outillage temporaire hors dépôt (Node 22.23.4, vitest 3.2.4, typescript 5.9.3, esbuild 0.25.10, @playwright/test 1.63.0 sur le Chromium préinstallé) :
+  - `vitest run tests/game` → **97 tests passés** (77 F0 + 20 pas fixe) ;
+  - `playwright test -c tests/game/browser/playwright.config.ts` → **13 tests passés** (dont `onEvent` et l'échec Canvas 2D sans fuite, ajoutés après la revue C0) dans Chromium headless : DPR 2 et 3 + redimensionnement, toucher = une pose, clic droit ignoré, espace face à un bouton focalisé, répétition, partie complète avec `onEnd` unique et rejeu vérifié, 20 poses avec effets bornés, pause/reprise sans saut, onglet caché, 25 montages/destructions sans écouteur ni RAF restant, audio fermé, `sound:false`, config invalide, reduced-motion ;
+  - `tsc --noEmit` strict sur tout `src/game` + tests → OK ; core toujours compilable sans DOM ;
+  - mutations : écouter aussi `mousedown` → 2 échecs ; oublier `detach()` → 1 échec ; ne plus bloquer espace → 1 échec. Ne bloquer que keydown passe, ce qui est attendu : le blocage du keyup est une double sécurité ;
+  - bogue réel trouvé et corrigé grâce au test de cadence : un appui pile sur l'instant d'un tick glissait d'un tick à 60 Hz (epsilon d'arrondi asymétrique). Le temps est maintenant converti par une ancre exacte, la même fonction servant à `press` et `advance` ;
+  - mesures, pas des FPS d'appareil : `draw()` médiane 0,2 ms, p95 0,3 ms sur 605 images (Chromium headless, conteneur cloud) ; `src/game` minifié ≈ 6,2 Ko gzip (esbuild).
+- Vérification visuelle : captures 390×844 d'une série de parfaits, de coupes et d'un raté, examinées par moi. Ce n'est pas un avis humain.
+- Manque : aucun test sur un vrai téléphone, ni Safari/WebKit ou Firefox, ni écoute réelle du son (aucun haut-parleur ici). Jeu non playtesté par un humain.
+
 ## Revue du voisin (FLK vérifie Alexis)
 
-- A0 : **pas de livraison disponible** le 16 novembre 2026. Ni PR ni branche `agent/claude-code-alexis/*` sur le dépôt distant ; branches distantes vues : `claude/youthful-mayer-n4f7oy` et `claude/blissful-galileo-26o0ep`, sans PR ouverte. Revue A0 en attente ; aucun verdict inventé.
+- A0 ([alexis97432/jeuiaflouze#2](https://github.com/alexis97432/jeuiaflouze/pull/2)) : **PASS** sur `e84647e0a5b1acca0e724977eecddaa8d113a417`. Rapport : [coordination/reviews/A0-claude-code-flk.md](../reviews/A0-claude-code-flk.md).
+  - Les 5 commandes communes ont été relancées sur un worktree du SHA, et 2 mutations vérifiées.
+  - Fusion d'essai avec F1 : sans conflit, 114/114 tests.
+  - Aucun bloquant. Mineurs m2 à m5, et **m1 à corriger en A1** : l'e2e tactile vise un canvas détaché quand `onEnd` est asynchrone (timeout mesuré avec le vrai moteur).
+- A1 : pas encore livré (dépend de F1). Revue à faire dès livraison.
+
+## Réponse à la revue C0 d'Alexis (points adressés à FLK)
+
+- M1 à M7 sont tranchés dans [src/game/core/README.md](../../src/game/core/README.md), dans le sens proposé par Alexis :
+  - plafond avant modulation ;
+  - un tirage pour l'étage 1, numéroté à partir de 1 ;
+  - départ : s'éloigner du bord de départ ;
+  - rebond réfléchi ;
+  - premier tick d'appui = 1 ;
+  - entiers en millièmes et vitesse entière en milli/tick ;
+  - parfait `≤ 4000`, raté `≤ 0`.
+- M8 : `replayRun` borne déjà la durée (`maxTicks`) et le nombre d'entrées (`maxInputs`), avec des limites resserrables côté serveur. Une limite d'inactivité par étage reste à décider par Codex avant tout classement.
+- B1 : `onEvent?` ajouté dans F1 (optionnel).
+- B2 : `sound?` et `reducedMotion?` à la création. `setPrefs` à chaud : je peux l'ajouter si Codex l'accepte.
+- B3 : erreur synchrone sans effet de bord, testée dans Chromium.
+- Ces ajouts restent des propositions : je n'ai pas modifié `docs/CONTRACTS.md`.
 
 ## Avis indépendant sur le concept (demandé pour M0)
 
@@ -42,8 +91,20 @@
 5. Test pour départager : dans le playtest de 10 personnes de VALIDATION.md, alterner deux écrans de résultat (défi ami / tour du jour) et noter le rejeu spontané et l'intention déclarée de partager, plus les verbatims. Signal qualitatif uniquement, non extrapolable.
 6. Recommandation : garder le prototype actuel (il est compatible), concentrer F1 sur la sensation de pose, et préparer la tour du jour comme variante d'écran de résultat, pas comme second moteur. Si l'on veut que la seed se voie, il faudrait une variation perceptible (par exemple vitesse par motifs), donc rulesVersion 2 et une décision Codex.
 
+## Coordination (PR #5, protocole d'autonomie)
+
+Lu sur `df88ba5`. Sa revue revient à Alexis ; je n'ai rien à objecter côté FLK. J'applique la veille bornée : 60 s, 15 min au plus.
+
+**Dépendances ouvertes :**
+- F1 → **Codex** : revoir la PR #3 au dernier SHA (rapport `coordination/reviews/F1-codex.md` à mettre à jour) ; décider si `onEvent`, `setPrefs` et le masquage du voile de pause du canvas sont acceptés.
+- F0 → **Alexis** : intégrer la PR #1 (`3725541`, PASS Codex) après vérification du SHA.
+- Revue A1 → **Alexis** : livrer A1 (PR + SHA) ; je la revois dès qu'elle est disponible, sans toucher à ses fichiers.
+- CI navigateur F1 → **Alexis** : script `test:game-browser` et étape CI, si accepté.
+
 ## Prochain pas
 
-- Attendre la revue Codex de F0 et corriger les éventuels bloquants sur un nouveau SHA.
-- Revoir A0 dès qu'il sera livré.
-- Démarrer F1 (rendu Canvas, entrée, boucle à pas fixe) sur une branche distincte, en consommant `Simulation` et `StepEvent` sans dupliquer les règles.
+- Attendre les revues Codex de F0 et F1 et corriger les éventuels bloquants sur un nouveau SHA.
+- Revoir A0 puis A1 dès qu'ils seront livrés : vraies entrées/sorties, URL, stockage, partage, accessibilité, commandes CI.
+- Proposer à Alexis de reprendre mes specs navigateur dans `npm run test:e2e`, ou de garder ma config locale.
+- F2 seulement après le jalon M2 et une interface serveur convenue. `replayRun` est déjà prévu pour être réutilisé tel quel, sans second algorithme de score.
+- Aucune dépendance supplémentaire pour F1 : Vite, Vitest, TypeScript et @playwright/test d'A0 suffisent.
