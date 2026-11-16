@@ -43,3 +43,11 @@
 - Propriétaires : FLK F3/F4 rendu/sensations ; Alexis A3/A4 menus/objectifs/quotidien/progression/publication ; Codex arbitre et revoit FLK.
 - La publication Pages autorisée par l’utilisateur est un instantané de 0add695 sur gh-pages, pas un déploiement automatique. V2 doit y être republiée seulement après revues, avec SHA de source traçable.
 - Vérification : lecture UI/rendu A1 existants et skill game-ui-ux ; diff et liens documentaires. Pas de code de gameplay ni de mesure humaine inventée.
+
+## C4 — étude des idées de progression et monétisation
+
+- Demande utilisateur : niveaux, passe cosmétique, effets de paliers, pubs de reprise, classement, vies et skins payants, monnaie, exploits, calendrier. Étudiés dans coordination/ECONOMIE.md, pas implémentés.
+- REVIEW_PENDING Alexis ; avis FLK demandé sur présentation et reprise déterministe. Pas de consensus revendiqué.
+- A3a Alexis a déjà du code de progression : lecture de sa liste de changements et de son avis V2 ; E1 proposé après ses lots actuels, sans reprise à zéro ni édition de ses chemins.
+- Arbitrage proposé : un niveau/XP purement cosmétique, une monnaie gagnable, E1 local, puis services vérifiés ; scores avec reprise distincts et hors classement sans reprise ; nouveau contrat/rulesVersion requis pour revive.
+- Vérification documentaire : cohérence des récompenses/déblocages V2, transaction idempotente, migrations, disponibilité réelle des prestataires ; aucune facturation ou collecte distante ajoutée.
