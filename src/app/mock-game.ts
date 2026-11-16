@@ -7,11 +7,13 @@
  * la partie se termine au placement n° 1 + (seed % 5), le dernier étant un raté.
  * Score = placements réussis. Aucune géométrie, aucun parfait.
  */
-import type { GameHandle, MountGame, RunResult } from './game-contract';
+import type { GameHandle, MountGameOptions, RunResult } from './game-contract';
 
 const TICKS_PER_SECOND = 120;
 
-export const mockMountGame: MountGame = ({ canvas, config, onEnd }) => {
+export type MockOptions = MountGameOptions & { onPlacement?(): void };
+
+export const mockMountGame = ({ canvas, config, onEnd, onPlacement }: MockOptions): GameHandle => {
   const placementsBeforeMiss = config.seed % 5;
   const inputTicks: number[] = [];
   let ticks = 0;
@@ -49,6 +51,7 @@ export const mockMountGame: MountGame = ({ canvas, config, onEnd }) => {
     if (paused || ended || destroyed) return;
     if (inputTicks.at(-1) === ticks) return; // un seul placement par tick
     inputTicks.push(ticks);
+    if (inputTicks.length <= placementsBeforeMiss) onPlacement?.();
     if (inputTicks.length > placementsBeforeMiss) {
       ended = true;
       const result: RunResult = {

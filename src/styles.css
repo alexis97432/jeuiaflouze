@@ -29,3 +29,10 @@ button.primary { background: var(--accent); color: var(--accent-fg); border-colo
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+.alert { margin: 0; padding: 10px 14px; border-radius: 8px; border: 2px solid #ff8a7a; color: #ffd2cb; }
+.record { margin: 0; color: var(--accent); font-weight: 700; }
+button.toggle { min-width: 0; font-size: 1rem; min-height: 44px; }
+button:disabled { opacity: 0.6; cursor: progress; }
+.fallback { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; }
+.fallback[hidden] { display: none; }
+.fallback input { font: inherit; font-size: 1rem; width: 100%; min-height: 44px; padding: 8px; border-radius: 8px; border: 2px solid var(--muted); background: #20202a; color: var(--fg); }

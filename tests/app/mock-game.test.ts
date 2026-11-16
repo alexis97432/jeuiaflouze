@@ -39,6 +39,22 @@ describe('mockMountGame', () => {
     handle.destroy();
   });
 
+  it('signale chaque pose réussie, pas le raté', () => {
+    const onPlacement = vi.fn();
+    const handle = mockMountGame({
+      canvas: document.createElement('canvas'),
+      config: { seed: 7, rulesVersion: 1 },
+      onEnd: () => {},
+      onPlacement,
+    });
+    for (let i = 0; i < 4; i++) {
+      vi.advanceTimersByTime(100);
+      space();
+    }
+    expect(onPlacement).toHaveBeenCalledTimes(2); // seed 7 : 2 poses puis raté
+    handle.destroy();
+  });
+
   it('ignore Espace répété, la pause et les entrées après destroy', () => {
     const onEnd = vi.fn();
     const handle = mockMountGame({
