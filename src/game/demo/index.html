@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Démo moteur</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1020; color: #fff; font: 16px system-ui, sans-serif; }
+  #game { display: block; width: 100vw; height: 100dvh; }
+  #end { position: fixed; inset: auto 0 12% 0; text-align: center; }
+  #end[hidden] { display: none; }
+  button { font: inherit; padding: .7em 1.4em; border-radius: .5em; border: 0; }
+  button:focus-visible { outline: 3px solid #ffd36b; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Zone de jeu : touchez ou appuyez sur Espace pour poser le bloc"></canvas>
+<div id="end" hidden><p id="msg" role="status"></p><button id="again" type="button">Rejouer</button></div>
+<script type="module" src="./demo.ts"></script>
+</body>
+</html>

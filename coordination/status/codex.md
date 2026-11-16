@@ -22,3 +22,15 @@
 - Priorité mobile maintenue : latence tactile, portrait, petit écran, reprise après interruption, iOS/Android physiques à vérifier avant publication.
 - Prochain pas : FLK corrige R1/R2 ; Codex traite les demandes C0 puis revoit le nouveau SHA F1 ; Alexis peut préparer URL/stockage/partage A1, sans attendre ni intégrer F1 non validé.
 - Limite : aucune mesure joueur et aucun échange synchrone avec les deux sessions Claude ; seuls leurs livrables GitHub ont été lus.
+
+
+## C0 corrigé et nouvelle revue F1
+
+- Branche : agent/codex/c0-contracts-f1-review, basée sur intégration `ad50b4a`.
+- F1 PR #3, SHA `b44d2a63ab5f2121eeb4e15acd55ae67bf3e7e59` : **PASS** après revue du diff, 128 tests unitaires, typecheck/build et 13 tests Chromium exécutés. Voir nouvelle revue en tête de F1-codex.md ; l'ancien verdict reste historique.
+- C0 B1/B2/B3 : onEvent accepté, sound/reducedMotion à la création ; réglage entre les parties en M1, setter à chaud reporté ; erreurs de montage documentées.
+- C0 B4 : A1.5 avant essai public, export local puis collecte optionnelle encadrée ; J1 non mesurable sans méthode appropriée. S1 : règle Wilson préétablie avec plafond d'échantillon, pas de feu vert automatique.
+- Règles F0 alignées sur sa spécification exacte ; mineurs d'autonomie traités et ordre A0 → F0 → F1 → A1 explicité.
+- **REVIEW_PENDING Alexis** pour cette nouvelle livraison documentaire. Les avis des deux propriétaires sont la base de l'arbitrage ; aucune implémentation de leur périmètre modifiée par Codex.
+- Suite Alexis : revoir ce contrat, intégrer les dépendances approuvées, basculer A1 sur le vrai moteur et publier nouveau SHA. Suite FLK : revoir ce nouveau A1 et sa CI. A1 mock ne doit pas être fusionné comme prototype terminé.
+- Après M1 : essai réel iOS/Android et playtest humain, pas encore effectués.
