@@ -81,8 +81,11 @@ function sanitizeCalendar(raw: unknown): CalendarState {
 export function migrateProgress(raw: unknown): ProgressDoc {
   const base = sanitizeProgress(raw);
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  // Version future (onglet ancien, retour arrière de publication) : lue comme une v2, en
+  // conservant XP, pièces et calendrier, au lieu d'être réinitialisée (revue E1 FLK, m3).
+  const isV2OrLater = typeof r.version === 'number' && Number.isInteger(r.version) && r.version >= PROGRESS_VERSION;
 
-  if (r.version !== PROGRESS_VERSION) {
+  if (!isV2OrLater) {
     // v1 (A3a) ou rien : on part de l'état A3 nettoyé, puis prime unique par objectif accompli.
     const fresh = raw === undefined || raw === null;
     return {
@@ -108,6 +111,17 @@ export function migrateProgress(raw: unknown): ProgressDoc {
     // Un document v2 a déjà reçu (ou n'avait pas à recevoir) la prime : on ne la rejoue jamais.
     grants: [...new Set([BACKFILL_GRANT, ...grants])].slice(0, MAX_GRANTS),
   };
+}
+
+/**
+ * Lecture pour le shell : document migré + droit d'écriture. Une sauvegarde d'une version
+ * **future** est lue en mode dégradé mais jamais réécrite par cette version (pas de perte des
+ * champs qu'elle ne connaît pas).
+ */
+export function readProgressDoc(raw: unknown): { doc: ProgressDoc; writable: boolean } {
+  const version = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>).version : undefined;
+  const future = typeof version === 'number' && version > PROGRESS_VERSION;
+  return { doc: migrateProgress(raw), writable: !future };
 }
 
 // --- XP et niveaux (E1b) -----------------------------------------------------------------
@@ -166,7 +180,8 @@ export type RunEconomy = {
 
 /**
  * Applique une partie **terminée** : objectifs (actifs au lancement), XP et pièces.
- * Idempotent par runId (même garantie qu'A3a) : une seconde application ne rapporte rien.
+ * Idempotent par runId parmi les MAX_REMEMBERED_RUNS (200) dernières parties évaluées — même
+ * garantie bornée qu'A3a, pour les objectifs comme pour l'XP et les pièces (revue E1 FLK, m2).
  */
 export function applyRunEconomy(doc: ProgressDoc, activeAtStart: readonly ObjectiveId[], run: RunSummary): RunEconomy {
   const evaluation = applyRun(doc, activeAtStart, run);

@@ -9,11 +9,12 @@ import {
   levelInfo,
   levelThreshold,
   migrateProgress,
+  readProgressDoc,
   runCoins,
   runXp,
   type ProgressDoc,
 } from '../../src/app/economy';
-import type { RunSummary } from '../../src/app/progression';
+import { MAX_REMEMBERED_RUNS, type RunSummary } from '../../src/app/progression';
 
 const run = (over: Partial<RunSummary> = {}): RunSummary => ({
   runId: 'r1',
@@ -78,6 +79,15 @@ describe('E1a — migration vers le document v2', () => {
     });
   });
 
+  it('version future : XP, pièces et calendrier conservés, lecture seule (m3 FLK)', () => {
+    const v3 = { version: 3, completed: ['floors-5'], xp: 900, coins: 400, calendar: { lastClaimDate: '2026-11-16', cycle: 2, index: 3 }, nouveau: { x: 1 } };
+    const { doc, writable } = readProgressDoc(v3);
+    expect(doc).toMatchObject({ xp: 900, coins: 400, completed: ['floors-5'], calendar: { lastClaimDate: '2026-11-16', cycle: 2, index: 3 } });
+    expect(writable).toBe(false);
+    expect(readProgressDoc({ version: 2 }).writable).toBe(true);
+    expect(readProgressDoc(undefined).writable).toBe(true);
+  });
+
   it.each([null, 'texte', 42, []])('sauvegarde illisible %j : document valide', (raw) => {
     expect(migrateProgress(raw).version).toBe(2);
   });
@@ -125,6 +135,14 @@ describe('E1c — pièces et fin de partie', () => {
     const again = applyRunEconomy(first.doc, ['perfects-5'], run({ score: 12, perfectCount: 3 }));
     expect(again.doc).toBe(first.doc);
     expect(again.gained).toEqual({ xp: 0, coins: 0, levelUp: null });
+  });
+
+  it(`idempotence bornée aux ${MAX_REMEMBERED_RUNS} dernières parties (m2 FLK, documentée)`, () => {
+    let doc = applyRunEconomy(INITIAL_DOC, [], run({ runId: 'ancienne' })).doc;
+    for (let i = 0; i < MAX_REMEMBERED_RUNS - 1; i++) doc = applyRunEconomy(doc, [], run({ runId: `r${i}` })).doc;
+    expect(applyRunEconomy(doc, [], run({ runId: 'ancienne' })).gained.coins).toBe(0); // encore mémorisée
+    doc = applyRunEconomy(doc, [], run({ runId: 'une-de-plus' })).doc;
+    expect(applyRunEconomy(doc, [], run({ runId: 'ancienne' })).gained.coins).toBe(5); // oubliée : limite assumée
   });
 
   it('signale un passage de niveau', () => {
