@@ -21,7 +21,7 @@
 - Tests (depuis `npm ci` propre) :
   - `typecheck` : OK ;
   - `npm test` : 7 fichiers, 75/75 ;
-  - `build` : JS 5,06 Ko gzip ;
+  - `build` : JS 5,17 Ko gzip ;
   - `test:e2e` : 22 réussis et 14 ignorés par profil (mobile Pixel 7, mobile 320×568, desktop) ; 110/110 sur 5 répétitions ;
   - 4 mutations réelles détectées par les tests.
 
