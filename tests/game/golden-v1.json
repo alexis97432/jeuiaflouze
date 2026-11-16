@@ -1,0 +1,174 @@
+{
+ "rulesVersion": 1,
+ "note": "Généré par le moteur F0 ; toute différence = changement de règles → rulesVersion++",
+ "vectors": [
+  {
+   "name": "seed 1, bot aligned=0 tol=0",
+   "seed": 1,
+   "rulesVersion": 1,
+   "score": 2,
+   "perfectCount": 0,
+   "durationTicks": 434,
+   "inputTicks": [
+    177,
+    433,
+    434
+   ],
+   "stackFingerprint": 1805695907,
+   "topBlock": {
+    "left": 119475,
+    "width": 61325
+   },
+   "bestPerfectStreak": 0
+  },
+  {
+   "name": "seed 1, bot aligned=5 tol=4000",
+   "seed": 1,
+   "rulesVersion": 1,
+   "score": 7,
+   "perfectCount": 5,
+   "durationTicks": 734,
+   "inputTicks": [
+    83,
+    163,
+    232,
+    307,
+    373,
+    519,
+    733,
+    734
+   ],
+   "stackFingerprint": 1418453765,
+   "topBlock": {
+    "left": 179118,
+    "width": 61454
+   },
+   "bestPerfectStreak": 5
+  },
+  {
+   "name": "seed 42, bot aligned=12 tol=1500",
+   "seed": 42,
+   "rulesVersion": 1,
+   "score": 14,
+   "perfectCount": 12,
+   "durationTicks": 1086,
+   "inputTicks": [
+    87,
+    161,
+    241,
+    308,
+    373,
+    443,
+    504,
+    567,
+    626,
+    690,
+    747,
+    801,
+    910,
+    1085,
+    1086
+   ],
+   "stackFingerprint": 2952081003,
+   "topBlock": {
+    "left": 119355,
+    "width": 61620
+   },
+   "bestPerfectStreak": 12
+  },
+  {
+   "name": "seed 4294967295, bot aligned=8 tol=30000",
+   "seed": 4294967295,
+   "rulesVersion": 1,
+   "score": 8,
+   "perfectCount": 0,
+   "durationTicks": 842,
+   "inputTicks": [
+    45,
+    116,
+    191,
+    291,
+    397,
+    531,
+    665,
+    841,
+    842
+   ],
+   "stackFingerprint": 2906135163,
+   "topBlock": {
+    "left": 177917,
+    "width": 3467
+   },
+   "bestPerfectStreak": 0
+  },
+  {
+   "name": "seed 123456789, bot aligned=30 tol=4000",
+   "seed": 123456789,
+   "rulesVersion": 1,
+   "score": 32,
+   "perfectCount": 30,
+   "durationTicks": 1765,
+   "inputTicks": [
+    73,
+    145,
+    219,
+    282,
+    345,
+    405,
+    465,
+    522,
+    576,
+    631,
+    691,
+    749,
+    805,
+    860,
+    912,
+    967,
+    1015,
+    1067,
+    1113,
+    1159,
+    1207,
+    1250,
+    1297,
+    1336,
+    1377,
+    1419,
+    1460,
+    1500,
+    1539,
+    1576,
+    1650,
+    1764,
+    1765
+   ],
+   "stackFingerprint": 468734764,
+   "topBlock": {
+    "left": 119140,
+    "width": 62792
+   },
+   "bestPerfectStreak": 30
+  },
+  {
+   "name": "seed 2026, bot aligned=3 tol=60000",
+   "seed": 2026,
+   "rulesVersion": 1,
+   "score": 3,
+   "perfectCount": 0,
+   "durationTicks": 154,
+   "inputTicks": [
+    1,
+    77,
+    153,
+    154
+   ],
+   "stackFingerprint": 4088537733,
+   "topBlock": {
+    "left": 119343,
+    "width": 62047
+   },
+   "bestPerfectStreak": 0
+  }
+ ]
+}
