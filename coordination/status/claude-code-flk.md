@@ -29,9 +29,24 @@
 4. Raté prioritaire sur parfait ; bords qui se touchent = raté.
 5. Signature du rejeu : `replayRun(input: unknown, limits?) → { ok: true, result } | { ok: false, error, detail }`, plus `verifyRunResult`. Doublons et désordre sont rejetés, pas normalisés.
 
+## F1 — rendu Canvas, entrée, boucle
+
+- État : **REVIEW_PENDING** (revue Codex demandée, non reçue). Branche `agent/claude-code-flk/f1-render`, construite sur F0 (`3725541`), qui n'est pas encore revu ni intégré. La PR F1 contient donc aussi le commit F0 ; seul le diff après `3725541` est propre à F1.
+- Fichiers : `src/game/index.ts` (API publique), `src/game/input/` (fixed-step.ts, input.ts), `src/game/render/` (mount.ts, renderer.ts, audio.ts, README.md), `src/game/demo/` (démo intégrable), `tests/game/fixed-step.test.ts`, `tests/game/browser/` (harnais + specs Playwright + config locale).
+- Contrôles réels, le 16 novembre 2026, avec un outillage temporaire hors dépôt (Node 22.23.4, vitest 3.2.4, typescript 5.9.3, esbuild 0.25.10, @playwright/test 1.63.0 sur le Chromium préinstallé) :
+  - `vitest run tests/game` → **97 tests passés** (77 F0 + 20 pas fixe) ;
+  - `playwright test -c tests/game/browser/playwright.config.ts` → **12 tests passés** dans Chromium headless : DPR 2 et 3 + redimensionnement, toucher = une pose, clic droit ignoré, espace face à un bouton focalisé, répétition, partie complète avec `onEnd` unique et rejeu vérifié, 20 poses avec effets bornés, pause/reprise sans saut, onglet caché, 25 montages/destructions sans écouteur ni RAF restant, audio fermé, `sound:false`, config invalide, reduced-motion ;
+  - `tsc --noEmit` strict sur tout `src/game` + tests → OK ; core toujours compilable sans DOM ;
+  - mutations : écouter aussi `mousedown` → 2 échecs ; oublier `detach()` → 1 échec ; ne plus bloquer espace → 1 échec. Ne bloquer que keydown passe, ce qui est attendu : le blocage du keyup est une double sécurité ;
+  - bogue réel trouvé et corrigé grâce au test de cadence : un appui pile sur l'instant d'un tick glissait d'un tick à 60 Hz (epsilon d'arrondi asymétrique). Le temps est maintenant converti par une ancre exacte, la même fonction servant à `press` et `advance` ;
+  - mesures, pas des FPS d'appareil : `draw()` médiane 0,2 ms, p95 0,3 ms sur 605 images (Chromium headless, conteneur cloud) ; `src/game` minifié ≈ 6,2 Ko gzip (esbuild).
+- Vérification visuelle : captures 390×844 d'une série de parfaits, de coupes et d'un raté, examinées par moi. Ce n'est pas un avis humain.
+- Manque : aucun test sur un vrai téléphone, ni Safari/WebKit ou Firefox, ni écoute réelle du son (aucun haut-parleur ici). Jeu non playtesté par un humain.
+
 ## Revue du voisin (FLK vérifie Alexis)
 
-- A0 : **pas de livraison disponible** le 16 novembre 2026. Ni PR ni branche `agent/claude-code-alexis/*` sur le dépôt distant ; branches distantes vues : `claude/youthful-mayer-n4f7oy` et `claude/blissful-galileo-26o0ep`, sans PR ouverte. Revue A0 en attente ; aucun verdict inventé.
+- A0 : **pas de livraison disponible** le 16 novembre 2026. Ni PR ni branche `agent/claude-code-alexis/*` sur le dépôt distant ; branches distantes vues : `claude/youthful-mayer-n4f7oy` et `claude/blissful-galileo-26o0ep`, et seulement ma PR F0 ouverte. Revue A0 en attente ; aucun verdict inventé.
+- A1 : pas encore livré (dépend d'A0 et F1). Revue en attente.
 
 ## Avis indépendant sur le concept (demandé pour M0)
 
@@ -44,6 +59,8 @@
 
 ## Prochain pas
 
-- Attendre la revue Codex de F0 et corriger les éventuels bloquants sur un nouveau SHA.
-- Revoir A0 dès qu'il sera livré.
-- Démarrer F1 (rendu Canvas, entrée, boucle à pas fixe) sur une branche distincte, en consommant `Simulation` et `StepEvent` sans dupliquer les règles.
+- Attendre les revues Codex de F0 et F1 et corriger les éventuels bloquants sur un nouveau SHA.
+- Revoir A0 puis A1 dès qu'ils seront livrés : vraies entrées/sorties, URL, stockage, partage, accessibilité, commandes CI.
+- Proposer à Alexis de reprendre mes specs navigateur dans `npm run test:e2e`, ou de garder ma config locale.
+- F2 seulement après le jalon M2 et une interface serveur convenue. `replayRun` est déjà prévu pour être réutilisé tel quel, sans second algorithme de score.
+- Dépendances supplémentaires pour F1 : `esbuild` (harnais navigateur, sinon Vite d'A0) et `@playwright/test`.
