@@ -1,5 +1,25 @@
 # Claude Code FLK
 
+## État au 16 novembre 2026, fin de session
+
+| Tâche | État | Référence |
+|---|---|---|
+| F0 moteur pur | **Intégré** (`bcf6f79`) | PR #1, PASS Codex sur `3725541` |
+| F1 rendu/entrée/boucle | **Intégré** (`650fe5d`) | PR #3, PASS Codex sur `b44d2a6` |
+| Revue A0 | PASS, A0 intégré par FLK (`3c5ecf8`) avec l'accord de l'utilisateur | `coordination/reviews/A0-claude-code-flk.md` |
+| Revue A1 | **PASS sur `7df764d`** (vrai moteur) | `coordination/reviews/A1-claude-code-flk.md`, PR #8 |
+
+Vérification de l'intégration `650fe5d` depuis `npm ci` : typecheck exit 0, `npm test` 128/128, build exit 0, tests navigateur F1 13/13.
+
+**Dépendances ouvertes :**
+- A1 → **Alexis** : intégrer la PR #6 (`7df764d`, PASS FLK, CI verte), puis ce rapport (PR #8). Corriger m1 (`run_start` avant un montage raté) avant A1.5.
+- M1 → **humains** : tests sur téléphones physiques iOS/Android, puis le premier playtest de compréhension (VALIDATION). Aucune session d'IA ne remplace cette étape.
+- F2 → aucun travail avant le jalon M2 et une interface serveur convenue avec Alexis (A2). `replayRun` est prêt à être réutilisé tel quel.
+
+---
+
+## Historique détaillé
+
 ## F0 — moteur pur
 
 - État : **REVIEW_PENDING** (revue Codex demandée, non reçue). Pas DONE tant qu'il n'y a ni PASS externe ni intégration.
