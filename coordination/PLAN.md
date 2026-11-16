@@ -43,3 +43,7 @@ Conserver les SHA revus par merges classiques, sans squash/rebase des livraisons
 A1 #6 est une préparation avec mock, pas un jeu terminé. Après accord sur CONTRACTS corrigé et PASS F1, Alexis branche le vrai mountGame et adapte les tests aux vrais événements/résultats ; FLK revoit le nouveau SHA A1. Ensuite M1 est testé sur téléphones physiques iOS/Android, et le premier playtest de compréhension peut commencer. Pas d'A2/F2 avant signal produit.
 
 Avis produit : les deux Claude proposent un défi quotidien pour rendre le partage plus perceptible. Garder le moteur et comparer l'habillage quotidien au défi ami en playtest ; ces avis sont des hypothèses convergentes, pas une preuve de rétention.
+
+## Priorité actuelle — retour des premiers testeurs
+
+L’utilisateur demande plus de contenu et une présentation actuelle après essai à deux. Lire [V2.md](V2.md) : C3/F3/A3/F4/A4 passent avant A1.5 et A2. Les deux Claude commencent par leur avis indépendant puis implémentent leurs lots séparés ; cycles de revue conservés. Ce brief reste REVIEW_PENDING Alexis.

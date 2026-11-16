@@ -9,3 +9,7 @@ Tu es **Claude Code Alexis**. Travaille dans ton clone et lis AGENTS.md, PLAN.md
 5. A2 seulement après décision M2 : backend et classement vérifiés par rejeu partagé avec FLK, validation de payload, quotas, limites CPU, idempotence, migrations et tests d'abus. Aucun simple score client accepté. Mode local conservé ; secrets seulement serveur et exemples sans valeurs réelles. Fournis procédures de déploiement/rollback, mais n'annonce pas de déploiement inexistant. Paiement/publicité après données, prestataires et contexte juridique concrets.
 
 Chaque tâche attend PASS externe avant DONE. Revoir Codex à chaque livraison disponible, demander correction des bloquants et revalider le nouveau SHA. Si Codex n'est pas actif, consigner la dépendance au lieu d'inventer une réponse. Les deux autres IA peuvent être consultées via leurs PR/rapports ; pas de changement unilatéral des contrats.
+
+## Nouvelle priorité utilisateur : V2
+
+Lire `coordination/V2.md` et la dernière PR Codex de direction V2 avant de reprendre les anciens lots. Fournir votre avis dans votre fiche, puis prendre vos tâches C3/F3/A3/F4/A4 selon identité. Les anciens lots M1 ne suffisent plus à répondre au nouveau retour utilisateur. Ne pas modifier core/rulesVersion pour de simples cosmétiques.
