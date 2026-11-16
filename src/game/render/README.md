@@ -77,3 +77,15 @@ Brief : [coordination/V2.md](../../../coordination/V2.md). **Aucun changement de
 - **Coût mesuré** (headless, CPU ×4, 50 étages, conteneur cloud) : `draw()` médiane 1,9 à 2,7 ms, p95 3,4 à 4,6 ms selon l'univers. Ce ne sont pas des FPS d'appareil.
 
 Choix d'univers côté shell : pour l'instant seulement via l'option interne `createGame({ theme })` (démo et tests). L'option publique `appearance?: { theme: ThemeId; skin: SkinId }` arrive en F4, après accord sur les identifiants avec Alexis (A3).
+
+## V2 — F4 : apparences, option `appearance`, aperçu
+
+- **Six apparences** (`blocks.ts`) : `gomme` (défaut), `marbre`, `bonbon`, `verre`, `strie`, `ceramique`. Ce sont des **matières appliquées sur la couleur de chaque étage**, donc orthogonales aux univers : 3 + 6 définitions, 18 combinaisons cohérentes. Aperçus de référence : la collection d'A3b.
+- **Invariant de lisibilité** : chaque matière est découpée par la forme arrondie du bloc et le contour reste intérieur. Vérifié au pixel pour 6 apparences × 3 univers ; la mutation « sans découpe » fait échouer `bonbon`. Bord ≥ 3 de contraste pour chaque apparence, univers et hauteur, translucidité de `verre` comprise (`edgeColors`).
+- **API publique** (`src/game/index.ts`, additive, convenue avec A3) :
+  - `MountOptions.appearance?: { theme: ThemeId; skin: SkinId }` : validée à la création, un identifiant inconnu retombe sur Confiserie / Gomme sans erreur ;
+  - `resolveAppearance(raw)` : la même validation, utilisable par le shell ;
+  - exports `ThemeId`, `SkinId`, `THEME_IDS`, `SKIN_IDS`, `DEFAULT_THEME`, `DEFAULT_SKIN`, `isThemeId`, `isSkinId`.
+- **Aperçu de collection** : `renderAppearancePreview(canvas, appearance, { width, height, dpr, tier })` dessine une petite tour de trois étages avec le **même code que le jeu**. C'est une image fixe : pas de RAF, d'écouteur, de son ni de stockage. Elle renvoie `false` sans Canvas 2D au lieu de lever. Les 18 aperçus sont tous différents (empreinte d'image).
+- **Règles inchangées** : même `RunResult` pour chaque apparence, et pour une apparence inconnue (test DOM via l'option publique).
+- **Démo** : `?skin=…` et `?apparences=1` (planche des 18 aperçus, chaque tuile ouvre le jeu correspondant).

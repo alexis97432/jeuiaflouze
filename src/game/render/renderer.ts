@@ -1,12 +1,17 @@
 import { FIELD_WIDTH, MILLI, START_WIDTH, type Block, type StepEvent } from '../core';
 import {
+  BLOCK_HEIGHT,
+  createFaceGradient,
+  DEFAULT_SKIN,
+  drawBlock,
+  RADIUS,
+  type SkinId,
+} from './blocks';
+import {
   css,
-  darken,
   getTheme,
-  lighten,
   haloFor,
   mix,
-  outlineFor,
   roundedRect,
   skyAt,
   tierIndex,
@@ -16,8 +21,7 @@ import {
   type Theme,
 } from './themes';
 
-/** Hauteur visuelle d'un étage, unités logiques (purement graphique : les règles n'ont pas de hauteur). */
-export const BLOCK_HEIGHT = 30;
+export { BLOCK_HEIGHT, reliefParts, SKIN_IDS, type ReliefParts, type SkinId } from './blocks';
 /** Bornes des effets : jamais plus d'objets que ça, quelle que soit la série. */
 export const MAX_DEBRIS = 16;
 export const MAX_SPARKS = 48;
@@ -36,7 +40,6 @@ export const PARALLAX = 0.55;
 /** Espacement vertical (unités parallaxe) entre deux tranches de décor. */
 const DECOR_SLOT = 58;
 const GRAVITY = 1400; // u/s²
-const RADIUS = 7;
 
 export interface ViewState {
   readonly stack: readonly Block[];
@@ -47,30 +50,8 @@ export interface ViewState {
   readonly pause: 'none' | 'shell' | 'hidden';
 }
 
-interface Debris { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; age: number; color: Rgb }
+interface Debris { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; age: number; color: Rgb; floor: number }
 interface Spark { x: number; y: number; vx: number; vy: number; age: number; life: number; color: Rgb; rot: number }
-
-/** Rectangles dessinés pour un bloc en relief, en unités locales (x relatif au bord gauche). */
-export interface ReliefParts {
-  readonly face: { x: number; w: number };
-  readonly top: { x: number; w: number; h: number };
-  readonly lip: { x: number; w: number; h: number };
-  readonly gloss: { x: number; w: number };
-}
-
-/**
- * Géométrie du relief d'un bloc de largeur `w` (unités). Toutes les parties restent dans
- * [0, w] : le relief décoratif n'élargit jamais la zone perçue comme valide (brief V2).
- */
-export function reliefParts(w: number): ReliefParts {
-  const inset = Math.min(3, w / 6);
-  return {
-    face: { x: 0, w },
-    top: { x: inset, w: Math.max(0, w - inset * 2), h: Math.min(7, BLOCK_HEIGHT * 0.24) },
-    lip: { x: 0, w, h: 4 },
-    gloss: { x: Math.min(8, w * 0.12), w: Math.max(0, Math.min(w * 0.22, 44)) },
-  };
-}
 
 /** Hachage entier stable pour le décor (indépendant du PRNG de la partie). */
 function hash(n: number): number {
@@ -118,12 +99,22 @@ export class Renderer {
   private decorDrawn = 0;
   private seed = 0x9e3779b9;
 
-  constructor(private readonly canvas: HTMLCanvasElement, public reducedMotion: boolean, theme: Theme = getTheme(undefined)) {
+  private skin: SkinId;
+
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    public reducedMotion: boolean,
+    theme: Theme = getTheme(undefined),
+    skin: SkinId = DEFAULT_SKIN,
+  ) {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D indisponible');
     this.ctx = ctx;
     this.theme = theme;
+    this.skin = skin;
   }
+
+  get skinId(): SkinId { return this.skin; }
 
   get debrisCount(): number { return this.debris.length; }
   get sparkCount(): number { return this.sparks.length; }
@@ -138,6 +129,11 @@ export class Renderer {
 
   setTheme(theme: Theme): void {
     this.theme = theme;
+    this.gradients.clear();
+  }
+
+  setSkin(skin: SkinId): void {
+    this.skin = skin;
     this.gradients.clear();
   }
 
@@ -239,7 +235,7 @@ export class Renderer {
       const top = yScreen((i + 1) * BLOCK_HEIGHT);
       let lift = 0;
       if (i === this.landingFloor && this.landing > 0 && motion) lift = this.landing * this.landing * 5;
-      this.block(b.left / MILLI, top - lift, b.width / MILLI, this.colorFor(i), 1);
+      this.block(b.left / MILLI, top - lift, b.width / MILLI, this.colorFor(i), 1, i);
       // Ombre de contact du bloc du dessus, limitée à l'intersection (jamais plus large).
       const above = i + 1 < view.stack.length ? view.stack[i + 1]! : view.moving;
       if (above) this.contactShadow(b, above, top);
@@ -266,7 +262,7 @@ export class Renderer {
 
     if (view.moving) {
       const top = yScreen((view.stack.length + 1) * BLOCK_HEIGHT);
-      this.block(view.moving.left / MILLI, top, view.moving.width / MILLI, this.colorFor(view.stack.length), 1);
+      this.block(view.moving.left / MILLI, top, view.moving.width / MILLI, this.colorFor(view.stack.length), 1, view.stack.length);
     }
 
     for (const d of this.debris) {
@@ -274,7 +270,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(d.x + d.w / 2, yScreen(d.y) + BLOCK_HEIGHT / 2);
       ctx.rotate(d.rot);
-      this.block(-d.w / 2, -BLOCK_HEIGHT / 2, d.w, d.color, alpha);
+      this.block(-d.w / 2, -BLOCK_HEIGHT / 2, d.w, d.color, alpha, d.floor);
       ctx.restore();
     }
 
@@ -444,58 +440,28 @@ export class Renderer {
     }
   }
 
-  /** Dégradé vertical de la face, mis en cache par couleur (coordonnées locales 0..BLOCK_HEIGHT). */
+  /** Dégradé de face mis en cache par (couleur, apparence) ; borné à 64 entrées. */
   private faceGradient(color: Rgb): CanvasGradient {
-    const key = color.join(',');
+    const key = `${this.skin}:${color.join(',')}`;
     let g = this.gradients.get(key);
     if (!g) {
-      g = this.ctx.createLinearGradient(0, 0, 0, BLOCK_HEIGHT);
-      g.addColorStop(0, css(lighten(color, 0.12)));
-      g.addColorStop(0.55, css(color));
-      g.addColorStop(1, css(darken(color, 0.14)));
+      g = createFaceGradient(this.ctx, color, this.skin);
       if (this.gradients.size >= 64) this.gradients.clear();
       this.gradients.set(key, g);
     }
     return g;
   }
 
-  /** Bloc « jouet » en relief, strictement contenu dans [x, x + w]. */
-  private block(x: number, y: number, w: number, color: Rgb, alpha: number): void {
-    if (w <= 0) return;
-    const { ctx } = this;
-    const p = reliefParts(w);
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate(x, y);
-    roundedRect(ctx, 0, 0, w, BLOCK_HEIGHT, RADIUS);
-    ctx.fillStyle = this.faceGradient(color);
-    ctx.fill();
-    ctx.save();
-    ctx.clip();
-    // Lèvre sombre en bas : volume et séparation entre étages.
-    ctx.fillStyle = css(darken(color, 0.28), 0.9);
-    ctx.fillRect(p.lip.x, BLOCK_HEIGHT - p.lip.h, p.lip.w, p.lip.h);
-    // Face supérieure claire, légèrement en retrait des bords.
-    ctx.fillStyle = css(lighten(color, 0.35), 0.95);
-    roundedRect(ctx, p.top.x, 1.5, p.top.w, p.top.h, p.top.h / 2);
-    ctx.fill();
-    // Reflet doux (matière « gomme »).
-    if (p.gloss.w > 4) {
-      ctx.fillStyle = css([255, 255, 255], 0.35);
-      roundedRect(ctx, p.gloss.x, BLOCK_HEIGHT * 0.38, p.gloss.w, 3.5, 1.75);
-      ctx.fill();
-    }
-    ctx.restore();
-    // Contour intérieur : tracé dans [0, w] (inset d'une demi-épaisseur), jamais au-delà.
-    const lw = 1.5;
-    if (w > lw * 2) {
-      const frac = Math.min(1, Math.max(0, (y + BLOCK_HEIGHT / 2) * this.frameScale / this.cssH));
-      ctx.strokeStyle = css(outlineFor(color, mix(this.skyTop, this.skyBottom, frac)), 0.85);
-      ctx.lineWidth = lw;
-      roundedRect(ctx, lw / 2, lw / 2, w - lw, BLOCK_HEIGHT - lw, RADIUS - lw / 2);
-      ctx.stroke();
-    }
-    ctx.restore();
+  /** Bloc en relief avec l'apparence courante, strictement contenu dans [x, x + w]. */
+  private block(x: number, y: number, w: number, color: Rgb, alpha: number, variant: number): void {
+    const frac = Math.min(1, Math.max(0, (y + BLOCK_HEIGHT / 2) * this.frameScale / this.cssH));
+    drawBlock(this.ctx, x, y, w, color, {
+      skin: this.skin,
+      sky: mix(this.skyTop, this.skyBottom, frac),
+      alpha,
+      gradient: this.faceGradient(color),
+      variant,
+    });
   }
 
   /** Ombre portée par `above` sur le haut de `below`, limitée à leur intersection. */
@@ -518,7 +484,7 @@ export class Renderer {
     const push = side === 0 ? 0 : side * (40 + 60 * (w / (START_WIDTH / MILLI)));
     this.debris.push({
       x: b.left / MILLI, y: (floor + 1) * BLOCK_HEIGHT, w, vx: push, vy: 60,
-      rot: 0, vr: side === 0 ? 0.6 : side * 2.2, age: 0, color: this.colorFor(floor),
+      rot: 0, vr: side === 0 ? 0.6 : side * 2.2, age: 0, color: this.colorFor(floor), floor,
     });
   }
 

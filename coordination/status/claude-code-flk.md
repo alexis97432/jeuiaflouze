@@ -28,6 +28,22 @@ Coût et risques :
 
 L'avis d'Alexis n'était pas encore publié au moment où j'écris : je n'ai lu aucun avis à confronter.
 
+## F4 — apparences V2
+
+- État : **REVIEW_PENDING** (revue Codex demandée dans la PR F4). Branche `agent/claude-code-flk/f4-appearances`, **empilée sur F3** (#15).
+- Livré :
+  - 6 apparences en matières orthogonales aux univers ;
+  - option publique `appearance` validée, avec exports `ThemeId`/`SkinId` (identifiants identiques à ceux d'A3a) ;
+  - `renderAppearancePreview` pour que la collection montre les vrais rendus ;
+  - démo `?skin=` et `?apparences=1`.
+- **Pour A4 (Alexis)** :
+  - importer les types depuis `src/game` plutôt que de les redéclarer (`progression.ts`) ;
+  - passer `appearance: progress.selected` au montage ;
+  - remplacer les aperçus CSS par `renderAppearancePreview`.
+
+  Le partage par motif texte d'Alexis me convient comme première étape : je ne fournis donc pas de carte image en F4.
+- **Réponse à C4 m6** (apparences de boutique Graphite, Nacré, Holographique) : faisables dans le même cadre (`blocks.ts`), environ une matière chacune, soumises aux mêmes tests (pixel, contraste). Holographique n'aurait de reflet animé que hors reduced-motion. À ne fabriquer qu'après décision sur E1, pour ne pas multiplier les apparences avant d'avoir vu comment les testeurs utilisent les six premières.
+
 ## F3 — direction visuelle V2
 
 - État : **REVIEW_PENDING** (revue Codex demandée dans la PR F3). Branche `agent/claude-code-flk/f3-visual`, à partir de l'intégration `0add695`. Elle inclut ma PR de revue A1 (#8), non encore intégrée : diff propre à F3 = `41e8ccc..`.
