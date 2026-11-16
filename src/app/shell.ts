@@ -499,7 +499,9 @@ export function createShell(options: ShellOptions): Shell {
     root.dataset.input = 'pointer';
   };
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === 'Tab' || event.key === 'Enter' || event.key === ' ' || event.key.startsWith('Arrow')) {
+    // Espace (touche de jeu) exclue : un joueur qui alterne toucher et Espace ne voit pas
+    // apparaître l'anneau pendant la partie (revue A3b FLK, m1).
+    if (event.key === 'Tab' || event.key === 'Enter' || event.key.startsWith('Arrow')) {
       root.dataset.input = 'keyboard';
     }
   };

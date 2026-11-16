@@ -481,3 +481,18 @@ describe('accueil V2 et collection', () => {
     expect(root.querySelector('[data-testid="result-collection"]')).toBeNull();
   });
 });
+
+describe('modalité de saisie', () => {
+  it('Tab passe en mode clavier ; Espace (touche de jeu) non ; un toucher revient au mode pointeur', () => {
+    const { root } = setup();
+    const key = (k: string) => document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(root.dataset.input).toBe('pointer');
+    key(' ');
+    expect(root.dataset.input).toBe('pointer');
+    key('Tab');
+    expect(root.dataset.input).toBe('keyboard');
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(root.dataset.input).toBe('pointer');
+  });
+});

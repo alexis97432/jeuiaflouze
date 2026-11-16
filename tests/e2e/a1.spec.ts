@@ -225,3 +225,24 @@ test('progression : un objectif rempli débloque une apparence choisie et persis
   await page.getByTestId('open-collection').tap();
   await expect(page.getByTestId('card-skin-marbre')).toContainText('Sélectionné');
 });
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }]) {
+  test(`pastille d'objectif ${viewport.width}×${viewport.height} : hors de la zone du score et transparente aux appuis`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Jouer la tour du jour' }).tap();
+    const pill = page.getByTestId('target');
+    const canvas = page.getByTestId('game-canvas');
+    await expect(pill).toBeVisible();
+    const p = (await pill.boundingBox())!;
+    const c = (await canvas.boundingBox())!;
+    // Quart supérieur du canvas = zone du score dessiné par le moteur.
+    expect(p.y).toBeGreaterThan(c.y + c.height / 4);
+    // Un toucher au centre de la pastille atteint le jeu : première pose (impossible à rater).
+    await page.waitForTimeout(150);
+    await page.touchscreen.tap(p.x + p.width / 2, p.y + p.height / 2);
+    await expect.poll(async () => (await metrics(page)).some((e) => e.name === 'first_placement')).toBe(true);
+    await context.close();
+  });
+}
