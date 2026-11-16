@@ -2,7 +2,7 @@
 
 Répondre en français. Identités uniques : `codex`, `claude-code-flk`, `claude-code-alexis`.
 L'identité vient du prompt de lancement de l'utilisateur ; ne pas déduire Alexis de la machine ou d'un ancien CLAUDE.md.
-Lire README.md, coordination/PLAN.md, docs/CONTRACTS.md, docs/VALIDATION.md et son prompt avant de travailler. Lire les skills pertinents en commençant par .claude/skills/gamedev-router/SKILL.md pour le développement de jeu.
+Lire README.md, coordination/PLAN.md, coordination/AUTONOMIE.md, docs/CONTRACTS.md, docs/VALIDATION.md et son prompt avant de travailler. Lire les skills pertinents en commençant par .claude/skills/gamedev-router/SKILL.md pour le développement de jeu.
 
 ## Git et périmètres
 
@@ -17,7 +17,7 @@ Chaque PR cible la branche d'intégration, contient tâche, SHA, fichiers, comma
 Cycle : Codex vérifie FLK ; FLK vérifie Alexis ; Alexis vérifie Codex. L'auteur fait ses propres contrôles ET vérifie le travail de son voisin disponible à chaque fin de tâche. Les gros lots sont découpés en tâches identifiées dans PLAN.
 Écrire `coordination/reviews/<tache>-<reviewer>.md` : auteur, reviewer, SHA exact, périmètre lu, commandes/résultats, défauts avec gravité et emplacement, verdict PASS ou CHANGES_REQUESTED. Revue sur checkout/worktree du SHA, pas seulement sur le résumé de l'auteur. Pas d'auto-approbation ni de revue inventée.
 Un défaut bloquant revient à l'auteur, puis nouvelle revue du nouveau SHA. Une approbation d'un ancien SHA ne couvre pas des modifications ultérieures.
-Si le voisin n'a encore rien livré : terminer sa livraison en `REVIEW_PENDING`, noter précisément la dépendance et vérifier les livraisons déjà disponibles. Ne pas inventer un PASS ni attendre en boucle. Une tâche n'est DONE qu'après PASS externe et intégration ; une fonctionnalité intégrée attend encore la validation produit avant publication.
+Si le voisin n'a encore rien livré : terminer sa livraison en `REVIEW_PENDING`, noter précisément la dépendance et vérifier les livraisons déjà disponibles. Ne pas inventer un PASS. Appliquer la veille bornée de coordination/AUTONOMIE.md si le runtime le permet, puis rendre la main si aucune tâche indépendante ne reste. Une tâche n'est DONE qu'après PASS externe et intégration ; une fonctionnalité intégrée attend encore la validation produit avant publication.
 
 ## Communication asynchrone
 
