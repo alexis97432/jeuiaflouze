@@ -98,6 +98,11 @@ test.describe('boucle complète', () => {
     expect(ends).toHaveLength(1);
     expect(ends[0]).toMatchObject({ seed: 4242, rulesVersion: 1, score: s.score, verified: true });
     expect(ends[0].inputTicks).toEqual(s.inputTicks);
+    // onEvent : une entrée par pose, puis un raté, dans l'ordre des ticks.
+    const events = await page.evaluate(() => (window as any).__flk.events());
+    expect(events.map((e: { tick: number }) => e.tick)).toEqual(s.inputTicks);
+    expect(events.at(-1)).toMatchObject({ type: 'miss', floor: s.score + 1 });
+    expect(events.slice(0, -1).every((e: { type: string }) => e.type === 'placement')).toBe(true);
     await expect.poll(() => page.evaluate(() => (window as any).__flk.pendingRaf()), { timeout: 5000 }).toBe(0);
   });
 
@@ -205,6 +210,14 @@ test.describe('cycle de vie', () => {
     await page.mouse.click(400, 400);
     await page.waitForTimeout(100);
     expect((await state(page)).audio).toBe('none');
+  });
+
+  test('Canvas 2D indisponible : erreur synchrone, aucun écouteur laissé', async ({ page }) => {
+    await page.goto(URL);
+    const before = await page.evaluate(() => (window as any).__flk.listeners());
+    expect(await page.evaluate(() => (window as any).__flk.mountWithoutContext())).toContain('Canvas 2D indisponible');
+    expect(await page.evaluate(() => (window as any).__flk.listeners())).toEqual(before);
+    expect(await page.evaluate(() => (window as any).__flk.pendingRaf())).toBe(0);
   });
 
   test('config invalide : mount lève une erreur explicite', async ({ page }) => {

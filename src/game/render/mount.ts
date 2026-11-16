@@ -10,10 +10,17 @@ export type GameHandle = {
   destroy(): void;
 };
 
+/** Événement de partie pour le shell (mesure first_placement, annonces). Aucune règle à recopier. */
+export type GameEvent =
+  | { type: 'placement'; tick: number; floor: number; perfect: boolean; perfectStreak: number }
+  | { type: 'miss'; tick: number; floor: number };
+
 export type MountOptions = {
   canvas: HTMLCanvasElement;
   config: RunConfig;
   onEnd(result: RunResult): void;
+  /** Proposition additive (revue C0, B1) : appelé à chaque pose et au raté, pendant la boucle. */
+  onEvent?(event: GameEvent): void;
   /** Proposition additive : son autorisé (défaut true). Le contexte audio n'est créé qu'au premier geste. */
   sound?: boolean;
   /** Proposition additive : force reduced-motion ; défaut = préférence système. */
@@ -36,7 +43,9 @@ export interface GameInspector {
 
 export function createGame(options: MountOptions): GameHandle & { inspect(): GameInspector } {
   const { canvas, config, onEnd } = options;
-  const sim = new Simulation(config); // lève RangeError si seed ou rulesVersion invalide
+  // Échecs de montage, synchrones et sans effet de bord (rien n'est encore attaché) :
+  // RangeError si seed ou rulesVersion invalide, Error si le contexte Canvas 2D est indisponible.
+  const sim = new Simulation(config);
   const doc = canvas.ownerDocument;
   const win = doc.defaultView ?? window;
   const media = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -51,8 +60,20 @@ export function createGame(options: MountOptions): GameHandle & { inspect(): Gam
   let endReported = false;
   let lastFrame: number | null = null;
 
+  const notify = (event: GameEvent) => {
+    if (!options.onEvent) return;
+    try {
+      options.onEvent(event);
+    } catch (error) {
+      // Une erreur du shell ne doit pas casser la boucle de jeu ; elle reste visible.
+      console.error('[game] onEvent a levé une erreur', error);
+    }
+  };
   const onEvent = (e: StepEvent) => {
     renderer.onEvent(e);
+    notify(e.kind === 'placed'
+      ? { type: 'placement', tick: e.tick, floor: e.floor, perfect: e.perfect, perfectStreak: e.perfectStreak }
+      : { type: 'miss', tick: e.tick, floor: e.floor });
     if (e.kind === 'placed') {
       if (e.perfect) sfx.perfect(e.perfectStreak);
       else sfx.place(e.placed.width / START_WIDTH);
@@ -190,6 +211,7 @@ export function createGame(options: MountOptions): GameHandle & { inspect(): Gam
 
 /**
  * Monte le jeu sur un canvas. Ne touche ni stockage, ni réseau, ni menus.
+ * Lève une erreur synchrone si la config est invalide ou si Canvas 2D est indisponible.
  * onEnd est appelé une seule fois, END_DELAY_MS de jeu visible après le raté ;
  * il ne l'est pas si destroy() survient avant.
  */

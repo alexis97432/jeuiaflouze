@@ -12,7 +12,8 @@ const handle = mountGame({ canvas, config: { seed, rulesVersion: 1 }, onEnd(resu
 
 - Le canvas doit avoir une taille CSS (le jeu lit `getBoundingClientRect()` et applique `devicePixelRatio`, borné à 3). Un `ResizeObserver` plus `resize` suivent les changements, y compris le zoom.
 - `onEnd` est appelé une seule fois, `END_DELAY_MS` (650 ms) de rendu après le raté, le temps de voir le bloc tomber. Il ne l'est pas si `destroy()` survient avant. Il peut appeler `destroy()`.
-- `mountGame` lève `RangeError` si la seed ou `rulesVersion` est invalide : le shell doit valider l'URL avant.
+- Échecs de montage, synchrones et sans effet de bord (aucun écouteur ni RAF laissé) : `RangeError` si la seed ou `rulesVersion` est invalide, `Error('Canvas 2D indisponible')` si `getContext('2d')` renvoie null. Le shell affiche un message et propose de réessayer (revue C0, B3).
+- `onEvent?(event)` (proposition, revue C0, B1) reçoit `{ type: 'placement', tick, floor, perfect, perfectStreak }` à chaque pose et `{ type: 'miss', tick, floor }` au raté. Le shell en dérive `first_placement` sans recopier les règles. Une exception levée par ce callback est journalisée et ne casse pas la boucle.
 - Aucune lecture ni écriture de stockage, réseau ou menus. Le score et la série sont dessinés dans le canvas ; les boutons restent en DOM côté A1.
 
 ## Entrées
@@ -50,7 +51,8 @@ Bornes : 16 débris et 48 étincelles au plus, les plus anciens étant remplacé
 
 ## Propositions additives (à valider par Codex et Alexis, optionnelles)
 
-- `MountOptions.sound?: boolean` (défaut `true`) : le shell y branche sa préférence « son coupé ».
+- `MountOptions.onEvent?` (ci-dessus).
+- `MountOptions.sound?: boolean` (défaut `true`) : le shell y branche sa préférence « son coupé ». Avec `reducedMotion`, cela couvre B2 à la création ; une modification à chaud (`setPrefs`, proposée par Alexis) reste à arbitrer.
 - `MountOptions.reducedMotion?: boolean` : force le mode ; par défaut, préférence système suivie en direct.
 - Export `END_DELAY_MS`, plus `replayRun` et `verifyRunResult` depuis `src/game/index.ts`.
 

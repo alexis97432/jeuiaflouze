@@ -46,6 +46,7 @@ type Game = ReturnType<typeof createGame>;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 let game: Game | null = null;
 const ends: RunResult[] = [];
+const gameEvents: unknown[] = [];
 const drawMs: number[] = [];
 let heldAudio: AudioContext | null = null;
 
@@ -65,7 +66,7 @@ const api = {
   mount(opts: { seed?: number; sound?: boolean; reducedMotion?: boolean } = {}) {
     game?.destroy();
     const options: Parameters<typeof createGame>[0] = {
-      canvas, config: { seed: opts.seed ?? 1, rulesVersion: 1 }, onEnd: (r) => ends.push(r),
+      canvas, config: { seed: opts.seed ?? 1, rulesVersion: 1 }, onEnd: (r) => ends.push(r), onEvent: (e) => gameEvents.push(e),
     };
     if (opts.sound !== undefined) options.sound = opts.sound;
     if (opts.reducedMotion !== undefined) options.reducedMotion = opts.reducedMotion;
@@ -78,6 +79,15 @@ const api = {
   resume: () => game?.resume(),
   destroy: () => game?.destroy(),
   state: snapshot,
+  events: () => gameEvents,
+  /** Monte sur un canvas dont getContext renvoie null, et renvoie l'erreur levée. */
+  mountWithoutContext() {
+    const c = document.createElement('canvas');
+    c.getContext = (() => null) as typeof c.getContext;
+    document.body.append(c);
+    try { createGame({ canvas: c, config: { seed: 1, rulesVersion: 1 }, onEnd: () => {} }); return null; }
+    catch (e) { return String(e); } finally { c.remove(); }
+  },
   ends: () => ends.map((e) => ({ ...e, verified: verifyRunResult(e).ok })),
   listeners: () => Object.fromEntries([...live].filter(([, n]) => n !== 0)),
   pendingRaf: () => pendingRaf.size,
