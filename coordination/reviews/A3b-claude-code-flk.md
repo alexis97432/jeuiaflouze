@@ -1,4 +1,59 @@
-# Revue A3b (accueil mobile V2, Tour du jour, objectifs, collection) — Claude Code FLK
+# Revue A3b, nouveau SHA — Claude Code FLK
+
+- **Tâche :** A3b, [alexis97432/jeuiaflouze#14](https://github.com/alexis97432/jeuiaflouze/pull/14)
+- **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
+- **SHA revu :** `2b560505f0b134c301bd80ac7455949bae090e18` (delta `4b7e43d..2b56050` : commits `36e5400` et `2b56050`), sur un worktree détaché de ce SHA.
+- **Périmètre lu :** diff complet du delta (`collection-view.ts`, `shell.ts`, `styles.css`, `vite.config.ts`, `tests/app/shell.test.ts`, `tests/e2e/shell.spec.ts`), captures régénérées.
+
+## Commandes et résultats réels (`npm ci` propre, Node 22.23.4)
+
+| Commande | Résultat |
+|---|---|
+| `npm run typecheck` | exit 0 |
+| `npm test` | 14 fichiers, 226/226 |
+| `npm run build` | JS 13,81 Ko gzip |
+| `CI=1 npm run test:e2e` | e2e **37** réussis, 20 ignorés par profil ; navigateur F1 13/13 |
+
+**Remarques précédentes, toutes traitées :**
+- A3b m1 : captures régénérées ;
+- A3b m2 : le focus revient sur la carte choisie ;
+- A3a m1 : `process.env.TZ` forcé ;
+- jeu en pleine page et anneau de focus du canvas au clavier seulement, avec deux tests e2e qui vérifient la mise en page et l'anneau.
+
+## Défauts
+
+**M1 — majeur, à corriger avant intégration (`src/styles.css`, `.view[data-screen='game'] [data-testid='target']`).** La pastille « Tour du jour · date (UTC) » ou « Objectif : plus de N étages » est maintenant posée **par-dessus le canvas**, en haut, centrée. Deux conséquences, mesurées dans le build réel du SHA (Pixel 7, défi du jour) :
+
+1. **Elle avale les appuis.** Elle est en `pointer-events: auto`, et un toucher en son centre n'atteint pas le canvas. Comme le premier étage ne peut pas être raté, ce toucher aurait dû produire un `first_placement` : il n'en produit aucun. Le toucher suivant, sur le canvas, en produit bien un. En Tour du jour et en défi, une zone de l'écran rend donc le jeu sourd.
+2. **Elle masque le score.** Pastille de y = 8 à 39 px, et score dessiné par le moteur à partir de 5,5 % de la hauteur du canvas (rendu F3 ; v1 dessine aussi à 6 %) :
+
+   | Écran | Score | Chevauchement |
+   |---|---|---|
+   | 390×844 | 46 → 112 px | 0 px |
+   | **320×568** | 31 → 85 px | **8 px** |
+   | **844×390** | 21 → 58 px | **18 px** (presque tout le score) |
+
+   Capture : `coordination/captures/revue-a3b/pastille-sur-score-320x568-et-844x390.png`.
+
+Correction suggérée :
+- `pointer-events: none` sur la pastille, indispensable dans tous les cas ;
+- et la déplacer **en bas**, au-dessus de la zone sûre. Mon rendu y dessine le sol sous la tour (14 % inférieurs de l'écran), sans information de jeu.
+
+Je propose un test e2e :
+- un toucher au centre de la pastille provoque une pose ;
+- son rectangle ne coupe pas le quart supérieur du canvas (zone du score), en 320×568 et en paysage.
+
+**m1 — mineur (`src/app/shell.ts`, `onKey`).** Toute touche Tab, Entrée, Espace ou flèche fait passer en mode « clavier ». Pendant la partie, l'espace (la touche de jeu) affiche donc l'anneau de focus sur le canvas, même pour un joueur qui alterne toucher et clavier. Ce n'est pas gênant fonctionnellement : l'anneau est intérieur et n'élargit rien. Une option est de ne compter que Tab, ou de réserver l'anneau aux écrans hors jeu.
+
+## Verdict
+
+**CHANGES_REQUESTED** sur `2b560505f0b134c301bd80ac7455949bae090e18` à cause de M1 (appuis avalés et score masqué en Tour du jour et en défi). Le reste du delta est bon. Je revois le nouveau SHA dès qu'il est publié.
+
+---
+
+## Historique : revue de `4b7e43d`
+
+### Revue A3b (accueil mobile V2, Tour du jour, objectifs, collection) — Claude Code FLK
 
 - **Tâche :** A3b, [alexis97432/jeuiaflouze#14](https://github.com/alexis97432/jeuiaflouze/pull/14), empilée sur A3a (#12)
 - **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
