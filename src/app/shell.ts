@@ -18,6 +18,12 @@ import type { LocalStore } from '../platform/storage';
 
 export type Screen = 'home' | 'game' | 'result';
 
+/**
+ * Délai pendant lequel les boutons du résultat ignorent les activations : un joueur qui tape
+ * ou appuie sur Espace au moment du raté ne doit pas relancer ou partager par accident.
+ */
+export const RESULT_INPUT_GUARD_MS = 500;
+
 export type ShellOptions = {
   root: HTMLElement;
   startGame: StartGame;
@@ -32,6 +38,8 @@ export type ShellOptions = {
   newRunId: () => string;
   isMockGame: boolean;
   doc?: Document;
+  /** Horloge monotone (ms) ; injectable pour les tests. */
+  now?: () => number;
 };
 
 export type Shell = {
@@ -65,6 +73,8 @@ const floors = (n: number) => `${n} étage${n > 1 ? 's' : ''}`;
 
 export function createShell(options: ShellOptions): Shell {
   const doc = options.doc ?? document;
+  const now = options.now ?? (() => performance.now());
+  let guardTimer: ReturnType<typeof setTimeout> | undefined;
   const { root, tracker, store } = options;
   let screen: Screen = 'home';
   let run: RunState | null = null;
@@ -97,6 +107,8 @@ export function createShell(options: ShellOptions): Shell {
 
   const show = (next: Screen, children: (HTMLElement | null)[], focus: HTMLElement) => {
     screen = next;
+    clearTimeout(guardTimer);
+    delete view.dataset.inputReady;
     view.replaceChildren(...children.filter((c): c is HTMLElement => c !== null));
     view.dataset.screen = next;
     focus.focus();
@@ -295,9 +307,14 @@ export function createShell(options: ShellOptions): Shell {
 
     const status = el(doc, 'p', { class: 'hint', role: 'status', 'data-testid': 'share-status' });
     const fallback = el(doc, 'div', { class: 'fallback', hidden: '' });
-    const retry = button('Rejouer', () => startRun(current), true);
-    const shareButton = button('Défier un ami', () => void doShare(), false, 'share');
-    const home = button('Accueil', renderHome);
+    const readyAt = now() + RESULT_INPUT_GUARD_MS;
+    const guarded = (action: () => void) => () => {
+      if (now() < readyAt) return;
+      action();
+    };
+    const retry = button('Rejouer', guarded(() => startRun(current)), true);
+    const shareButton = button('Défier un ami', guarded(() => void doShare()), false, 'share');
+    const home = button('Accueil', guarded(renderHome));
 
     const doShare = async () => {
       const url = buildChallengeUrl(options.url, current.seed, result.score);
@@ -342,6 +359,10 @@ export function createShell(options: ShellOptions): Shell {
 
     parts.push(retry, shareButton, home, status, fallback);
     show('result', parts, retry);
+    // Marqueur observable (tests, styles) de la fin du délai de garde.
+    guardTimer = setTimeout(() => {
+      if (screen === 'result') view.dataset.inputReady = 'true';
+    }, RESULT_INPUT_GUARD_MS);
     announce(summary);
   };
 
@@ -367,6 +388,7 @@ export function createShell(options: ShellOptions): Shell {
     },
     destroy() {
       destroyed = true;
+      clearTimeout(guardTimer);
       stopRun();
       doc.removeEventListener('visibilitychange', onVisibility);
       root.replaceChildren();

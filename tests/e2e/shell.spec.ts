@@ -51,3 +51,18 @@ test('parcours tactile sans débordement horizontal', async ({ page, isMobile })
   await expect(page.getByRole('button', { name: 'Défier un ami' })).toBeInViewport();
   await noHorizontalOverflow(page);
 });
+
+test('marteler Espace à la fin ne relance pas la partie par accident', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'clavier testé sur desktop');
+  await page.goto('/');
+  await page.keyboard.press('Enter');
+  const done = page.getByRole('heading', { name: 'Partie terminée' });
+  for (let i = 0; i < 60 && !(await done.isVisible()); i++) {
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(30);
+  }
+  await expect(done).toBeVisible({ timeout: 5_000 });
+  for (let i = 0; i < 4; i++) await page.keyboard.press('Space'); // dans le délai de garde
+  await expect(done).toBeVisible();
+  expect((await metrics(page)).map((e) => e.name)).not.toContain('retry');
+});

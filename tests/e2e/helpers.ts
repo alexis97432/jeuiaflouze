@@ -13,13 +13,18 @@ export const metrics = (page: Page) =>
 export async function playUntilResult(page: Page, place: () => Promise<void>, maxPresses = 40) {
   const done = page.getByRole('heading', { name: 'Partie terminée' });
   for (let i = 0; i < maxPresses; i++) {
-    if (await done.isVisible()) return;
+    if (await done.isVisible()) return resultReady(page);
     await page.waitForTimeout(60); // laisse avancer au moins un tick
-    if (await done.isVisible()) return;
+    if (await done.isVisible()) return resultReady(page);
     await place();
   }
   await expect(done).toBeVisible({ timeout: 5_000 });
+  await resultReady(page);
 }
+
+/** Attend la fin du délai de garde de l'écran de résultat (boutons actifs). */
+export const resultReady = (page: Page) =>
+  expect(page.locator('[data-screen="result"][data-input-ready="true"]')).toBeAttached();
 
 export async function tapUntilResult(page: Page) {
   const box = await page.getByTestId('game-canvas').boundingBox();

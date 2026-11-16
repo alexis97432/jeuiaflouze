@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunResult } from '../../src/app/game-contract';
 import type { StartGame, StartOptions } from '../../src/app/game-loader';
-import { createShell, type Shell, type ShellOptions } from '../../src/app/shell';
+import { createShell, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
 import { createTracker, memorySink } from '../../src/platform/metrics';
 import type { ShareOutcome } from '../../src/platform/share';
 import { createLocalStore } from '../../src/platform/storage';
@@ -60,6 +60,7 @@ function setup(overrides: Partial<ShellOptions> = {}) {
   const share = vi.fn(async (): Promise<ShareOutcome> => 'shared');
   let seed = 100;
   let run = 0;
+  const clock = { t: 0 };
   const root = document.getElementById('app')!;
   shell = createShell({
     root,
@@ -72,6 +73,7 @@ function setup(overrides: Partial<ShellOptions> = {}) {
     newSeed: () => seed++,
     newRunId: () => `run${++run}`,
     isMockGame: false,
+    now: () => clock.t,
     ...overrides,
   });
   const button = (label: string) => {
@@ -83,8 +85,9 @@ function setup(overrides: Partial<ShellOptions> = {}) {
   const end = async (score: number, index = game.mounts.length - 1) => {
     game.mounts[index]!.options.onEnd(result(score));
     await flush();
+    clock.t += RESULT_INPUT_GUARD_MS; // fin du délai de garde du résultat
   };
-  return { game, sink, root, button, text, end, store, replaced, share, shell: shell! };
+  return { game, sink, root, button, text, end, store, replaced, share, clock, shell: shell! };
 }
 
 const names = (sink: ReturnType<typeof memorySink>) => sink.events.map((e) => e.name);
@@ -133,6 +136,27 @@ describe('parcours libre', () => {
     await end(50, 0); // partie périmée
     expect(shell.screen).toBe('game');
     expect(sink.events.filter((e) => e.name === 'run_end')).toHaveLength(1);
+  });
+});
+
+describe('délai de garde du résultat', () => {
+  it('ignore les activations pendant 500 ms après la fin, puis les accepte', async () => {
+    const { game, button, clock, shell, share } = setup();
+    button('Jouer').click();
+    game.mounts[0]!.options.onEnd(result(2));
+    await flush();
+    expect(shell.screen).toBe('result');
+    button('Rejouer').click();
+    button('Défier un ami').click();
+    button('Accueil').click();
+    clock.t += RESULT_INPUT_GUARD_MS - 1;
+    button('Rejouer').click();
+    expect(shell.screen).toBe('result');
+    expect(game.mounts).toHaveLength(1);
+    expect(share).not.toHaveBeenCalled();
+    clock.t += 1;
+    button('Rejouer').click();
+    expect(game.mounts).toHaveLength(2);
   });
 });
 
