@@ -1,4 +1,50 @@
-# Revue A1 (préparation) — Claude Code FLK
+# Revue A1 (bascule vers le vrai moteur) — Claude Code FLK
+
+- **Tâche :** A1, intégration réelle, [alexis97432/jeuiaflouze#6](https://github.com/alexis97432/jeuiaflouze/pull/6)
+- **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
+- **SHA revu :** `7df764d60ca1876d214cb3a717651f5b9b737768`, sur un worktree détaché de ce SHA.
+- **Périmètre lu :**
+  - diff `723b184..7df764d` hors `src/game/` et `tests/game/` : `game-contract.ts`, `game-loader.ts` (adaptateur `createStartGame`), `shell.ts` (retrait du mock), `styles.css` (voile opaque), `main.ts`, `package.json` (`test:game-browser`) ;
+  - `tests/app/game-loader.test.ts`, `tests/e2e/{a1,shell}.spec.ts`, `tests/e2e/helpers.ts` ;
+  - description de la PR.
+- **Mes chemins sont intacts :** `git diff b44d2a6 7df764d -- src/game tests/game` est vide. F1 est intégré par le merge `9b66e28`, qui conserve les SHA `b44d2a6` (PASS Codex) et `3725541` (PASS Codex).
+
+## Commandes et résultats réels (16 novembre 2026, Node 22.23.4, `npm ci` propre)
+
+| Commande | Résultat |
+|---|---|
+| `npm ci` | 0 vulnérabilité |
+| `npm run typecheck` (deux configs) | exit 0 |
+| `npm test` | 11 fichiers, 184/184 |
+| `npm run build` | JS 9,98 Ko gzip, CSS 0,94 Ko gzip ; `grep "__metrics\|mock" dist/assets/*.js` → 0 |
+| `CI=1 npm run test:e2e` | e2e A1 : 25 réussis, 14 ignorés par profil ; puis `test:game-browser` : **13/13** ; exit 0 |
+| CI GitHub, check `check` sur `7df764d` | **success** (run 43961530951) |
+
+**Sondes supplémentaires sur l'application réelle** : un spec Playwright temporaire, profil desktop, jamais commité. 5/5 réussies.
+- Son coupé à l'accueil, puis deux poses : **0** `AudioContext` créé.
+- Son actif : 0 contexte avant le premier geste, **1 seul** après deux poses.
+- Onglet caché en pleine partie : voile DOM visible, focus sur « Reprendre » au retour. Après la reprise : ni `first_placement` ni `run_end` sans geste de jeu, donc pas de pose fantôme.
+- Onglet caché juste après des appuis rapides qui mènent au raté : le résultat arrive après « Reprendre », avec un seul `run_end`. Limite : je n'ai pas contrôlé que le masquage tombe exactement dans les 650 ms de l'animation de fin.
+- Canvas 2D nul : message « Le jeu n'a pas pu démarrer » et bouton Réessayer. Les mesures valent alors `["session_start","run_start","run_start"]` : m1 est confirmé (voir ci-dessous).
+
+## Remarques de la revue précédente
+
+- **m1 — mineur, toujours ouvert (`src/app/shell.ts`, `retry`/`run_start` émis avant `startGame`).** Confirmé sur l'application réelle : chaque tentative de montage ratée ajoute un `run_start` sans partie. Cela gonfle les parties commencées dans les cohortes de VALIDATION. À corriger avant A1.5 (export des mesures), pas bloquant pour M1.
+- **m2 — mineur, non vérifié sur appareil.** La copie de secours après l'échec de `share` reste à tester sur iOS réel.
+- **m3 — corrigé.** `game-loader.ts` documente le contrat v1. L'adaptateur est pur et testé : `sound = !muted`, `reducedMotion` omis, `first_placement` seulement sur une pose réussie. Les deux mutations annoncées par Alexis sont plausibles d'après les assertions.
+- **i1 — résolu et confirmé côté FLK.** Le voile DOM opaque masque le voile du moteur, sans changement d'API. Je n'ajoute donc pas d'option au moteur.
+
+## Verdict
+
+**PASS** sur `7df764d60ca1876d214cb3a717651f5b9b737768`. Le prototype M1 est complet pour le parcours local : vrai moteur, défi, record, partage, CI verte incluant les tests navigateur F1.
+
+Ordre d'intégration (PLAN) : F0 #1, puis F1 #3, puis cette PR, en merges classiques. m1 doit être corrigé avant A1.5. Ce PASS ne couvre aucun SHA ultérieur, et ne remplace ni les tests sur téléphones physiques ni le playtest humain.
+
+---
+
+## Historique : revue de la préparation (avant la bascule)
+
+### Revue A1 (préparation) — Claude Code FLK
 
 - **Tâche :** A1, préparation avec moteur simulé, [alexis97432/jeuiaflouze#6](https://github.com/alexis97432/jeuiaflouze/pull/6) (brouillon)
 - **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
