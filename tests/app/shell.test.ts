@@ -496,3 +496,84 @@ describe('modalité de saisie', () => {
     expect(root.dataset.input).toBe('pointer');
   });
 });
+
+/** Stockage navigateur simulé : tout passe par JSON, comme un vrai rechargement. */
+function memoryStorage(): Storage & { dump(key: string): unknown } {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear: () => data.clear(),
+    key: (i: number) => [...data.keys()][i] ?? null,
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, String(v)),
+    removeItem: (k: string) => void data.delete(k),
+    dump: (k: string) => JSON.parse(data.get(k) ?? 'null') as unknown,
+  };
+}
+
+describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)', () => {
+  it('XP, pièces, calendrier et sélection survivent à chaque chemin d’écriture puis au rechargement', async () => {
+    const storage = memoryStorage();
+    const first = setup({ meta: createMetaStore(storage), store: createLocalStore(storage) });
+    // 1. Fin de partie : 12 étages ; le faux moteur rapporte perfectCount = 1 (série de 2 via
+    //    les événements) → 12 + 2 = 14 XP ; 4 + 1 + 3 objectifs × 10 = 35 pièces.
+    first.button('Jouer').click();
+    first.place([false, true, true, false, true, false, false, false, false, false, false, false]);
+    await first.end(12);
+    expect(first.text('gains')).toBe('+14 XP · +35 pièces');
+    // 2. Réclamation du calendrier.
+    first.button('Accueil').click();
+    expect(first.text('coins')).toBe('35 pièces');
+    first.button('Récupérer +5').click();
+    expect(first.text('coins')).toBe('40 pièces');
+    expect(first.text('calendar')).toContain('déjà récupérée');
+    // 3. Choix d'apparence.
+    first.button('Collection 5/11').click();
+    first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
+    first.shell.destroy();
+
+    const saved = storage.dump('poc:meta:v1:progress');
+    expect(saved).toMatchObject({
+      version: 2,
+      xp: 14,
+      coins: 40,
+      selected: { skin: 'marbre' },
+      calendar: { lastClaimDate: '2026-11-16', index: 1 },
+      completed: ['floors-5', 'streak-2', 'floors-12'],
+    });
+
+    // Rechargement : nouveau shell, nouveaux magasins, même stockage.
+    document.body.innerHTML = '<main id="app"></main>';
+    const second = setup({ meta: createMetaStore(storage), store: createLocalStore(storage) });
+    expect(second.text('coins')).toBe('40 pièces');
+    expect(second.text('xp')).toBe('14 XP · encore 26 XP pour le niveau 2');
+    expect(second.text('calendar')).toContain('déjà récupérée');
+    second.button('Collection 5/11').click();
+    expect(second.text('card-skin-marbre')).toContain('Sélectionné');
+    expect(storage.dump('poc:meta:v1:progress')).toEqual(saved); // la lecture seule ne réécrit rien
+  });
+
+  it('une sauvegarde v1 (A3a) est migrée au chargement : prime unique de 10 pièces par objectif', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ completed: ['floors-5', 'streak-2'], selected: { theme: 'confiserie', skin: 'gomme' }, evaluatedRuns: [] }));
+    const { text, button, end } = setup({ meta: createMetaStore(storage) });
+    expect(text('coins')).toBe('20 pièces');
+    button('Jouer').click();
+    await end(3); // perfectCount 1 : 1 + 1 = 2 pièces, 3 + 2 = 5 XP
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 2, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
+  });
+
+  it('sauvegarde d’une version future : lue, jamais réécrite', async () => {
+    const storage = memoryStorage();
+    const future = { version: 3, completed: [], xp: 900, coins: 400, champInconnu: true };
+    storage.setItem('poc:meta:v1:progress', JSON.stringify(future));
+    const { text, button, end } = setup({ meta: createMetaStore(storage) });
+    expect(text('coins')).toBe('400 pièces');
+    expect(text('profile')).toContain('version plus récente');
+    button('Jouer').click();
+    await end(8);
+    expect(storage.dump('poc:meta:v1:progress')).toEqual(future);
+  });
+});

@@ -246,3 +246,27 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }
     await context.close();
   });
 }
+
+test('E1 : XP, pièces et récompense de connexion conservées après rechargement', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('coins')).toHaveText('0 pièce');
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  await tapUntilResult(page);
+  await expect(page.getByTestId('gains')).toContainText('XP');
+  await page.getByRole('button', { name: 'Accueil' }).tap();
+  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap();
+  await expect(page.getByTestId('calendar')).toContainText('déjà récupérée');
+  const before = {
+    coins: await page.getByTestId('coins').textContent(),
+    xp: await page.getByTestId('xp').textContent(),
+    level: await page.getByTestId('level').textContent(),
+  };
+  expect(before.coins).not.toBe('0 pièce');
+  await page.reload();
+  await expect(page.getByTestId('coins')).toHaveText(before.coins!);
+  await expect(page.getByTestId('xp')).toHaveText(before.xp!);
+  await expect(page.getByTestId('level')).toHaveText(before.level!);
+  await expect(page.getByTestId('calendar')).toContainText('déjà récupérée');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
+  expect(saved).toMatchObject({ version: 2, grants: ['v2-objectives-backfill'] });
+});

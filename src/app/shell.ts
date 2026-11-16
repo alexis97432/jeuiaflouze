@@ -13,14 +13,20 @@ import {
 import { RULES_VERSION, type GameHandle, type RunResult } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { renderCollection } from './collection-view';
+import {
+  applyRunEconomy,
+  calendarStatus,
+  claimCalendar,
+  levelInfo,
+  readProgressDoc,
+  type ProgressDoc,
+} from './economy';
 import { button as domButton, el, floors } from './dom';
 import {
   activeObjectives,
-  applyRun,
   BADGE_IDS,
   earnedBadges,
   rewardLabel,
-  sanitizeProgress,
   selectAppearance,
   SKIN_IDS,
   THEME_IDS,
@@ -28,7 +34,6 @@ import {
   unlockedThemes,
   type Objective,
   type ObjectiveId,
-  type ProgressState,
 } from './progression';
 import { createRunTracker, type RunTracker } from './run-tracker';
 import { dailySeed, nextDailyChange, utcDateKey } from '../platform/daily';
@@ -97,7 +102,15 @@ export function createShell(options: ShellOptions): Shell {
   let guardTimer: ReturnType<typeof setTimeout> | undefined;
   const { root, tracker, store, meta } = options;
   const today = options.today ?? (() => new Date());
-  let progress: ProgressState = sanitizeProgress(meta.readProgress());
+  // Une seule lecture (document v2 migré) et toujours le document complet en écriture :
+  // XP, pièces et calendrier ne peuvent pas être perdus par un chemin qui ne connaîtrait que A3
+  // (revue E1 FLK, M1).
+  const loaded = readProgressDoc(meta.readProgress());
+  let progress: ProgressDoc = loaded.doc;
+  const saveDoc = (next: ProgressDoc) => {
+    progress = next;
+    if (loaded.writable) meta.writeProgress(progress);
+  };
   let screen: Screen = 'home';
   let run: RunState | null = null;
   let destroyed = false;
@@ -154,6 +167,49 @@ export function createShell(options: ShellOptions): Shell {
     return b;
   };
 
+  /** Niveau, XP, pièces et récompense de connexion (E1b–E1d), progression locale. */
+  const profilePanel = (day: string) => {
+    const info = levelInfo(progress.xp);
+    const panel = el(doc, 'section', { class: 'panel profile', 'aria-labelledby': 'profile-title', 'data-testid': 'profile' });
+    const head = el(doc, 'div', { class: 'profile-head' });
+    head.append(
+      el(doc, 'h2', { id: 'profile-title', 'data-testid': 'level' }, `Niveau ${info.level}${info.title ? ` · ${info.title}` : ''}`),
+      el(doc, 'p', { class: 'coins', 'data-testid': 'coins' }, `${progress.coins} pièce${progress.coins > 1 ? 's' : ''}`),
+    );
+    panel.append(head);
+    if (info.toNext !== null) {
+      const total = info.intoLevel + info.toNext;
+      const bar = el(doc, 'progress', { max: String(total), value: String(info.intoLevel), 'aria-label': 'Progression vers le niveau suivant' });
+      panel.append(bar, el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, `${progress.xp} XP · encore ${info.toNext} XP pour le niveau ${info.level + 1}`));
+    } else {
+      panel.append(el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, `${progress.xp} XP · niveau maximal`));
+    }
+    const status = calendarStatus(progress, day);
+    const calendarLine = el(doc, 'p', { class: 'hint', 'data-testid': 'calendar' },
+      status.canClaim
+        ? `Récompense de connexion : +${status.reward} pièces (jour ${status.dayInCycle}/7)`
+        : 'Récompense de connexion déjà récupérée aujourd’hui.');
+    panel.append(calendarLine);
+    if (status.canClaim) {
+      const claim = domButton(doc, `Récupérer +${status.reward}`, () => {
+        const result = claimCalendar(progress, utcDateKey(today()));
+        if (result.claimed) {
+          saveDoc(result.doc);
+          announce(`+${result.reward} pièces récupérées.`);
+        }
+        renderHome();
+        view.querySelector<HTMLElement>('[data-testid="calendar"]')?.setAttribute('tabindex', '-1');
+        view.querySelector<HTMLElement>('[data-testid="calendar"]')?.focus();
+      }, 'ghost', 'claim');
+      panel.append(claim);
+    }
+    panel.append(el(doc, 'p', { class: 'hint small' },
+      loaded.writable
+        ? 'Progression locale, sur cet appareil.'
+        : 'Sauvegarde d’une version plus récente du jeu : progression de cette session non enregistrée.'));
+    return panel;
+  };
+
   const collectionButton = () => {
     const owned = unlockedThemes(progress).length + unlockedSkins(progress).length + earnedBadges(progress).length;
     const total = THEME_IDS.length + SKIN_IDS.length + BADGE_IDS.length;
@@ -166,8 +222,7 @@ export function createShell(options: ShellOptions): Shell {
       onSelect: (next) => {
         const updated = selectAppearance(progress, next);
         if (updated.selected.theme === progress.selected.theme && updated.selected.skin === progress.selected.skin) return;
-        progress = updated;
-        meta.writeProgress(progress);
+        saveDoc(updated);
         // Le focus reste sur la carte choisie, pas sur le titre.
         renderCollectionScreen(next.theme ? `card-theme-${next.theme}` : `card-skin-${next.skin}`);
         announce('Sélection enregistrée.');
@@ -231,6 +286,7 @@ export function createShell(options: ShellOptions): Shell {
     const now = today();
     const day = utcDateKey(now);
     const dailyBest = meta.readDailyBest(day);
+    const profile = profilePanel(day);
     const dailyPanel = el(doc, 'section', { class: 'panel daily', 'aria-labelledby': 'daily-title', 'data-testid': 'daily-panel' });
     dailyPanel.append(
       el(doc, 'h2', { id: 'daily-title' }, 'Tour du jour'),
@@ -254,7 +310,7 @@ export function createShell(options: ShellOptions): Shell {
 
     const footer = el(doc, 'nav', { class: 'footer-row', 'aria-label': 'Options' });
     footer.append(collectionButton(), soundToggle());
-    show('home', [brand, play, dailyPanel, goalsPanel, footer, recordLine()], play);
+    show('home', [brand, play, profile, dailyPanel, goalsPanel, footer, recordLine()], play);
   };
 
   const stopRun = () => {
@@ -369,22 +425,29 @@ export function createShell(options: ShellOptions): Shell {
       perfectCount: result.perfectCount,
       mode: current.mode,
     });
-    const evaluation = applyRun(progress, current.activeAtStart, {
+    const economy = applyRunEconomy(progress, current.activeAtStart, {
       runId: current.runId,
       mode: current.mode,
       score: result.score,
       perfectCount: result.perfectCount,
       longestStreak: current.events.longestStreak,
     });
-    if (evaluation.state !== progress) {
-      progress = evaluation.state;
-      meta.writeProgress(progress);
-    }
+    if (economy.doc !== progress) saveDoc(economy.doc);
     const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
-    renderResult(current, result, { isRecord, isDailyRecord, completedNow: evaluation.completedNow });
+    renderResult(current, result, {
+      isRecord,
+      isDailyRecord,
+      completedNow: economy.completedNow,
+      gained: economy.gained,
+    });
   };
 
-  type Outcome = { isRecord: boolean; isDailyRecord: boolean; completedNow: Objective[] };
+  type Outcome = {
+    isRecord: boolean;
+    isDailyRecord: boolean;
+    completedNow: Objective[];
+    gained: { xp: number; coins: number; levelUp: { from: number; to: number } | null };
+  };
 
   const renderResult = (current: RunState, result: RunResult, outcome: Outcome) => {
     const { isRecord } = outcome;
@@ -414,6 +477,17 @@ export function createShell(options: ShellOptions): Shell {
         ? `Nouveau record du jour (${current.day}) !`
         : `Record du jour (${current.day}) : ${floors(best)}`;
       parts.push(el(doc, 'p', { 'data-testid': 'daily-outcome' }, text));
+      summary += ` ${text}`;
+    }
+    if (outcome.gained.xp > 0 || outcome.gained.coins > 0) {
+      const gains = `+${outcome.gained.xp} XP · +${outcome.gained.coins} pièce${outcome.gained.coins > 1 ? 's' : ''}`;
+      parts.push(el(doc, 'p', { class: 'gains', 'data-testid': 'gains' }, gains));
+      summary += ` ${gains}.`;
+    }
+    if (outcome.gained.levelUp) {
+      const info = levelInfo(progress.xp);
+      const text = `Niveau ${outcome.gained.levelUp.to} atteint${info.title ? ` : ${info.title}` : ''} !`;
+      parts.push(el(doc, 'p', { class: 'record', 'data-testid': 'level-up' }, text));
       summary += ` ${text}`;
     }
     if (outcome.completedNow.length > 0) {
