@@ -12,7 +12,7 @@ test.afterEach(() => {
 test('parcours complet au clavier', async ({ page, isMobile }) => {
   test.skip(isMobile, 'parcours clavier testé sur desktop');
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Jouer' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Jouer', exact: true })).toBeFocused();
 
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('game-canvas')).toBeFocused();
@@ -42,7 +42,7 @@ test('parcours complet au clavier', async ({ page, isMobile }) => {
 
 test('vrai moteur : rendu Canvas adapté à la densité de pixels, sans mock', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Jouer' }).click();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).click();
   const canvas = page.getByTestId('game-canvas');
   await expect(canvas).toBeVisible();
   await expect(page.getByTestId('mock-banner')).toHaveCount(0);
@@ -66,7 +66,7 @@ test('parcours tactile sans débordement horizontal', async ({ page, isMobile })
   test.skip(!isMobile, 'parcours tactile testé sur mobile');
   await page.goto('/');
   await noHorizontalOverflow(page);
-  await page.getByRole('button', { name: 'Jouer' }).tap();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   await expect(page.getByTestId('score')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Défier un ami' })).toBeInViewport();
@@ -86,4 +86,18 @@ test('marteler Espace à la fin ne relance pas la partie par accident', async ({
   for (let i = 0; i < 4; i++) await page.keyboard.press('Space'); // dans le délai de garde
   await expect(done).toBeVisible();
   expect((await metrics(page)).map((e) => e.name)).not.toContain('retry');
+});
+
+test('paysage téléphone : actions du résultat visibles sans défiler', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Jouer', exact: true })).toBeInViewport();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  await tapUntilResult(page);
+  for (const name of ['Rejouer', 'Défier un ami', 'Accueil']) {
+    await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
+  }
+  await noHorizontalOverflow(page);
+  await context.close();
 });

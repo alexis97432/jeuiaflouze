@@ -389,8 +389,10 @@ describe('robustesse', () => {
 describe('Tour du jour (V2)', () => {
   it('joue la seed de la date UTC, figée au lancement, et tient un record du jour', async () => {
     const { game, sink, button, text, end, day, meta } = setup();
-    expect(text('daily-hint')).toContain('2026-11-16');
-    button('Tour du jour').click();
+    expect(text('daily-hint')).toBe('Même tour pour tous · 16 novembre (UTC)');
+    // Tests en UTC+14 (Kiritimati) : minuit UTC = 14:00 locales.
+    expect(text('daily-next')).toBe('Nouvelle tour à 14:00 (heure locale)');
+    button('Jouer la tour du jour').click();
     expect(game.mounts[0]!.options.config.seed).toBe(630742688); // vecteur de référence (Python)
     expect(sink.events.at(-1)).toMatchObject({ name: 'run_start', mode: 'daily', day: '2026-11-16' });
     day.now = new Date('2026-11-17T00:00:01Z'); // minuit UTC passe pendant la partie
@@ -408,9 +410,9 @@ describe('objectifs (V2)', () => {
   it('valide les objectifs actifs au lancement, une seule fois, et persiste la progression', async () => {
     const { button, text, end, place, meta, root } = setup();
     expect([...root.querySelectorAll('[data-testid="goals"] li')].map((li) => li.textContent)).toEqual([
-      'Poser au moins 5 étages dans une partie',
-      'Faire 2 parfaits consécutifs dans une partie',
-      'Poser au moins 12 étages dans une partie',
+      'Poser au moins 5 étages dans une partie → Apparence Marbré',
+      'Faire 2 parfaits consécutifs dans une partie → Apparence Bonbon',
+      'Poser au moins 12 étages dans une partie → Univers Orbital',
     ]);
     button('Jouer').click();
     place([false, true, true, false, false]);
@@ -436,5 +438,45 @@ describe('objectifs (V2)', () => {
     button('Jouer').click();
     await end(5);
     expect(text('completed-goals')).toContain('Marbré');
+  });
+});
+
+describe('accueil V2 et collection', () => {
+  it("une seule action principale à l'accueil, focalisée", () => {
+    const { root } = setup();
+    const primaries = root.querySelectorAll('.btn.primary');
+    expect(primaries).toHaveLength(1);
+    expect(document.activeElement).toBe(primaries[0]);
+    expect(primaries[0]!.textContent).toBe('Jouer');
+  });
+
+  it('collection : verrous explicites, choix persistant, retour avec focus rendu', async () => {
+    const { button, root, text, end, place, meta } = setup();
+    expect(text('open-collection')).toBe('Collection 2/11');
+    button('Collection 2/11').click();
+    expect(text('card-skin-marbre')).toContain('À débloquer : poser au moins 5 étages dans une partie');
+    expect(text('card-theme-jardin')).toContain('À débloquer : terminer une tour du jour avec au moins 8 étages');
+    expect(text('card-skin-gomme')).toContain('Sélectionné');
+    expect(root.querySelector('[data-testid="card-skin-marbre"] button')).toBeNull(); // verrouillé : pas de choix
+    button('← Retour').click();
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('open-collection');
+
+    button('Jouer').click();
+    place([false, false, false, false, false]);
+    await end(5);
+    button('Voir la collection').click();
+    expect(text('collection-count')).toBe('3 / 11 obtenus');
+    const choose = root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!;
+    expect(choose.getAttribute('aria-label')).toBe('Choisir Apparence Marbré');
+    choose.click();
+    expect(text('card-skin-marbre')).toContain('Sélectionné');
+    expect(meta.readProgress()).toMatchObject({ selected: { theme: 'confiserie', skin: 'marbre' } });
+  });
+
+  it("le bouton « Voir la collection » n'apparaît qu'avec une récompense", async () => {
+    const { button, root, end } = setup();
+    button('Jouer').click();
+    await end(2);
+    expect(root.querySelector('[data-testid="result-collection"]')).toBeNull();
   });
 });
