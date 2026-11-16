@@ -25,15 +25,15 @@ Propriétaire : Alexis (src/app, platform, tests/app, styles). FLK revoit. Codex
 
 ### Niveaux et XP
 
-Niveau du **joueur**, pas neuf modes de jeu présentés comme neuf niveaux. Proposition de départ [HYPOTHÈSE] : XP d'un run = min(score,50) + 2×min(perfectCount,10). Aucun XP pour abandon ou montage raté. Seuil total du niveau L = 50×(L−1)×L, L entre 1 et 20 ; niveau 2 à 100 XP. Une barre montre l'XP restant. Après niveau 20, garder le total d'XP mais ne pas annoncer un niveau 21 non conçu.
+Niveau du **joueur**, pas neuf modes de jeu présentés comme neuf niveaux. Proposition de départ [HYPOTHÈSE] : XP d'un run = min(score,50) + 2×min(perfectCount,10). Aucun XP pour abandon ou montage raté. Seuil total du niveau L = 20×(L−1)×L, L entre 1 et 10 ; niveau 2 à 40 XP. Une barre montre l'XP restant. Après niveau 10, garder le total d'XP sans afficher un niveau 11 non conçu. Titres locaux catalogués : niveau 2 « Apprenti », niveau 5 « Architecte », niveau 10 « Maître de la tour » ; aucun titre ne modifie les règles.
 
 Le niveau n'accorde ni largeur, tolérance, vitesse, multiplicateur de score ou avantage de classement. Il sert de progression visible et pourra donner accès à des titres ou cosmétiques explicitement catalogués. Aucune vente d'XP à cette étape.
 
 ### Pièces et boutique
 
-[HYPOTHÈSE] Récompense de partie = min(25, floor(score/5)+floor(perfectCount/3)) pièces ; minimum 0, pas de prime au simple lancement. Une partie ne rapporte qu'à sa fin définitive, une fois par runId. Aucun gain par simple ouverture d'URL de défi ou score déclaré dans target.
+[HYPOTHÈSE] Récompense de partie = min(25, floor(score/3)+perfectCount) pièces ; minimum 0, pas de prime au simple lancement. Une partie ne rapporte qu'à sa fin définitive, une fois par runId. Aucun gain par simple ouverture d'URL de défi ou score déclaré dans target.
 
-Les neuf objectifs V2 conservent leur récompense cosmétique déjà promise ; leur première réalisation ajoute 30 pièces chacun. Migration : les objectifs déjà accomplis lors d'E1 reçoivent chacun ce supplément **une seule fois**, dans une opération versionnée/idempotente. Ne pas retirer ou revendre un objet déjà débloqué. Les cosmétiques V2 à objectif restent obtenus par leur objectif ; la boutique vend une collection supplémentaire distincte.
+Les neuf objectifs V2 conservent leur récompense cosmétique déjà promise ; leur première réalisation ajoute 10 pièces chacun. Migration : les objectifs déjà accomplis lors d'E1 reçoivent chacun ce supplément **une seule fois**, dans une opération versionnée/idempotente. Ne pas retirer ou revendre un objet déjà débloqué. Les cosmétiques V2 à objectif restent obtenus par leur objectif ; la boutique vend une collection supplémentaire distincte.
 
 Premier catalogue boutique [HYPOTHÈSE] : trois apparences additionnelles (Graphite 60 pièces, Nacré 120, Holographique 240). FLK doit confirmer leur faisabilité et visibilité avant fabrication. Les cinq skins d'objectifs V2 ne deviennent pas payants. Solde affiché, prix fixe, aperçu, confirmation claire puis sélection possible ; objet déjà possédé non rachetable. Aucun achat aléatoire ni remise factice. L'utilisateur peut tester l'aperçu sans perdre ses pièces.
 
@@ -41,7 +41,7 @@ Transaction locale unique : vérifier propriété/solde, débiter, accorder l'ob
 
 ### Calendrier
 
-[HYPOTHÈSE] Cycle de sept **jours de connexion réclamés** : 10, 15, 20, 25, 30, 40, 60 pièces. Une réclamation par date UTC, date affichée ; au-delà du septième, cycle recommencé. Un jour absent ne remet rien à zéro et aucun rattrapage payant. Une seule réclamation même après double clic/recharge ; conserver la dernière date accordée, le numéro du cycle et l'index.
+[HYPOTHÈSE] Cycle de sept **jours de connexion réclamés** : 5, 5, 5, 5, 5, 10, 15 pièces. Une réclamation par date UTC, date affichée ; au-delà du septième, cycle recommencé. Un jour absent ne remet rien à zéro et aucun rattrapage payant. Une seule réclamation même après double clic/recharge ; conserver la dernière date accordée, le numéro du cycle et l'index.
 
 Pas d'obligation de popup à l'ouverture : badge discret et carte accessible. Aucune notification push demandée pour recevoir une récompense. Tant que local, l'horloge manipulable et la perte de sauvegarde sont des limites explicites ; pas de valeur commerciale attachée à ces récompenses. À terme, heure serveur pour l'économie en ligne.
 
@@ -99,3 +99,17 @@ Pilote d'abord gratuit (même parcours, sans checkout), avec quelques récompens
 - Chacun écrit son avis dans sa fiche et son rapport sur sa branche/PR ; on n'a pas encore reçu ces nouveaux avis au moment de la rédaction. Les lots E2–E4 restent conçus, pas autorisés à engager des frais ni à vendre quoi que ce soit. Ils seront rendus concrets par prestataires/serveur et revue avant activation.
 
 Prochain test : finir une petite V2 plaisante, puis montrer E1 aux deux testeurs. Mesurer si les joueurs comprennent les récompenses, trouvent un achat cosmétique désirable et rejouent volontairement ; ne pas confondre achat ou réclamation quotidienne et intérêt pour la partie.
+
+## Arbitrage après revue Alexis C4 (remplace les valeurs initiales non implémentées)
+
+Revue lue : C4-claude-code-alexis.md sur `0148627` (PR #11). Défaut M1 confirmé : le calendrier initial rapportait 200 pièces contre 2 pièces par partie de référence. Valeurs corrigées ci-dessus : partie de référence de 10 étages et 2 parfaits = 5 pièces ; calendrier = 50 par cycle de sept connexions ; objectifs = 10 pièces chacun (90 au total).
+
+Cible d'équilibrage préétablie : Holographique 240 pièces correspond à 48 parties de référence **sans** primes d'objectif/calendrier ; Graphite 12 parties, Nacré 24. Ce ne sont pas des prévisions de comportement humain. Exemples arithmétiques : 21 parties de référence donnent 105 pièces, plus 50 de calendrier = 155 ; les parties représentent environ 68 % de ce total, hors exploits. Une partie à 5 étages sans parfait donne 1 pièce, à 25 étages/6 parfaits donne 14. Retester l'accès au premier achat auprès des testeurs ; ne pas distribuer rétroactivement des récompenses de parties anciennes non observées.
+
+Niveaux raccourcis à 10 avec titres à 2/5/10 : 40, 400 et 1800 XP. À 14 XP par partie de référence, environ 3, 29 et 129 parties. Hypothèses testables, aucun boost à acheter.
+
+Accepte m2/m3 Alexis : XP, pièces, inventaire, calendrier et objectifs dans un **document unique versionné**, écrit une fois sous la clé existante `poc:meta:v1:progress`, schema `version: 2`. Migration avec grant stable `v2-objectives-backfill`, et supplément corrigé à 10 pièces par objectif déjà accompli. Garantir lecture d'un ancien document et répétition d'un chargement sans double grant ; pas de prétention d'antifraude contre import volontaire d'une ancienne sauvegarde locale.
+
+Accepte m4 : date UTC antérieure ou égale à lastClaimDate refusée, aucune attribution de plusieurs dates par un seul passage, progression locale annoncée. Accepte m5 : avant activation E3/E4, déterminer public/âges et vérifier compatibilité des prestataires/consentements/distribution ; ne pas intégrer de ciblage publicitaire des mineurs. Catalogue visuel E1e toujours soumis à avis FLK, sans bloquer logique pure E1a–d.
+
+Découpage E1a (migration), E1b (XP), E1c (pièces), E1d (calendrier), E1e (boutique) proposé par Alexis accepté. Priorité à terminer A3/A4 ; si la seule dépendance d'A4 est un rendu non livré, E1a et les fonctions pures peuvent être préparés sur une branche séparée, sans fusion avant revue FLK et sans interférer avec les fichiers d'intégration actifs.

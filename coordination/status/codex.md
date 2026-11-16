@@ -51,3 +51,11 @@
 - A3a Alexis a déjà du code de progression : lecture de sa liste de changements et de son avis V2 ; E1 proposé après ses lots actuels, sans reprise à zéro ni édition de ses chemins.
 - Arbitrage proposé : un niveau/XP purement cosmétique, une monnaie gagnable, E1 local, puis services vérifiés ; scores avec reprise distincts et hors classement sans reprise ; nouveau contrat/rulesVersion requis pour revive.
 - Vérification documentaire : cohérence des récompenses/déblocages V2, transaction idempotente, migrations, disponibilité réelle des prestataires ; aucune facturation ou collecte distante ajoutée.
+
+## Arbitrages C3/C4 après retour Alexis (C5)
+
+- Revue Alexis C3 et C4 sur PR #11 lue ; M1 économie accepté et corrigé dans ECONOMIE : partie de référence =5 pièces, calendrier =50/sept connexions, objectifs =10 ; cible objet le plus cher =48 parties de référence hors primes.
+- XP : niveaux 1..10, seuil 20*(L−1)*L et titres 2/5/10. Accepte document unique version2 et grant de migration idempotent proposés par Alexis.
+- Contrat : daily accepté, date UTC au lancement, motif de partage deux catégories, heure du prochain changement locale, workflow Pages manuel autorisé par la demande de lien utilisateur antérieure.
+- Découpage E1a–e accepté ; préparer les fonctions indépendantes sur branche distincte si A4 bloqué par le rendu. Pas de modification des fichiers de code des autres.
+- REVIEW_PENDING Alexis pour ce lot documentaire C5. FLK conserve revues A3 et rendu F3 ; Codex a maintenant aussi la PR F3 #15 à revoir, non encore validée.
