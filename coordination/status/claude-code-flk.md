@@ -34,9 +34,18 @@
 - Revue Codex sur `0896195` : **CHANGES_REQUESTED** ([rapport](https://github.com/alexis97432/jeuiaflouze/blob/agent/codex/c1-review-f0/coordination/reviews/F1-codex.md)). Corrections :
   - **R1 (vrai bogue, merci)** : un appui mémorisé pendant une image gelée restait dans l'ancienne échelle de temps, d'où une pose fantôme plus tard. Désormais, le temps abandonné est aussi retiré des appuis en attente : ordre et écarts conservés, bornés au premier tick non simulé, fusion par tick. Cinq tests de régression : la reproduction exacte de Codex, plusieurs gestes dans un gel, un geste en début de gel, un geste livré après le gel avec un horodatage ancien, et plusieurs gels successifs. Quatre échouaient avant la correction.
   - **R2** : déjà corrigé dans `72a2aa9`, poussé juste après la revue. Le harnais est construit par Vite (A0), sans esbuild, et son chemin vient de `config.configFile`, sans `__dirname`. Vérifié depuis `npm ci` du lockfile A0 (voir ci-dessous).
-  - Exécution en CI : la config Playwright racine et `package.json` appartiennent à Alexis. **Proposition à Alexis** : script `"test:game-browser": "playwright test -c tests/game/browser/playwright.config.ts --trace off"` et une étape CI après `test:e2e` ; ou un projet ajouté à la config racine avec `testDir: 'tests/game/browser'` et le `globalSetup` du harnais.
+  - Exécution en CI, **partiellement fermée dans mes chemins** : `tests/game/mount.dom.test.ts` (jsdom, déjà inclus par `npm test` donc par la CI d'A0) couvre les frontières F1 en 9 tests :
+    - un toucher = une pose, `preventDefault`, clic droit ignoré ;
+    - espace bloqué au keydown et au keyup, répétition, champ éditable ;
+    - partie complète avec `onEvent` ordonné, `onEnd` unique après `END_DELAY_MS`, rejeu valide, espace rendu au DOM ;
+    - pause et reprise sans rattrapage, onglet caché ;
+    - destroy sans fuite, `onEnd` qui détruit, exception dans `onEvent`, échecs de montage.
+
+    Quatre mutations (detach oublié, keyup non bloqué, reprise onglet caché, `onEnd` multiple) font échouer `npm test`. Les specs Playwright restent la preuve en vrai navigateur (DPR, toucher réel, audio).
+  - Les specs Playwright, elles, ne sont pas lancées par la CI : la config Playwright racine et `package.json` appartiennent à Alexis. **Proposition à Alexis** : script `"test:game-browser": "playwright test -c tests/game/browser/playwright.config.ts --trace off"` et une étape CI après `test:e2e` ; ou un projet ajouté à la config racine avec `testDir: 'tests/game/browser'` et le `globalSetup` du harnais.
   - `onEvent` reste une **proposition optionnelle** (Codex rappelle qu'aucun changement unilatéral d'API n'est permis). Aucun consommateur ne l'utilise ; je le retire si Codex le refuse.
-- État : **REVIEW_PENDING** (nouvelle revue Codex demandée sur le dernier SHA de la PR). Branche `agent/claude-code-flk/f1-render`, construite sur F0 (`3725541`), qui n'est pas encore revu ni intégré. La PR F1 contient donc aussi le commit F0 ; seul le diff après `3725541` est propre à F1.
+- État : **REVIEW_PENDING** (nouvelle revue Codex demandée sur le dernier SHA de la PR #3).
+- Vérification du dernier SHA sur la fusion d'essai avec A0 `e84647e` (`npm ci` propre) : `npm run typecheck` exit 0, `npm test` **128/128**. Branche `agent/claude-code-flk/f1-render`, construite sur F0 (`3725541`), qui n'est pas encore revu ni intégré. La PR F1 contient donc aussi le commit F0 ; seul le diff après `3725541` est propre à F1.
 - Compatibilité A0 vérifiée sur une fusion d'essai avec `e84647e` : TypeScript 7.0.2 strict + `noUnused*` OK, vitest 4.1.12 114/114, mes specs navigateur sous Vite 8.3.5 / ESM OK. Le harnais n'utilise plus esbuild : dépendance inutile, Vite d'A0 suffit.
 - Fichiers : `src/game/index.ts` (API publique), `src/game/input/` (fixed-step.ts, input.ts), `src/game/render/` (mount.ts, renderer.ts, audio.ts, README.md), `src/game/demo/` (démo intégrable), `tests/game/fixed-step.test.ts`, `tests/game/browser/` (harnais + specs Playwright + config locale).
 - Contrôles réels, le 16 novembre 2026, avec un outillage temporaire hors dépôt (Node 22.23.4, vitest 3.2.4, typescript 5.9.3, esbuild 0.25.10, @playwright/test 1.63.0 sur le Chromium préinstallé) :
@@ -81,6 +90,16 @@
 4. Concept concurrent à tester : « la tour du jour ». Une seed quotidienne UTC commune, trois essais, et une carte de résultat sans spoiler (une ligne de symboles par pose : parfait, coupe faible, coupe forte). Même moteur, sans backend en M1. La carte donne une raison de partager que le score seul n'offre pas.
 5. Test pour départager : dans le playtest de 10 personnes de VALIDATION.md, alterner deux écrans de résultat (défi ami / tour du jour) et noter le rejeu spontané et l'intention déclarée de partager, plus les verbatims. Signal qualitatif uniquement, non extrapolable.
 6. Recommandation : garder le prototype actuel (il est compatible), concentrer F1 sur la sensation de pose, et préparer la tour du jour comme variante d'écran de résultat, pas comme second moteur. Si l'on veut que la seed se voie, il faudrait une variation perceptible (par exemple vitesse par motifs), donc rulesVersion 2 et une décision Codex.
+
+## Coordination (PR #5, protocole d'autonomie)
+
+Lu sur `df88ba5`. Sa revue revient à Alexis ; je n'ai rien à objecter côté FLK. J'applique la veille bornée : 60 s, 15 min au plus.
+
+**Dépendances ouvertes :**
+- F1 → **Codex** : revoir la PR #3 au dernier SHA (rapport `coordination/reviews/F1-codex.md` à mettre à jour) ; décider si `onEvent`, `setPrefs` et le masquage du voile de pause du canvas sont acceptés.
+- F0 → **Alexis** : intégrer la PR #1 (`3725541`, PASS Codex) après vérification du SHA.
+- Revue A1 → **Alexis** : livrer A1 (PR + SHA) ; je la revois dès qu'elle est disponible, sans toucher à ses fichiers.
+- CI navigateur F1 → **Alexis** : script `test:game-browser` et étape CI, si accepté.
 
 ## Prochain pas
 
