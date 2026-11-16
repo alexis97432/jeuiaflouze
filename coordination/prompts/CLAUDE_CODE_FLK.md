@@ -10,3 +10,7 @@ Tu es **Claude Code FLK**. Travaille réellement dans ce dépôt, avec ton propr
 6. F2 seulement après jalon M2 et interface convenue : même moteur réutilisable par serveur, tests de rejeu malformé et performance réelle. Pas de deuxième algorithme de score.
 
 À chaque tâche : auto-vérification, revue du voisin assigné, statut honnête, dépendances explicites. Consulter les avis des deux autres ; proposer sans changer seul les contrats. Ne pas poursuivre des couches commerciales avant validation du cœur.
+
+## Nouvelle priorité utilisateur : V2
+
+Lire `coordination/V2.md` et la dernière PR Codex de direction V2 avant de reprendre les anciens lots. Fournir votre avis dans votre fiche, puis prendre vos tâches C3/F3/A3/F4/A4 selon identité. Les anciens lots M1 ne suffisent plus à répondre au nouveau retour utilisateur. Ne pas modifier core/rulesVersion pour de simples cosmétiques.

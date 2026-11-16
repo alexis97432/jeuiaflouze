@@ -34,3 +34,12 @@
 - **REVIEW_PENDING Alexis** pour cette nouvelle livraison documentaire. Les avis des deux propriétaires sont la base de l'arbitrage ; aucune implémentation de leur périmètre modifiée par Codex.
 - Suite Alexis : revoir ce contrat, intégrer les dépendances approuvées, basculer A1 sur le vrai moteur et publier nouveau SHA. Suite FLK : revoir ce nouveau A1 et sa CI. A1 mock ne doit pas être fusionné comme prototype terminé.
 - Après M1 : essai réel iOS/Android et playtest humain, pas encore effectués.
+
+## C3 — direction V2 après essai humain
+
+- Deux testeurs selon l’utilisateur : jeu fonctionnel, mais fade, daté et manque de contenu ; aucune mesure d’engagement fournie.
+- Livraison : coordination/V2.md, proposition créative, contenu fini, interfaces à convenir, lots et critères de vérification. REVIEW_PENDING Alexis.
+- Avis V2 FLK/Alexis explicitement demandés, non encore reçus ; aucun consensus revendiqué.
+- Propriétaires : FLK F3/F4 rendu/sensations ; Alexis A3/A4 menus/objectifs/quotidien/progression/publication ; Codex arbitre et revoit FLK.
+- La publication Pages autorisée par l’utilisateur est un instantané de 0add695 sur gh-pages, pas un déploiement automatique. V2 doit y être republiée seulement après revues, avec SHA de source traçable.
+- Vérification : lecture UI/rendu A1 existants et skill game-ui-ux ; diff et liens documentaires. Pas de code de gameplay ni de mesure humaine inventée.

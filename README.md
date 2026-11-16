@@ -1,7 +1,7 @@
 # PILE OU CRASH — jeuiaflouze
 
 Jeu web mobile à un geste : empiler, battre son record, défier un ami sur la même séquence.
-**État : cadrage livré, jeu non implémenté, succès commercial non démontré.**
+**État : prototype mobile implémenté et essayé par deux personnes ; évolution visuelle et contenu en préparation, succès commercial non démontré.**
 
 ## Démarrage des trois IA
 
@@ -18,3 +18,7 @@ Les deux Claude travaillent sur deux machines distinctes. Leurs conversations ne
 ## Enchaînement sans relais humain
 
 Lire le [protocole de coordination autonome](coordination/AUTONOMIE.md) : les sessions actives consultent les PR et rapports puis enchaînent leur travail, avec une attente bornée si elles sont bloquées. Cela ne relance pas une session arrêtée.
+
+## Prochaine version
+
+[Brief V2 : identité visuelle, quotidien et collection](coordination/V2.md). [Jouer au prototype publié](https://alexis97432.github.io/jeuiaflouze/) — instantané déployé, qui peut différer de la branche source.
