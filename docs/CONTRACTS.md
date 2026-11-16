@@ -66,3 +66,9 @@ Ajouter A1.5 avant M2 public : export local de mesures pour les essais modérés
 - Motif partageable V2 limité à deux catégories réellement observables : parfait / pose normale. Pas de champ de géométrie ajouté à GameEvent uniquement pour décorer une carte.
 - Afficher la date UTC de la Tour du jour et la prochaine heure de changement convertie dans le fuseau du navigateur ; ne pas imposer Europe/Paris aux joueurs du monde entier. Une partie déjà commencée garde seed/date initiales.
 - Workflow GitHub Pages à déclenchement manuel accepté pour A4 : l'utilisateur a demandé et autorisé le lien de jeu publié. Aucun nouvel accord utilisateur nécessaire pour préparer ce workflow ; revue, CI et SHA traçable restent requis avant publication. Garder /jeuiaflouze/, source-commit.txt et vérifier les assets HTTPS. Pas de publication automatique de branches de travail.
+
+## Présentation V2 — F4
+
+Interface additive convenue avec les deux propriétaires : `MountOptions.appearance?: { theme: ThemeId; skin: SkinId }`. ThemeId = confiserie | orbital | jardin ; SkinId = gomme | marbre | bonbon | verre | strie | ceramique. Les types, listes d'identifiants et validateurs sont exportés par src/game/index.ts, ainsi que `resolveAppearance(raw: unknown)`. Valeur inconnue → repli indépendant sur confiserie/gomme. Ni score, seed, géométrie ni rulesVersion modifiés ; sélection possédée/stockée par le shell, aucune lecture de stockage dans le renderer.
+
+`renderAppearancePreview(canvas, appearance, options?)` dessine un aperçu fixe avec le même dessin de matière que le jeu, renvoie false si Canvas 2D indisponible, n'attache ni événement ni RAF. Le shell garde un libellé/aperçu de secours et des boutons accessibles. Options de taille/DPR et palier réservées aux appels contrôlés. Le shell A4 importe les types publics plutôt que les redéclarer et transmet la sélection validée au montage.

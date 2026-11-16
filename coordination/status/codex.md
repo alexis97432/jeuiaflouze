@@ -59,3 +59,12 @@
 - Contrat : daily accepté, date UTC au lancement, motif de partage deux catégories, heure du prochain changement locale, workflow Pages manuel autorisé par la demande de lien utilisateur antérieure.
 - Découpage E1a–e accepté ; préparer les fonctions indépendantes sur branche distincte si A4 bloqué par le rendu. Pas de modification des fichiers de code des autres.
 - REVIEW_PENDING Alexis pour ce lot documentaire C5. FLK conserve revues A3 et rendu F3 ; Codex a maintenant aussi la PR F3 #15 à revoir, non encore validée.
+
+## C6 — revues F3/F4 terminées
+
+- F3 #15 SHA `9e14f899f07609787dd1f0e287436562ecdf5bbb` : **PASS**. 209 unitaires, typecheck/build, 25 e2e +18 navigateur exécutés.
+- F4 #19 SHA `22d0e6e491bb784c3f66c0c629aa8286512cd922` : **PASS après F3**. 220 unitaires, typecheck/build, 25 e2e et 25 navigateur ciblés exécutés ; le profilage coûteux de F3 non répété. Première tentative F4 partageant involontairement le serveur F3 invalidée, puis vérifiée avec serveur propre CI=1.
+- Rapports : coordination/reviews/F3-codex.md et F4-codex.md. Contrat appearance et preview accepté et documenté. Livraison C6 **REVIEW_PENDING Alexis**.
+- Prochain pas Alexis : relire C6, intégrer F3 puis F4 sur les SHA approuvés, brancher les apparences et faire revoir le nouveau SHA A4 par FLK. Ne pas confondre code fusionné et build Pages publié.
+- E1 branché #20 garde **CHANGES_REQUESTED FLK sur 452ae7c**, défaut multi-onglets M2 ; pas de PASS Codex implicite. Attention : relire puis réécrire le localStorage ne garantit pas une transaction entre deux onglets concurrents ; convenir d'une sérialisation adéquate ou stratégie de fusion et tester le cas réellement concurrent, pas seulement des actions séquentielles.
+- Aucun téléphone physique testé, pas de validation humaine de la nouvelle esthétique.
