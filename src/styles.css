@@ -160,8 +160,11 @@ h1 { font-size: clamp(2.2rem, 11vw, 3.1rem); line-height: 1; letter-spacing: -0.
    getBoundingClientRect(), une bordure fausserait l'échelle (rendu flou). */
 #app[data-screen='game'] { padding: 0; place-items: stretch; }
 .view[data-screen='game'] { max-width: none; height: 100dvh; gap: 0; }
+/* Pastille d'objectif EN BAS, sur la zone du sol (aucune information de jeu), et transparente
+   aux appuis : en haut, elle masquait le score et avalait les touchers (revue A3b FLK, M1). */
 .view[data-screen='game'] [data-testid='target'] {
-  position: absolute; z-index: 1; top: max(8px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  position: absolute; z-index: 1; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+  pointer-events: none; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis;
   background: rgb(255 244 219 / 0.92); color: var(--ink); border: 2px solid var(--ink);
   border-radius: 999px; padding: 4px 12px; font-weight: 700; white-space: nowrap;
 }
