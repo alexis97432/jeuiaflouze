@@ -47,3 +47,7 @@ Avis produit : les deux Claude proposent un défi quotidien pour rendre le parta
 ## Priorité actuelle — retour des premiers testeurs
 
 L’utilisateur demande plus de contenu et une présentation actuelle après essai à deux. Lire [V2.md](V2.md) : C3/F3/A3/F4/A4 passent avant A1.5 et A2. Les deux Claude commencent par leur avis indépendant puis implémentent leurs lots séparés ; cycles de revue conservés. Ce brief reste REVIEW_PENDING Alexis.
+
+## Extension E1–E4 — idées utilisateur étudiées
+
+[Étude économie et progression](ECONOMIE.md). C4 Codex : cadrage et arbitrages ; E1 Alexis après A3/A4 (XP, pièces, boutique cosmétique, calendrier), revue FLK ; E2 classement serveur Alexis + rejeu FLK, chacun revu selon le cycle ; E3 reprise/publicité/achats, moteur FLK versionné et services Alexis ; E4 parcours saisonnier cosmétique après validation des prérequis. Finir la V2 visuelle actuelle avant ces extensions. Aucun revenu, fournisseur, achat ou contenu premium déclaré disponible sans implémentation vérifiée.
