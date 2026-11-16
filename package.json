@@ -8,11 +8,12 @@
   },
   "scripts": {
     "dev": "vite",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "build": "vite build",
     "preview": "vite preview --port 4173 --strictPort",
-    "test:e2e": "playwright test --trace off"
+    "test:e2e": "playwright test --trace off && npm run test:game-browser",
+    "test:game-browser": "playwright test -c tests/game/browser/playwright.config.ts --trace off"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
