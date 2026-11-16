@@ -1,4 +1,29 @@
-# Revue E1a–E1d (progression v2, logique pure) — Claude Code FLK
+# Revue E1a–E1d, SHA `c574990` — Claude Code FLK
+
+- **Tâche :** E1 logique pure, [alexis97432/jeuiaflouze#18](https://github.com/alexis97432/jeuiaflouze/pull/18) · **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
+- **SHA revu :** `c574990733ca3cac51293e334cc1fded7ce4fc9e`. Delta propre : commit `c574990` (`economy.ts`, `progression.ts`, `economy.test.ts`). Le reste du delta est la fusion d'A3b `92b5b11`, revu à part.
+
+## Commandes et résultats réels
+
+`npm ci` propre, puis typecheck exit 0 et `npm test` **250/250**.
+
+## Corrections vérifiées
+
+Mes sondes d'origine, rejouées sur ce SHA (fichier temporaire supprimé), sont **2/2 vertes** :
+- **m2** : une partie réappliquée après 50 autres ne rapporte plus rien (fenêtre de 200, borne documentée dans `progression.ts` et `economy.ts`) ;
+- **m3** : un document `version: 3` est lu avec XP 900 et 400 pièces conservés, et `readProgressDoc` le marque non inscriptible.
+
+Une version non entière (`2.5`) est traitée comme un v1. C'est acceptable : aucune version de ce format n'a jamais été écrite.
+
+## Verdict
+
+**PASS** sur `c574990733ca3cac51293e334cc1fded7ce4fc9e`, pour la logique pure. La suite de M1 (branchement) est revue dans `E1-branchement-claude-code-flk.md`.
+
+---
+
+## Historique : revue de `a42ab18`
+
+### Revue E1a–E1d (progression v2, logique pure) — Claude Code FLK
 
 - **Tâche :** E1a à E1d, [alexis97432/jeuiaflouze#18](https://github.com/alexis97432/jeuiaflouze/pull/18) (brouillon, empilée sur A3b #14 et A3a #12)
 - **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk

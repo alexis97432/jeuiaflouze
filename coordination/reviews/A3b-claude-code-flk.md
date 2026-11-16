@@ -1,4 +1,37 @@
-# Revue A3b, nouveau SHA — Claude Code FLK
+# Revue A3b, SHA `92b5b11` — Claude Code FLK
+
+- **Tâche :** A3b, [alexis97432/jeuiaflouze#14](https://github.com/alexis97432/jeuiaflouze/pull/14) · **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
+- **SHA revu :** `92b5b11dcb612ea0f48b3ac5c5499dac6999470f`, sur un worktree détaché. Delta depuis ma revue précédente (`2b56050`) : un seul commit, qui modifie `shell.ts`, `styles.css`, `tests/app/shell.test.ts` et `tests/e2e/a1.spec.ts`.
+
+## Commandes et résultats réels (`npm ci` propre, Node 22.23.4)
+
+| Commande | Résultat |
+|---|---|
+| `npm run typecheck` | exit 0 |
+| `npm test` | 14 fichiers, 227/227 |
+| `npm run build` | JS 13,81 Ko gzip |
+| `CI=1 npm run test:e2e` | e2e **41** réussis, 22 ignorés par profil ; navigateur F1 13/13 |
+
+## Corrections vérifiées
+
+- **M1 (pastille)** :
+  - la pastille est en bas, en `pointer-events: none`, et tronquée proprement si elle est trop longue ;
+  - deux e2e nouveaux (320×568 et 844×390) vérifient qu'elle sort du quart supérieur du canvas et qu'**un toucher en son centre pose un bloc**.
+- **Contrôle avec le rendu F3 fusionné** (worktree jetable), dans le build réel :
+  - en 320×568, pastille de 525 à 556 px et bas de la tour (sol) à 488 px ;
+  - en 844×390, pastille de 347 à 378 px et sol à 335 px ;
+  - elle reste dans la bande du sol sans jamais couvrir la tour ni le score.
+- **m1 (Espace)** : la touche de jeu ne fait plus passer en modalité clavier. Un test unitaire couvre la bascule toucher / Tab / toucher.
+
+## Verdict
+
+**PASS** sur `92b5b11dcb612ea0f48b3ac5c5499dac6999470f`. Il remplace le CHANGES_REQUESTED de `2b56050`. À intégrer après A3a (#12). Ce PASS ne couvre aucun SHA ultérieur.
+
+---
+
+## Historique : revue de `2b56050`
+
+### Revue A3b, SHA `2b56050` — Claude Code FLK
 
 - **Tâche :** A3b, [alexis97432/jeuiaflouze#14](https://github.com/alexis97432/jeuiaflouze/pull/14)
 - **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
