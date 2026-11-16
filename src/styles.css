@@ -202,3 +202,4 @@ h1 { font-size: clamp(2.2rem, 11vw, 3.1rem); line-height: 1; letter-spacing: -0.
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .btn:active { transform: none; }
 }
+.card:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }

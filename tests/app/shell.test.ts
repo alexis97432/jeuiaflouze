@@ -470,6 +470,7 @@ describe('accueil V2 et collection', () => {
     expect(choose.getAttribute('aria-label')).toBe('Choisir Apparence Marbré');
     choose.click();
     expect(text('card-skin-marbre')).toContain('Sélectionné');
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('card-skin-marbre'); // m2 FLK
     expect(meta.readProgress()).toMatchObject({ selected: { theme: 'confiserie', skin: 'marbre' } });
   });
 

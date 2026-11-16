@@ -161,21 +161,22 @@ export function createShell(options: ShellOptions): Shell {
     return b;
   };
 
-  const renderCollectionScreen = () => {
+  const renderCollectionScreen = (focusCard?: string) => {
     const { nodes, focus } = renderCollection(doc, progress, {
       onSelect: (next) => {
         const updated = selectAppearance(progress, next);
         if (updated.selected.theme === progress.selected.theme && updated.selected.skin === progress.selected.skin) return;
         progress = updated;
         meta.writeProgress(progress);
-        renderCollectionScreen();
+        // Le focus reste sur la carte choisie, pas sur le titre.
+        renderCollectionScreen(next.theme ? `card-theme-${next.theme}` : `card-skin-${next.skin}`);
         announce('Sélection enregistrée.');
       },
       onBack: () => {
         renderHome();
         view.querySelector<HTMLButtonElement>('[data-testid="open-collection"]')?.focus();
       },
-    });
+    }, focusCard);
     show('collection', nodes, focus);
   };
 
@@ -480,7 +481,7 @@ export function createShell(options: ShellOptions): Shell {
 
     const actions = el(doc, 'div', { class: 'actions' });
     actions.append(retry, shareButton);
-    if (rewardShortcut) actions.append(domButton(doc, 'Voir la collection', guarded(renderCollectionScreen), 'ghost', 'result-collection'));
+    if (rewardShortcut) actions.append(domButton(doc, 'Voir la collection', guarded(() => renderCollectionScreen()), 'ghost', 'result-collection'));
     actions.append(home);
     const info = el(doc, 'div', { class: 'result-info' });
     info.append(...parts.filter((p): p is HTMLElement => p !== null));

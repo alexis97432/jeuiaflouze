@@ -35,6 +35,7 @@ function card(
   const item = el(doc, 'li', {
     class: `card ${state}`,
     'data-testid': `card-${reward.kind}-${reward.id}`,
+    tabindex: '-1', // cible du focus après un choix (revue A3b FLK, m2)
   });
   const swatch = el(doc, 'div', { class: `swatch swatch-${reward.id}`, 'aria-hidden': 'true' });
   for (let i = 0; i < 3; i++) swatch.append(el(doc, 'span', { class: 'swatch-block' }));
@@ -59,6 +60,7 @@ export function renderCollection(
   doc: Document,
   progress: ProgressState,
   callbacks: CollectionCallbacks,
+  focusCard?: string,
 ): { nodes: HTMLElement[]; focus: HTMLElement } {
   const back = button(doc, '← Retour', callbacks.onBack, 'ghost', 'collection-back');
   const title = el(doc, 'h1', { tabindex: '-1', class: 'screen-title' }, 'Collection');
@@ -103,8 +105,9 @@ export function renderCollection(
   );
   const header = el(doc, 'div', { class: 'screen-header' });
   header.append(back, title);
+  const chosen = focusCard ? [...themeCards, ...skinCards].find((c) => c.dataset.testid === focusCard) : undefined;
   return {
     nodes: [header, count, section('Univers', themeCards), section('Apparences', skinCards), section('Badges', badgeCards), note],
-    focus: title,
+    focus: chosen ?? title,
   };
 }
