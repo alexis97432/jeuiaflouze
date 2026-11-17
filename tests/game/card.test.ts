@@ -102,3 +102,14 @@ describe('F8b R1 (revue Codex C8) : apparence V3 par l’entrée publique de la 
   });
 });
 
+
+describe('V4 : date du Défi du jour en mots', () => {
+  it('« 2026-11-17 » → « 17 novembre », « 1er » le premier, null si invalide', async () => {
+    const { dayInWords } = await import('../../src/game');
+    expect(dayInWords('2026-11-17')).toBe('17 novembre');
+    expect(dayInWords('2027-01-01')).toBe('1er janvier');
+    expect(dayInWords('2026-08-09')).toBe('9 août');
+    expect(dayInWords('2026-13-01')).toBeNull();
+    expect(dayInWords('17/11/2026')).toBeNull();
+  });
+});

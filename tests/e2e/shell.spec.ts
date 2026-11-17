@@ -18,7 +18,7 @@ test('parcours complet au clavier', async ({ page, isMobile }) => {
   await expect(page.getByTestId('game-canvas')).toBeFocused();
   await playUntilResult(page, () => page.keyboard.press('Space'));
 
-  await expect(page.getByText('Score local, non vérifié.')).toBeVisible();
+  await expect(page.getByText('Score gardé sur cet appareil.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rejouer' })).toBeFocused();
   // Tab atteint les autres actions dans l'ordre visuel.
   await page.keyboard.press('Tab');

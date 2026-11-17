@@ -23,6 +23,7 @@ export { renderAppearancePreview, type PreviewOptions } from './render/preview';
 export {
   summarizeRun,
   renderResultCard,
+  dayInWords,
   CARD_WIDTH,
   CARD_HEIGHT,
   MAX_PATTERN,

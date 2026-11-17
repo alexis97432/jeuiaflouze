@@ -20,7 +20,7 @@ import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '.
 import { buyLife, LIFE_PRICE, livesOf, MAX_LIVES, returnLife, useLife } from './lives';
 import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
-import { isAnySkinId, renderAppearancePreview, type AnyAppearance } from '../game';
+import { dayInWords, isAnySkinId, renderAppearancePreview, type AnyAppearance } from '../game';
 import {
   applyRunEconomy,
   CALENDAR_REWARDS,
@@ -341,18 +341,8 @@ export function createShell(options: ShellOptions): Shell {
   };
 
   // --- Fenêtres et bouton retour du téléphone ----------------------------------------------
-  let sheet: SheetHandle | null = null;
-  const closeSheet = () => {
-    const s = sheet;
-    sheet = null;
-    s?.close();
-  };
-  const openDialog = (spec: Parameters<typeof openSheet>[2]) => {
-    closeSheet();
-    const handle = openSheet(doc, root, { ...spec, onClose: () => { if (sheet === handle) sheet = null; spec.onClose?.(); } });
-    sheet = handle;
-    return handle;
-  };
+  // Le shell ajoute au plus UNE entrée d'historique : pour un écran secondaire, ou pour une
+  // fenêtre ouverte depuis l'accueil. Le retour du téléphone la consomme (voir onPopState).
   const historyApi = options.history ?? null;
   let historyPushed = false;
   let ignoreNextPop = false;
@@ -376,9 +366,45 @@ export function createShell(options: ShellOptions): Shell {
     }
   };
 
+  let sheet: SheetHandle | null = null;
+  /** L'entrée d'historique a été ajoutée par une fenêtre ouverte à l'accueil. */
+  let sheetPushed = false;
+  /** Changement d'écran en cours : la fenêtre se ferme sans toucher à l'historique. */
+  let switching = false;
+  const closeSheet = () => {
+    const s = sheet;
+    sheet = null;
+    s?.close();
+  };
+  const openDialog = (spec: Parameters<typeof openSheet>[2]) => {
+    closeSheet();
+    const handle = openSheet(doc, root, {
+      ...spec,
+      onClose: () => {
+        if (sheet === handle) sheet = null;
+        if (sheetPushed && !switching) {
+          sheetPushed = false;
+          popOwnHistory();
+        }
+        spec.onClose?.();
+      },
+    });
+    sheet = handle;
+    if (screen === 'home' && !historyPushed) {
+      pushHistory();
+      sheetPushed = historyPushed;
+    }
+    return handle;
+  };
+
   const show = (next: Screen, children: (HTMLElement | null)[], focus: HTMLElement) => {
     const changed = next !== screen;
-    if (changed) closeSheet();
+    if (changed) {
+      switching = true;
+      closeSheet();
+      switching = false;
+      sheetPushed = false; // l'entrée éventuelle appartient désormais au nouvel écran
+    }
     screen = next;
     clearTimeout(guardTimer);
     delete view.dataset.inputReady;
@@ -1042,6 +1068,19 @@ export function createShell(options: ShellOptions): Shell {
     return hero;
   };
 
+  /** Prochaine mission (grands écrans seulement, en CSS) : un but clair pour la partie suivante. */
+  const homeMission = () => {
+    const next = activeObjectives(progress)[0];
+    if (!next) return null;
+    const card = el(doc, 'section', { class: 'card home-mission', 'aria-labelledby': 'home-mission-title', 'data-testid': 'home-mission' });
+    const head = el(doc, 'h2', { class: 'card-title', id: 'home-mission-title' });
+    head.append(icon(doc, 'missions'), el(doc, 'span', {}, 'Prochaine mission'));
+    const reward = el(doc, 'p', { class: 'hint small' });
+    reward.append(icon(doc, 'gift'), el(doc, 'span', {}, ` À gagner : ${rewardLabel(next.reward)}`));
+    card.append(head, el(doc, 'p', { class: 'mission-label' }, next.label), reward);
+    return card;
+  };
+
   const renderHome = () => {
     collectionFrom = 'rewards';
     if (invalidReason) {
@@ -1079,7 +1118,7 @@ export function createShell(options: ShellOptions): Shell {
     dailyCard.append(daily, dailyHint);
     const actions = el(doc, 'div', { class: 'home-actions' });
     actions.append(play, dailyCard, recordLine());
-    show('home', [homeTopbar(), brandHero(), actions, el(doc, 'span', { class: 'home-spacer' }), homeDock()], play);
+    show('home', [homeTopbar(), brandHero(), actions, homeMission(), el(doc, 'span', { class: 'home-spacer' }), homeDock()], play);
     prefetchTickets();
   };
 
@@ -1215,10 +1254,6 @@ export function createShell(options: ShellOptions): Shell {
     }
   };
 
-  /** Date du Défi du jour en mots (« 17 novembre »), sans fuseau ni format technique. */
-  const dayInWords = (day: string) =>
-    new Date(`${day}T12:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
-
   const startRun = (previous: RunState | null, requested?: Mode) => {
     stopRun();
     const mode: Mode = previous?.mode ?? requested ?? (challenge ? 'challenge' : 'free');
@@ -1343,7 +1378,7 @@ export function createShell(options: ShellOptions): Shell {
     const target = runChallenge
       ? el(doc, 'p', { class: 'target-strip', 'data-testid': 'target' }, `Objectif : plus de ${floors(runChallenge.target)}`)
       : day
-        ? el(doc, 'p', { class: 'target-strip', 'data-testid': 'target' }, `Défi du jour · ${dayInWords(day)}`)
+        ? el(doc, 'p', { class: 'target-strip', 'data-testid': 'target' }, `Défi du jour${dayInWords(day) ? ` · ${dayInWords(day)}` : ''}`)
         : null;
     target?.prepend(icon(doc, runChallenge ? 'target' : 'calendar'));
     stage.append(canvas, hud, pauseOverlay);
@@ -1436,6 +1471,16 @@ export function createShell(options: ShellOptions): Shell {
     }
     const requestId = `${current.runId}:revive`;
     const box = el(doc, 'div', { class: 'overlay revive', 'data-testid': 'revive' });
+    // Délai de garde (comme au résultat) : l'offre apparaît au moment de la chute ; un enfant qui
+    // tape encore vite ne doit ni dépenser une vie ni terminer la partie sans l'avoir voulu.
+    const readyAt = now() + RESULT_INPUT_GUARD_MS;
+    const guarded = (action: () => void) => () => {
+      if (now() < readyAt) return;
+      action();
+    };
+    setTimeout(() => {
+      box.dataset.inputReady = 'true';
+    }, RESULT_INPUT_GUARD_MS);
     const panel = el(doc, 'div', { class: 'overlay-panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'revive-title' });
     const msg = el(doc, 'p', { role: 'status', class: 'hint', 'data-testid': 'revive-status' });
     const buttons: HTMLButtonElement[] = [];
@@ -1469,7 +1514,7 @@ export function createShell(options: ShellOptions): Shell {
         size: 'xl',
         block: true,
         testId: 'revive-life',
-        onClick: () => {
+        onClick: guarded(() => {
           busy(true);
           msg.textContent = '';
           void reviveLives.consume(requestId).then((r) => {
@@ -1484,7 +1529,7 @@ export function createShell(options: ShellOptions): Shell {
             msg.textContent = r === 'none' ? 'Plus de vie.' : 'La vie n’a pas pu être utilisée. Rien n’a été retiré.';
             busy(false);
           });
-        },
+        }),
       });
       buttons.push(b);
     }
@@ -1495,7 +1540,7 @@ export function createShell(options: ShellOptions): Shell {
         variant: lives > 0 ? 'secondary' : 'primary',
         block: true,
         testId: 'revive-ad',
-        onClick: () => {
+        onClick: guarded(() => {
           busy(true);
           msg.textContent = 'Vidéo en cours…';
           void rewardGate.reward(requestId, 'revive', () => resumeWith('vidéo')).then((outcome) => {
@@ -1504,7 +1549,7 @@ export function createShell(options: ShellOptions): Shell {
             msg.textContent = AD_MESSAGES[outcome];
             busy(false);
           });
-        },
+        }),
       });
       buttons.push(b);
     }
@@ -1517,7 +1562,7 @@ export function createShell(options: ShellOptions): Shell {
           return b;
         })()
       : null;
-    const end = uiButton(doc, { label: 'Terminer', variant: 'ghost', block: true, testId: 'revive-end', onClick: finish });
+    const end = uiButton(doc, { label: 'Terminer', variant: 'ghost', block: true, testId: 'revive-end', onClick: guarded(finish) });
     buttons.push(end);
     const art = el(doc, 'div', { class: 'revive-art', 'aria-hidden': 'true' });
     art.append(icon(doc, 'heart'));
@@ -1684,7 +1729,7 @@ export function createShell(options: ShellOptions): Shell {
     const rankRetry = uiButton(doc, { label: 'Envoyer encore', icon: 'replay', variant: 'ghost', size: 'sm', testId: 'rank-retry', onClick: () => void sendRank(current, result, rankStatus, rankRetry) });
     rankRetry.hidden = true;
     if (revived) {
-      rankStatus.textContent = 'Une partie avec reprise n’entre pas au classement.';
+      rankStatus.textContent = 'Score gardé sur cet appareil.'; // « hors classement » est déjà dit juste au-dessus
     } else if (current.ticket && player?.pseudo) {
       rankStatus.textContent = 'Envoi au classement…';
     } else if (leaderboard.available && current.mode !== 'challenge') {
@@ -1807,18 +1852,20 @@ export function createShell(options: ShellOptions): Shell {
       }
     };
 
+    // Actions principales juste sous le score (visibles sans défiler, même sur 320 × 568) :
+    // Rejouer, puis Défier un ami et Accueil. Le reste (image, collection) vient après les infos.
     const actions = el(doc, 'div', { class: 'result-actions' });
     const row = el(doc, 'div', { class: 'row' });
-    row.append(shareButton);
-    if (options.resultImage) row.append(saveImage);
-    else row.classList.add('single');
+    row.append(shareButton, home);
     actions.append(retry, row);
+    const more = el(doc, 'div', { class: 'result-more' });
+    if (options.resultImage) more.append(saveImage);
     const rewardShortcut = outcome.completedNow.length > 0;
     if (rewardShortcut) {
-      actions.append(uiButton(doc, { label: 'Voir la collection', icon: 'palette', variant: 'ghost', block: true, testId: 'result-collection', onClick: guarded(() => renderCollectionScreen()) }));
+      more.append(uiButton(doc, { label: 'Voir la collection', icon: 'palette', variant: 'ghost', block: true, testId: 'result-collection', onClick: guarded(() => renderCollectionScreen()) }));
     }
-    actions.append(home);
-    show('result', [...parts, actions, status, fallback], retry);
+    const [scoreCard, ...details] = parts;
+    show('result', [scoreCard!, actions, status, fallback, ...details, more.childElementCount > 0 ? more : null], retry);
     // Fête mesurée : record ou niveau gagné (confettis seulement avec les effets complets).
     if (outcome.gained.levelUp) celebrate('levelup');
     else if (isRecord) celebrate('reward');
@@ -1904,9 +1951,16 @@ export function createShell(options: ShellOptions): Shell {
   const onPopState = () => {
     if (ignoreNextPop) {
       ignoreNextPop = false;
+      // Course rare : un nouvel écran a été ouvert avant la fin du retour demandé par le shell,
+      // qui a donc consommé la nouvelle entrée. On la remet pour garder le retour du téléphone.
+      if (screen !== 'home' && historyPushed) {
+        historyPushed = false;
+        pushHistory();
+      }
       return;
     }
     historyPushed = false; // l'entrée ajoutée par le shell vient d'être consommée
+    sheetPushed = false;
     if (sheet) {
       closeSheet();
       if (screen !== 'home') pushHistory();

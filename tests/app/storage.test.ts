@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createLocalStore,
   createMetaStore,
+  DEFAULT_PREFS,
+  sanitizePrefs,
   MAX_DAILY_RECORDS,
   META_PREFIX,
   getBrowserStorage,
@@ -40,12 +42,12 @@ describe('createLocalStore', () => {
     expect(store.submitScore(free(5))).toBe(true);
     expect(store.submitScore(free(3))).toBe(false);
     expect(store.submitScore(free(5))).toBe(false); // égalité : pas un nouveau record
-    store.writePrefs({ muted: true });
+    store.writePrefs({ ...DEFAULT_PREFS, muted: true, theme: 'dark', volume: 0.35 });
     expect([...data.keys()].every((k) => k.startsWith(STORAGE_PREFIX))).toBe(true);
 
     const reopened = createLocalStore(storage);
     expect(reopened.readBest()).toBe(5);
-    expect(reopened.readPrefs()).toEqual({ muted: true });
+    expect(reopened.readPrefs()).toEqual({ ...DEFAULT_PREFS, muted: true, theme: 'dark', volume: 0.35 });
     expect(reopened.readRecent().map((r) => r.score)).toEqual([5, 3, 5]);
     expect(reopened.persistent).toBe(true);
   });
@@ -72,7 +74,7 @@ describe('createLocalStore', () => {
     data.set(`${STORAGE_PREFIX}recent`, raw);
     const store = createLocalStore(storage);
     expect(store.readBest()).toBe(0);
-    expect(store.readPrefs()).toEqual({ muted: false });
+    expect(store.readPrefs()).toEqual(DEFAULT_PREFS);
     expect(store.readRecent()).toEqual([]);
     expect(store.submitScore(free(1))).toBe(true);
     expect(store.readBest()).toBe(1);
@@ -91,9 +93,37 @@ describe('createLocalStore', () => {
     const store = createLocalStore(null);
     expect(store.persistent).toBe(false);
     expect(store.submitScore(free(4))).toBe(true);
-    store.writePrefs({ muted: true });
+    store.writePrefs({ ...DEFAULT_PREFS, muted: true });
     expect(store.readBest()).toBe(4);
-    expect(store.readPrefs()).toEqual({ muted: true });
+    expect(store.readPrefs()).toEqual({ ...DEFAULT_PREFS, muted: true });
+  });
+
+  it('V4 : les préférences V3 { muted } sont reprises, les nouveaux réglages prennent leur valeur par défaut', () => {
+    for (const muted of [true, false]) {
+      const { storage, data } = fakeStorage();
+      data.set(`${STORAGE_PREFIX}prefs`, JSON.stringify({ muted }));
+      const store = createLocalStore(storage);
+      expect(store.readPrefs()).toEqual({ ...DEFAULT_PREFS, muted });
+      // Rien n'est réécrit à la lecture : la sauvegarde V3 reste intacte tant que le joueur ne change rien.
+      expect(data.get(`${STORAGE_PREFIX}prefs`)).toBe(JSON.stringify({ muted }));
+    }
+  });
+
+  it('V4 : réglages invalides ramenés à des valeurs sûres, à la lecture comme à l’écriture', () => {
+    expect(DEFAULT_PREFS).toEqual({ muted: false, volume: 0.8, theme: 'system', motion: 'system', effects: 'full', haptics: true });
+    expect(sanitizePrefs({ muted: 'oui', volume: 5, theme: 'rose', motion: 'vite', effects: 'max', haptics: 1 })).toEqual({ ...DEFAULT_PREFS, volume: 1 });
+    expect(sanitizePrefs({ volume: -2 }).volume).toBe(0);
+    expect(sanitizePrefs({ volume: Number.NaN }).volume).toBe(DEFAULT_PREFS.volume);
+    expect(sanitizePrefs({ volume: 0.333333 }).volume).toBe(0.33);
+    expect(sanitizePrefs(null)).toEqual(DEFAULT_PREFS);
+    expect(sanitizePrefs([true])).toEqual(DEFAULT_PREFS);
+    expect(sanitizePrefs({ theme: 'light', motion: 'reduce', effects: 'light', haptics: false })).toEqual({
+      ...DEFAULT_PREFS, theme: 'light', motion: 'reduce', effects: 'light', haptics: false,
+    });
+    const { storage, data } = fakeStorage();
+    const store = createLocalStore(storage);
+    store.writePrefs({ ...DEFAULT_PREFS, volume: 7 } as never);
+    expect(JSON.parse(data.get(`${STORAGE_PREFIX}prefs`)!)).toEqual({ ...DEFAULT_PREFS, volume: 1 });
   });
 
   it('lecture bloquée ou quota plein : aucune exception, repli mémoire', () => {

@@ -5,7 +5,7 @@ import type { StartGame, StartOptions } from '../../src/app/game-loader';
 import { createShell, type LivesProvider, PROGRESS_LOCK, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
 import { createTracker, memorySink } from '../../src/platform/metrics';
 import type { ShareOutcome } from '../../src/platform/share';
-import { createLocalStore, createMetaStore } from '../../src/platform/storage';
+import { createLocalStore, createMetaStore, DEFAULT_PREFS } from '../../src/platform/storage';
 import { dailySeed } from '../../src/platform/daily';
 import { AD_MESSAGES, type AdOutcome, type RewardedAdProvider } from '../../src/platform/ads/rewarded';
 import type { BoardPage, LeaderboardService, RankTicket, ServiceResult } from '../../src/platform/services/leaderboard';
@@ -42,8 +42,14 @@ const flush = async () => {
 
 let visibility: DocumentVisibilityState = 'visible';
 let shell: Shell | null = null;
+/** Horloges des shells créés dans le test : l'offre de reprise a un délai de garde (V4). */
+const clocks: { t: number }[] = [];
+const guardElapsed = () => {
+  for (const c of clocks) c.t += RESULT_INPUT_GUARD_MS;
+};
 
 beforeEach(() => {
+  clocks.length = 0;
   visibility = 'visible';
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
   document.body.innerHTML = '<main id="app"></main>';
@@ -66,6 +72,7 @@ function setup(overrides: Partial<ShellOptions> = {}) {
   let seed = 100;
   let run = 0;
   const clock = { t: 0 };
+  clocks.push(clock);
   const root = document.getElementById('app')!;
   shell = createShell({
     root,
@@ -123,7 +130,8 @@ describe('parcours libre', () => {
     expect(shell.screen).toBe('result');
     expect(mount.destroyed).toBe(true);
     expect(text('score')).toBe('4 étages');
-    expect(root.textContent).toContain('non vérifié');
+    expect(text('rank-status')).toBe('Score gardé sur cet appareil.');
+    expect(root.textContent).not.toMatch(/non vérifié|serveur|UTC/);
     expect(document.activeElement?.textContent).toBe('Rejouer');
     expect(names(sink)).toEqual(['run_start', 'run_end']);
   });
@@ -209,7 +217,7 @@ describe('record et préférences', () => {
 
   it('signale une sauvegarde indisponible sans bloquer', () => {
     const { text } = setup();
-    expect(text('record')).toMatch(/non sauvegardé/);
+    expect(text('record')).toMatch(/pas sauvegardé sur cet appareil/);
   });
 
   it('le réglage du son est mémorisé et transmis au moteur', () => {
@@ -217,15 +225,16 @@ describe('record et préférences', () => {
     const { game, button, root } = setup({ store });
     button('Réglages').click();
     const toggle = root.querySelector<HTMLButtonElement>('[data-testid="sound-toggle"]')!;
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle.getAttribute('role')).toBe('switch');
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
     toggle.click();
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
-    expect(toggle.textContent).toBe('Son : coupé');
-    expect(store.readPrefs()).toEqual({ muted: true });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(toggle.textContent).toBe('Son');
+    expect(store.readPrefs()).toEqual({ ...DEFAULT_PREFS, muted: true });
     button('Retour').click();
     expect(document.activeElement?.getAttribute('data-testid')).toBe('nav-settings');
     button('Jouer').click();
-    expect(game.mounts[0]!.options.prefs).toEqual({ muted: true });
+    expect(game.mounts[0]!.options.prefs).toEqual({ muted: true, volume: 0.8, effects: 'full' });
   });
 });
 
@@ -317,7 +326,7 @@ describe('partage', () => {
     await end(1);
     button('Défier un ami').click();
     await flush();
-    expect(text('share-status')).toBe('Lien du défi copié.');
+    expect(text('share-status')).toBe('Lien du défi copié. Colle-le dans un message !');
     expect(names(sink).at(-1)).toBe('share_success');
   });
 
@@ -401,7 +410,7 @@ describe('Tour du jour (V2)', () => {
     expect(sink.events.at(-1)).toMatchObject({ name: 'run_start', mode: 'daily', day: '2026-11-16' });
     day.now = new Date('2026-11-17T00:00:01Z'); // minuit UTC passe pendant la partie
     await end(6);
-    expect(text('daily-outcome')).toBe('Nouveau record du jour (2026-11-16) !');
+    expect(text('daily-outcome')).toBe('Nouveau record du Défi du jour !');
     expect(meta.readDailyBest('2026-11-16')).toBe(6);
     expect(meta.readDailyBest('2026-11-17')).toBe(0);
     button('Rejouer').click(); // nouvelle partie : nouvelle date
@@ -462,10 +471,10 @@ describe('accueil V2 et collection', () => {
     expect(text('open-collection')).toBe('Ma collection 2/17');
     button('Ma collection 2/17').click();
     expect(text('card-skin-marbre')).toContain('À débloquer : poser au moins 5 étages dans une partie');
-    expect(text('card-theme-jardin')).toContain('À débloquer : terminer une tour du jour avec au moins 8 étages');
+    expect(text('card-theme-jardin')).toContain('À débloquer : terminer un défi du jour avec au moins 8 étages');
     expect(text('card-skin-gomme')).toContain('Sélectionné');
     expect(root.querySelector('[data-testid="card-skin-marbre"] button')).toBeNull(); // verrouillé : pas de choix
-    button('← Retour').click(); // retour à l'écran Récompenses
+    button('Retour').click(); // retour à l'écran Récompenses
     expect(document.activeElement?.getAttribute('data-testid')).toBe('open-collection');
     button('Retour').click();
     expect(document.activeElement?.getAttribute('data-testid')).toBe('nav-rewards');
@@ -766,8 +775,8 @@ describe('apparences branchées (A4)', () => {
     first.button('Ma collection 4/17').click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-theme-orbital"] button')!.click();
-    first.button('← Retour').click();
-    first.button('Retour').click();
+    first.button('Retour').click(); // collection → Récompenses
+    first.button('Retour').click(); // Récompenses → accueil
     first.button('Jouer').click();
     expect(first.game.mounts[1]!.options.appearance).toEqual({ theme: 'orbital', skin: 'marbre' });
     first.shell.destroy();
@@ -783,9 +792,10 @@ describe('menu V3 (lisible par un enfant de 8 ans)', () => {
   it("accueil : Jouer, Défi du jour, record, et une barre Boutique / Classement / Récompenses / Réglages — rien d'autre", () => {
     const { root } = setup();
     const buttons = [...root.querySelectorAll('button')].map((b) => b.textContent);
-    expect(buttons).toEqual(['Jouer', 'Défi du jour', 'Boutique', 'Classement', 'Récompenses', 'Réglages']);
+    // V4 : barre du haut (aide, réglages), Jouer, Défi du jour, puis le dock du bas.
+    expect(buttons).toEqual(['Comment jouer', 'Réglages', 'Jouer', 'Défi du jour', 'Boutique', 'Collection', 'Récompenses', 'Classement']);
     expect(root.querySelectorAll('.btn.primary')).toHaveLength(1);
-    expect(root.querySelector('[data-testid="play"]')?.getAttribute('data-icon')).toBe('▶');
+    expect(root.querySelector('[data-testid="play"] svg.ic.play')).not.toBeNull();
     // Aucun panneau empilé ni explication technique sur l'accueil.
     expect(root.querySelectorAll('.panel')).toHaveLength(0);
     expect(root.textContent).not.toMatch(/UTC|XP|progression locale/i);
@@ -942,7 +952,7 @@ describe('classement (V3-A3)', () => {
     expect(document.activeElement?.textContent).toBe('Classement');
     button('Jouer').click();
     await end(3);
-    expect(text('rank-status')).toBe('Score local, non vérifié.');
+    expect(text('rank-status')).toBe('Score gardé sur cet appareil.');
     expect(root.querySelector('[data-testid="rank-retry"]')?.hasAttribute('hidden')).toBe(true);
   });
 
@@ -1057,7 +1067,8 @@ describe('classement (V3-A3)', () => {
     expect(root.querySelector('[data-testid="board-weekly"]')!.getAttribute('aria-pressed')).toBe('true');
     button('Voir plus').click();
     await flush();
-    expect([...root.querySelectorAll('.board-list li')].map((li) => li.textContent)).toEqual(['1erLune12 étages', '2eAlex (toi)9 étages', '3eKiwi1 étage']);
+    // Règles v2 : le classement compte des points (corrigé en V4, l'écran disait « étages »).
+    expect([...root.querySelectorAll('.board-list li')].map((li) => li.textContent)).toEqual(['1erLune12 points', '2eAlex (toi)9 points', '3eKiwi1 point']);
     button('Aujourd’hui').click();
     await flush();
     expect(text('board-error')).toBe('Beaucoup de monde en ce moment. Réessaie dans une minute.');
@@ -1105,7 +1116,8 @@ describe('passe de saison (V3-A5)', () => {
     a.button('Voir le passe · cadeau à prendre').click();
     expect(a.text('premium-note')).toContain('indisponible');
     expect(a.text('tier-1-premium')).toContain('Indisponible');
-    expect(a.text('tier-2-free')).toContain('🔒 35 étoiles');
+    expect(a.text('tier-2-free')).toContain('35 étoiles');
+    expect(a.root.querySelector('[data-testid="tier-2-free"] svg.ic.lock')).not.toBeNull();
     const stale = a.root.querySelector<HTMLButtonElement>('[data-testid="claim-tier-1"]')!;
     stale.click();
     await flush();
@@ -1113,7 +1125,8 @@ describe('passe de saison (V3-A5)', () => {
     stale.click(); // bouton périmé (double appui) : déjà pris
     await flush();
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, season: { claimed: ['free:1'] } });
-    expect(a.text('tier-1-free')).toContain('Pris ✓');
+    expect(a.text('tier-1-free')).toContain('Pris');
+    expect(a.root.querySelector('[data-testid="tier-1-free"] svg.ic.check')).not.toBeNull();
   });
 });
 
@@ -1144,6 +1157,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     button('Jouer').click();
     expect(g.mounts[0]!.options.allowContinue).toBeUndefined();
     g.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     expect(root.querySelector('[data-testid="revive"]')).toBeNull();
     expect(g.mounts[0]!.handle.declineContinue).toHaveBeenCalledTimes(1);
   });
@@ -1156,6 +1170,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     const m = g.mounts[0]!;
     expect(m.options.allowContinue).toBe(true);
     m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     expect(text('revive-demo')).toContain('Mode démo');
     expect(document.activeElement?.textContent).toBe('Regarder une vidéo');
     const video = root.querySelector<HTMLButtonElement>('[data-testid="revive-ad"]')!;
@@ -1167,6 +1182,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
     expect(root.querySelector('[data-testid="revive"]')).toBeNull();
     m.options.onGameEvent!({ type: 'continue-offer', tick: 90 }); // second raté : déjà récompensé
+    guardElapsed(); // délai de garde de l'offre (V4)
     expect(root.querySelector('[data-testid="revive"]')).not.toBeNull();
   });
 
@@ -1177,6 +1193,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     button('Jouer').click();
     const m = g.mounts[0]!;
     m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     button('Regarder une vidéo').click();
     calls[0]!(outcome);
     await flush();
@@ -1193,6 +1210,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     button('Jouer').click();
     const m = g.mounts[0]!;
     m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     button('Utiliser une vie (2)').click();
     await flush();
     expect(text('revive-status')).toContain('Rien n’a été retiré');
@@ -1238,7 +1256,8 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     expect(store.readBest()).toBe(6);
     expect((storage.dump('poc:meta:v1:progress') as { xp: number }).xp).toBe(6 + 2); // hauteur + 2×parfait, pas les points
     expect(svc.submit).not.toHaveBeenCalled();
-    expect(text('rank-status')).toContain('reprise');
+    // V4 : « hors classement » est dit une fois (ligne revived), sans phrase en double.
+    expect(text('rank-status')).toBe('Score gardé sur cet appareil.');
   });
 });
 
@@ -1281,7 +1300,7 @@ describe('V3-A6b : secours du partage d’image, annonces, sauvegarde et récomp
     await end(4);
     button('Enregistrer l’image').click();
     await flush();
-    expect(text('share-status')).toBe('Téléchargement impossible : image affichée ci-dessous.');
+    expect(text('share-status')).toBe('Téléchargement impossible : l’image est affichée ci-dessous.');
     expect(root.querySelector('[data-testid="result-image"]')?.getAttribute('src')).toBe('blob:image');
     expect(createObjectURL).toHaveBeenCalledWith(file);
   });
@@ -1400,6 +1419,7 @@ describe('vie rendue si la reprise n’a pas lieu (revue FLK A6, m4)', () => {
     const { button, text } = setup({ startGame, revive: { lives: { count: () => 1, consume, refund } } });
     button('Jouer').click();
     mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     button('Utiliser une vie (1)').click();
     await flush();
     expect(refund).toHaveBeenCalledTimes(1);
@@ -1419,6 +1439,7 @@ describe('vie rendue si la reprise n’a pas lieu (revue FLK A6, m4)', () => {
     const { button } = setup({ startGame, revive: { lives: { count: () => 1, consume, refund } } });
     button('Jouer').click();
     mounts[0]!.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     button('Utiliser une vie (1)').click();
     shell?.destroy();
     resolve('ok');
@@ -1511,7 +1532,7 @@ describe('vies de reprise en partie libre (correction après publication)', () =
     const storage = seeded(40);
     const g = engine();
     const { button, text, root } = setup({ startGame: g.startGame, meta: createMetaStore(storage) });
-    expect(text('lives')).toBe('0');
+    expect(text('lives')).toBe('0 vie');
     button('Boutique').click();
     expect(text('lives-count')).toBe('Tu as 0 vie (maximum 5).');
     button('Acheter 1 vie').click();
@@ -1520,13 +1541,14 @@ describe('vies de reprise en partie libre (correction après publication)', () =
     expect(text('life-success')).toBe('C’est à toi ! Tu as maintenant 1 vie.');
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, lives: 1 });
     button('Retour').click();
-    expect(text('lives')).toBe('1');
-    expect(root.querySelector('[data-testid="lives"]')!.getAttribute('aria-label')).toBe('1 vie');
+    expect(text('lives')).toBe('1 vie');
+    expect(root.querySelector('[data-testid="lives"]')!.getAttribute('title')).toBe('1 vie');
 
     button('Jouer').click();
     const m = g.mounts[0]!;
     expect(m.options.allowContinue).toBe(true);
     m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     const life = root.querySelector<HTMLButtonElement>('[data-testid="revive-life"]')!;
     expect(life.textContent).toBe('Utiliser une vie (1)');
     expect(document.activeElement).toBe(life);
@@ -1557,6 +1579,7 @@ describe('vies de reprise en partie libre (correction après publication)', () =
     const { button, text } = setup({ startGame: g.startGame, meta: createMetaStore(storage) });
     button('Jouer').click();
     g.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     button('Utiliser une vie (1)').click();
     await flush();
     await flush();
@@ -1570,18 +1593,22 @@ describe('vies de reprise en partie libre (correction après publication)', () =
     const a = setup({ startGame: g1.startGame, meta: createMetaStore(storage) });
     a.button('Jouer').click();
     g1.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     const lifeA = a.root.querySelector<HTMLButtonElement>('[data-testid="revive-life"]')!;
     // Second onglet : même stockage, autre partie.
     const root2 = document.createElement('main');
     document.body.append(root2);
     const g2 = engine();
     const tracker = createTracker({ buildId: 'b', rulesVersion: 1, sessionId: 's2', sink: memorySink() });
+    const clockB = { t: 0 };
+    clocks.push(clockB);
     const b = createShell({
       root: root2, startGame: g2.startGame, tracker, store: createLocalStore(null), meta: createMetaStore(storage),
-      url: 'https://jeu.test/', replaceUrl: () => undefined, share: async () => 'shared', newSeed: () => 9, newRunId: () => 'runB', now: () => 0,
+      url: 'https://jeu.test/', replaceUrl: () => undefined, share: async () => 'shared', newSeed: () => 9, newRunId: () => 'runB', now: () => clockB.t,
     });
     root2.querySelector<HTMLButtonElement>('[data-testid="play"]')!.click();
     g2.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    guardElapsed(); // délai de garde de l'offre (V4)
     lifeA.click();
     await flush();
     root2.querySelector<HTMLButtonElement>('[data-testid="revive-life"]')!.click();

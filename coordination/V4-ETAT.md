@@ -62,10 +62,11 @@ Fichier de reprise : si une session s'interrompt, repartir d'ici. Mis à jour à
 | S3 | Composants d'interface : feuille modale, barre du haut, dock, segments, interrupteur, curseur (`src/app/ui/components.ts`) | fait |
 | S4 | Écrans : accueil, récompenses, passe, boutique, collection, classement, réglages, aide, résultat, partie et pause, reprise (`src/app/shell.ts`, `src/app/collection-view.ts`) | fait, typecheck propre |
 | S5 | Moteur : qualité d'effets, volume, police (`src/game/render/`) | fait |
-| S6 | Tests : mise à jour, régressions, exploration de tous les boutons, contrastes, thèmes, petits écrans | en cours |
+| S6 | Tests : mise à jour, régressions, exploration de tous les boutons, contrastes, thèmes, petits écrans | en cours (tests mis à jour et ajoutés ; exploration et contrastes à faire) |
 | S7 | Documentation, statut, PR, fusion, publication Pages, vérification en ligne | à faire |
 
 ## Reprise
 
-- Dernier commit poussé : voir `git log` de la branche `agent/claude-code-alexis/v4-interface` (point d'étape « V4 en cours »).
-- Prochaine action : S6. Adapter `tests/app/storage.test.ts` (préférences complètes) et `tests/app/shell.test.ts` (21 échecs au point d'étape : libellés et structure V4), puis e2e (`tests/e2e/`), captures « après », puis S7.
+- Point d'étape : interface V4 complète, `npm run typecheck`, `npm test` (497), `npm run build`, e2e (71 passés, 0 échec au dernier passage) et `test:game-browser` (39) verts en local.
+- Corrections trouvées en route (à reporter dans `docs/V4.md`) : classement v2 affiché en « étages » au lieu de points ; offre de reprise sans délai de garde (une vie pouvait partir sur un appui en rafale) ; test e2e V3 fragile (cible du lien comparée aux points) ; phrase « hors classement » en double.
+- Prochaine action : exploration de tous les boutons (aucun bouton mort), contrastes clair/sombre, captures « après » (`coordination/captures/v4-apres/`), puis S7 (docs, PR, CI, fusion, Pages, vérification en ligne).

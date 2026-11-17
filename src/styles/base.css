@@ -168,3 +168,11 @@ h2:focus,
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+
+/* Écran tactile : pas d'anneau de focus tant que le joueur n'utilise pas de clavier
+   (le shell pose data-input="keyboard" dès Tab, Entrée ou une flèche). */
+@media (pointer: coarse) {
+  #app:not([data-input='keyboard']) :focus-visible {
+    outline: none;
+  }
+}

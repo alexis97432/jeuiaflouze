@@ -68,6 +68,8 @@
 .btn.xl .ic {
   width: 1.1em;
   height: 1.1em;
+}
+.btn .ic.play {
   fill: currentColor;
 }
 .btn.sm {
@@ -93,21 +95,35 @@
   text-align: left;
 }
 
-/* Bouton Jouer : légère respiration (coupée en mouvement réduit). */
-.pulse {
-  animation: pulse 2.4s ease-in-out infinite;
+/* Bouton Jouer : un halo qui s'élargit doucement autour du bouton (coupé en mouvement réduit).
+   Le bouton lui-même ne bouge pas : la zone de toucher reste fixe et nette. */
+.pulse::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 3px solid var(--primary);
+  pointer-events: none;
+  opacity: 0;
+  animation: halo 2.4s ease-out infinite;
 }
-@keyframes pulse {
-  0%,
+@keyframes halo {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  70%,
   100% {
-    transform: translateY(0) scale(1);
-  }
-  50% {
-    transform: translateY(0) scale(1.025);
+    opacity: 0;
+    transform: scale(1.08, 1.25);
   }
 }
-.pulse:active {
+.pulse:active::after {
   animation: none;
+}
+:root[data-motion='reduce'] .pulse::after,
+:root[data-effects='light'] .pulse::after {
+  display: none;
 }
 
 /* Bouton rond à pictogramme (le libellé reste lisible par les lecteurs d'écran). */
@@ -376,6 +392,49 @@
 .dock-btn .ic {
   width: 30px;
   height: 30px;
+}
+/* Libellé toujours sur une ligne et dans son bouton, même avec une police de repli large. */
+.dock-btn .label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Téléphone en portrait : 2 × 2 grandes tuiles, pictogramme à gauche (mots entiers). */
+@media (max-width: 479px) and (orientation: portrait) {
+  .dock {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+  }
+  .dock-btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    min-height: 52px;
+    padding: 4px 10px;
+    font-size: 0.95rem;
+  }
+  .dock-btn .ic {
+    width: 26px;
+    height: 26px;
+  }
+  .dock-btn .dot {
+    top: 6px;
+    right: auto;
+    left: 28px;
+  }
+}
+@media (max-width: 359px) and (orientation: portrait) {
+  .dock-btn {
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 0.9rem;
+  }
+  .dock-btn .ic {
+    width: 24px;
+    height: 24px;
+  }
 }
 .dock-btn .dot,
 .icon-btn .dot {

@@ -24,7 +24,7 @@ test('défi par lien : même seed, comparaison, record persistant', async ({ pag
   expect(score).toBeGreaterThanOrEqual(1);
   const floors = `${score} étage${score > 1 ? 's' : ''}`;
   await expect(page.getByTestId('score')).toHaveText(floors);
-  await expect(page.getByTestId('challenge-outcome')).toHaveText(`Défi relevé : ${score} contre 0 annoncés.`);
+  await expect(page.getByTestId('challenge-outcome')).toHaveText(`Défi relevé : ${score} contre 0 !`);
   await expect(page.getByTestId('new-record')).toBeVisible();
   const names = (await metrics(page)).map((e) => e.name);
   expect(names).toEqual(['session_start', 'challenge_open', 'run_start', 'first_placement', 'run_end']);
@@ -50,7 +50,7 @@ test('le lien partagé ouvre le même défi dans un autre navigateur', async ({ 
   await tapUntilResult(page);
   const score = Number.parseInt((await page.getByTestId('score').textContent()) ?? '', 10);
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
-  await expect(page.getByTestId('share-status')).toHaveText('Lien du défi copié.');
+  await expect(page.getByTestId('share-status')).toHaveText('Lien du défi copié. Colle-le dans un message !');
   const [link] = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
   expect(link).toMatch(/\?v=2&seed=\d+&target=\d+$/); // partie v2 (F7) : lien v2, cible en étages
   const run = (await metrics(page)).find((e) => e.name === 'run_end');
@@ -122,7 +122,7 @@ test('stockage bloqué : le jeu reste jouable', async ({ page }) => {
     });
   });
   await page.goto('/');
-  await expect(page.getByTestId('record')).toContainText('non sauvegardé');
+  await expect(page.getByTestId('record')).toContainText('pas sauvegardé sur cet appareil');
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   await page.getByRole('button', { name: 'Rejouer' }).tap();
@@ -143,19 +143,20 @@ test('stockage corrompu ou plein : le jeu reste jouable', async ({ page }) => {
   await tapUntilResult(page);
   await expect(page.getByTestId('new-record')).toBeVisible();
   await expect(page.getByTestId('record')).toContainText(`${await lastScore(page)} étage`);
-  await expect(page.getByTestId('record')).toContainText('(non sauvegardé)');
+  await expect(page.getByTestId('record')).toContainText('(pas sauvegardé sur cet appareil)');
 });
 
 test('le réglage du son survit au rechargement', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('nav-settings').tap();
-  const toggle = page.getByTestId('sound-toggle');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  const toggle = page.getByRole('switch', { name: 'Son' });
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
   await toggle.tap();
-  await expect(toggle).toHaveText('Son : coupé');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByTestId('volume')).toBeDisabled();
   await page.reload();
   await page.getByTestId('nav-settings').tap();
-  await expect(page.getByTestId('sound-toggle')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('sound-toggle')).toHaveAttribute('aria-checked', 'false');
 });
 
 test('onglet caché : pause puis reprise explicite', async ({ page }) => {
@@ -176,7 +177,7 @@ test('onglet caché : pause puis reprise explicite', async ({ page }) => {
   await tapUntilResult(page);
 });
 
-test('Tour du jour : seed de la date UTC, record du jour, objectifs affichés', async ({ page }) => {
+test('Défi du jour : seed de la date UTC, record du jour, missions affichées', async ({ page }) => {
   const { dailySeed, utcDateKey } = await import('../../src/platform/daily');
   await page.goto('/');
   const day = utcDateKey(new Date());
@@ -186,19 +187,21 @@ test('Tour du jour : seed de la date UTC, record du jour, objectifs affichés', 
   await expect(page.getByTestId('goals').locator('li')).toHaveCount(3);
   await page.getByTestId('back').tap();
   await page.getByRole('button', { name: 'Défi du jour' }).tap();
-  await expect(page.getByTestId('target')).toContainText(`Tour du jour · ${day}`);
+  const { dayInWords } = await import('../../src/game/render/card');
+  await expect(page.getByTestId('target')).toHaveText(`Défi du jour · ${dayInWords(day)}`);
   await tapUntilResult(page);
-  const score = await lastScore(page);
-  await expect(page.getByTestId('daily-outcome')).toHaveText(`Nouveau record du jour (${day}) !`);
+  // Cible du lien = hauteur en étages (pas les points v2, qui comptent double les parfaits).
+  const height = Number.parseInt((await page.getByTestId('score').textContent()) ?? '', 10);
+  await expect(page.getByTestId('daily-outcome')).toHaveText('Nouveau record du Défi du jour !');
   const starts = (await metrics(page)).filter((e) => e.name === 'run_start');
   expect(starts.at(-1)).toMatchObject({ mode: 'daily', day });
-  // Le lien de défi d'une Tour du jour porte la seed explicite du jour.
+  // Le lien de défi d'un Défi du jour porte la seed explicite du jour.
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
   });
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
-  await expect(page.getByTestId('challenge-link')).toHaveValue(new RegExp(`seed=${dailySeed(day)}&target=${score}$`));
+  await expect(page.getByTestId('challenge-link')).toHaveValue(new RegExp(`seed=${dailySeed(day)}&target=${height}$`));
 });
 
 test('collection : ouverture, verrous lisibles, retour, sans débordement', async ({ page }) => {
@@ -234,7 +237,7 @@ test('progression : un objectif rempli débloque une apparence choisie et persis
 });
 
 for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }]) {
-  test(`pastille d'objectif ${viewport.width}×${viewport.height} : hors de la zone du score et transparente aux appuis`, async ({ browser }) => {
+  test(`bandeau d'objectif ${viewport.width}×${viewport.height} : au-dessus du jeu, ne cache ni le score ni les blocs`, async ({ browser }) => {
     const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
     const page = await context.newPage();
     await page.goto('/');
@@ -244,11 +247,12 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }
     await expect(pill).toBeVisible();
     const p = (await pill.boundingBox())!;
     const c = (await canvas.boundingBox())!;
-    // Quart supérieur du canvas = zone du score dessiné par le moteur.
-    expect(p.y).toBeGreaterThan(c.y + c.height / 4);
-    // Un toucher au centre de la pastille atteint le jeu : première pose (impossible à rater).
+    // V4 : bandeau hors du canvas (au-dessus) : rien de dessiné par le moteur n'est caché.
+    expect(p.y + p.height).toBeLessThanOrEqual(c.y + 1);
+    expect(c.height).toBeGreaterThan(viewport.height * 0.75);
+    // Un toucher sur le jeu pose le premier bloc (impossible à rater).
     await page.waitForTimeout(150);
-    await page.touchscreen.tap(p.x + p.width / 2, p.y + p.height / 2);
+    await page.touchscreen.tap(c.x + c.width / 2, c.y + c.height / 2);
     await expect.poll(async () => (await metrics(page)).some((e) => e.name === 'first_placement')).toBe(true);
     await context.close();
   });
@@ -363,7 +367,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }
     const page = await context.newPage();
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Jouer', exact: true })).toBeInViewport({ ratio: 1 });
-    for (const name of ['Défi du jour', 'Boutique', 'Classement', 'Récompenses', 'Réglages']) {
+    for (const name of ['Défi du jour', 'Boutique', 'Collection', 'Classement', 'Récompenses', 'Réglages']) {
       await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
     }
     await noHorizontalOverflow(page);
@@ -377,7 +381,7 @@ test('boutique : état réel tant que le moteur n’a pas les apparences de bout
   await expect(page.getByRole('heading', { name: 'Boutique' })).toBeFocused();
   await expect(page.getByText('Les pièces se gagnent en jouant. Elles ne s’achètent pas.')).toBeVisible();
   // Graphite, Nacré, Holographique ne sont proposés qu'une fois dessinables par le moteur (F-V3).
-  const sellable = await page.locator('.cards.shop li').count();
+  const sellable = await page.locator('.items li').count();
   if (sellable === 0) await expect(page.getByTestId('shop-empty')).toBeVisible();
   await noHorizontalOverflow(page);
 });
@@ -395,7 +399,7 @@ test('classement : sans serveur configuré (build Pages), « Indisponible » et 
   await page.getByRole('button', { name: 'Retour' }).tap();
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
-  await expect(page.getByTestId('rank-status')).toHaveText('Score local, non vérifié.');
+  await expect(page.getByTestId('rank-status')).toHaveText('Score gardé sur cet appareil.');
   expect(requests).toEqual([]);
 });
 
@@ -442,18 +446,20 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 412, height: 839 }
     });
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Jouer', exact: true })).toBeInViewport({ ratio: 1 });
-    for (const tab of await page.locator('.tabbar .btn').all()) {
+    const tabs = await page.locator('.dock .dock-btn, .topbar .icon-btn:visible').all();
+    expect(tabs.length).toBeGreaterThanOrEqual(5); // le contrôle porte bien sur les vrais boutons V4
+    for (const tab of tabs) {
       await expect(tab).toBeInViewport({ ratio: 1 });
       // Un mot coupé ajoute une ligne : le texte de l'onglet tient sur une seule ligne.
       const lines = await tab.evaluate((b) => {
         const range = document.createRange();
-        range.selectNodeContents(b);
+        range.selectNodeContents(b.querySelector('.label') ?? b); // le texte seul (l'icône est au-dessus)
         return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
       });
       expect(lines).toBe(1);
     }
     await noHorizontalOverflow(page);
-    for (const nav of await page.locator('.tabbar .btn').evaluateAll((bs) => bs.map((b) => b.getAttribute('data-testid')))) {
+    for (const nav of await page.locator('.dock .dock-btn, .topbar .icon-btn:visible').evaluateAll((bs) => bs.map((b) => b.getAttribute('data-testid')))) {
       await page.goto('/');
       await page.getByTestId(nav!).tap();
       await noHorizontalOverflow(page);
@@ -485,13 +491,13 @@ test('vie de reprise (build de production, vrai moteur) : achat en pièces, offr
     localStorage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 40, grants: ['v2-objectives-backfill'] }));
   });
   await page.goto('/');
-  await expect(page.getByTestId('lives')).toHaveText('0');
+  await expect(page.getByTestId('lives')).toHaveText('0 vie');
   await page.getByTestId('nav-shop').tap();
   await page.getByTestId('buy-life').tap();
   await page.getByTestId('confirm-life').tap();
   await expect(page.getByTestId('life-success')).toContainText('1 vie');
   await page.getByRole('button', { name: 'Retour' }).tap();
-  await expect(page.getByTestId('lives')).toHaveText('1');
+  await expect(page.getByTestId('lives')).toHaveText('1 vie');
   await expect(page.getByTestId('coins')).toHaveText('10 pièces');
 
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
@@ -509,6 +515,8 @@ test('vie de reprise (build de production, vrai moteur) : achat en pièces, offr
   await expect(page.getByTestId('revive-ad-unavailable')).toBeDisabled();
   await expect(page.getByText('Mode démo')).toHaveCount(0);
   await noHorizontalOverflow(page);
+  // V4 : délai de garde de 0,5 s (un appui en rafale au moment de la chute ne dépense rien).
+  await expect(page.locator('[data-testid="revive"][data-input-ready="true"]')).toBeAttached();
   await life.tap();
   await expect(offer).toHaveCount(0);
   await expect(page.getByTestId('live')).toContainText('C’est reparti');
@@ -521,5 +529,5 @@ test('vie de reprise (build de production, vrai moteur) : achat en pièces, offr
   expect(saved.livesSpent).toHaveLength(1);
   expect(saved.coins).toBeGreaterThanOrEqual(10); // 40 − 30 + gains de la partie
   await page.reload();
-  await expect(page.getByTestId('lives')).toHaveText('0');
+  await expect(page.getByTestId('lives')).toHaveText('0 vie');
 });

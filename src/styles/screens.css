@@ -579,8 +579,13 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
-.result-actions .row.single {
-  grid-template-columns: minmax(0, 1fr);
+.result-actions .row .btn {
+  padding-inline: 10px;
+  font-size: 1rem;
+}
+.result-more {
+  display: grid;
+  gap: 10px;
 }
 @media (max-width: 359px) {
   .result-actions .row {
@@ -677,11 +682,119 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
+    align-content: start;
     column-gap: 20px;
+  }
+  .view[data-screen='result'] > * {
+    grid-column: 2;
+  }
+  .view[data-screen='result'] > .result-card {
+    grid-column: 1;
+    grid-row: 1 / span 12;
   }
 }
 @media (max-width: 359px) {
   .topbar .help {
     display: none;
+  }
+}
+/* Anneau de focus du jeu : seulement au clavier (au toucher, rien ne se superpose au jeu). */
+.game-canvas:focus,
+.game-canvas:focus-visible {
+  outline: none;
+}
+#app[data-input='keyboard'] .game-canvas:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: -4px;
+}
+
+/* Paysage très bas (568 × 320) : tout l'accueil tient sans défiler. */
+@media (orientation: landscape) and (max-height: 420px) {
+  #app {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .view {
+    gap: 8px;
+  }
+  .view[data-screen='home'] {
+    row-gap: 8px;
+  }
+  .pill {
+    min-height: 36px;
+  }
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+  }
+  .btn.xl {
+    min-height: 56px;
+    font-size: 1.6rem;
+  }
+  .daily-card .btn {
+    min-height: 46px;
+  }
+  .home-actions {
+    gap: 6px;
+  }
+  .dock {
+    padding: 4px;
+  }
+  .dock-btn {
+    min-height: 44px;
+  }
+  .brand-title {
+    font-size: 2rem;
+  }
+  .result-card {
+    padding: 12px;
+    gap: 4px;
+  }
+  .big-score {
+    font-size: 3rem;
+  }
+}
+/* Écrans peu hauts en portrait : carte de score plus compacte. */
+@media (orientation: portrait) and (max-height: 640px) {
+  .result-card {
+    padding: 14px 12px;
+    gap: 6px;
+  }
+  .big-score {
+    font-size: clamp(2.6rem, 14vw, 3.4rem);
+  }
+}
+
+/* Carte « Prochaine mission » de l'accueil : seulement quand la hauteur le permet. */
+.home-mission {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+}
+.home-mission .card-title {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+.home-mission .mission-label {
+  font-weight: 700;
+}
+.home-mission .hint .ic {
+  color: var(--primary);
+}
+@media (max-height: 699px), (orientation: landscape) {
+  .home-mission {
+    display: none;
+  }
+}
+/* Offre de reprise : le grand bouton tient sur une ligne. */
+.overlay-panel .btn.xl {
+  font-size: clamp(1.15rem, 5.4vw, 1.45rem);
+  min-height: 72px;
+}
+/* Paysage étroit : les deux actions du résultat l'une sous l'autre (mots entiers). */
+@media (orientation: landscape) and (max-width: 700px) {
+  .result-actions .row {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

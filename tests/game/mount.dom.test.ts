@@ -349,3 +349,37 @@ describe('V2 (F4) : apparences et aperçu', () => {
     expect(renderAppearancePreview(plain, { theme: 'orbital', skin: 'verre' })).toBe(false);
   });
 });
+
+describe('V4 : effets « Fluides » et volume, sans effet sur la partie', () => {
+  it('même RunResult en effets complets et fluides, à tout volume ; résolution interne plafonnée en fluide', () => {
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 3 });
+    canvas.getBoundingClientRect = () => ({ width: 360, height: 640, x: 0, y: 0, top: 0, left: 0, right: 360, bottom: 640, toJSON() {} });
+    const results: RunResult[] = [];
+    const widths: number[] = [];
+    for (const extra of [{ effects: 'full' as const, volume: 1 }, { effects: 'light' as const, volume: 0 }, { effects: 'light' as const, volume: 0.35 }]) {
+      const ends: RunResult[] = [];
+      const start = now;
+      const game = createGame({ canvas, config: { seed: 1, rulesVersion: 1 }, sound: false, onEnd: (r) => ends.push(r), ...extra });
+      handle = game;
+      widths.push(canvas.width);
+      for (const t of [177, 433, 434]) { run(start + (t - 0.5) * TICK_MS - now); pointer({ at: now }); run(TICK_MS); }
+      run(1500);
+      expect(ends).toHaveLength(1);
+      results.push(ends[0]!);
+      game.destroy();
+      handle = null;
+    }
+    expect(results[1]).toEqual(results[0]);
+    expect(results[2]).toEqual(results[0]);
+    expect(widths).toEqual([360 * 3, 360 * 1.5, 360 * 1.5]); // ×3 en complet, ×1,5 en fluide
+    Reflect.deleteProperty(window, 'devicePixelRatio');
+  });
+
+  it('setAudio : appliqué tout de suite, sans erreur après destroy', () => {
+    const { events } = mount({ volume: 0.5 });
+    expect(events).toEqual([]);
+    expect(() => handle!.setAudio!(false, 0.2)).not.toThrow();
+    handle!.destroy();
+    expect(() => handle!.setAudio!(true, 1)).not.toThrow();
+  });
+});
