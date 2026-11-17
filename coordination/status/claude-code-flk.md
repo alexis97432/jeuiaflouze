@@ -1,23 +1,58 @@
 # Claude Code FLK
 
-## V3 — état au 17 novembre 2026
+## Bilan V3 FLK — 17 novembre 2026
 
-- Tâche : F5, le plan V3 et les interfaces proposées ([plans/V3-claude-code-flk.md](../plans/V3-claude-code-flk.md)).
-- Base : intégration `31575e4`. La V2 publiée est vérifiée en ligne.
-- Plan d'Alexis lu (`020ddf5`) :
-  - d'accord sur rulesVersion 2, `allowContinue`, `continueRun`/`declineContinue` et le filtrage `isSkinId` ;
-  - trois écarts proposés : jauge dans le canvas, `continueRun(): boolean`, carte dérivée du `RunResult` ;
-  - plus une question : gains v2 calculés sur `height` ou sur `score`.
-- PR ouvertes :
-  - #27 : plan ;
-  - #28 : F6, les règles v2 (`e702748`), en attente de revue Codex ;
-  - #30 : F8, les 8 apparences V3 (`57928d7`), internes, en attente de revue Codex.
-- Accord d'Alexis sur le §6 reçu dans #25 (`6271754`) :
-  - gains calculés sur `height` ;
-  - pas de tableau « avec reprise » ;
-  - classement v2 trié par points.
-- Revues : #26 (V3-A1, `e02f2f6`) **PASS** et #29 (V3-A2, `bd461e1`) **PASS**, publiées dans #31.
-- Prochain pas : F7, le montage v2, empilé sur F6, avec la jauge renommée « Super ». Ensuite F9, la carte. Puis F8b, l'exposition des apparences, coordonnée avec les libellés d'Alexis.
+Base d'intégration inchangée : `31575e4`, la V2 publiée. **Aucune PR V3 n'est fusionnée.** Je ne fusionne pas mes propres PR. À l'heure de ce bilan, aucune revue de Codex n'est publiée.
+
+### Mes PR
+
+| PR | Tâche | SHA | État |
+|---|---|---|---|
+| #27 | F5 plan V3 et interfaces, accord d'Alexis reçu (#25 `6271754`) | branche `v3-plan` | en attente de revue Codex |
+| #28 | F6 règles v2 : jauge, Ralenti/×2, points ≠ hauteur, reprise, rejeu v1+v2 | `e7027481bccc95ffb9aa68395410b518b77bf036` | en attente de revue Codex. 324 tests, typecheck, build |
+| #30 | F8 : 8 apparences V3 dessinées | `57928d76bb492750cb1d39c50b6f04fca3055d1f` | en attente de revue Codex. 308 tests, 35 tests navigateur |
+| #31 | revues de V3-A1, A2, A3 et A4 | `63599ce301484510106e469a0ae157bc3b2a5190` | PASS ×5 publiés |
+
+### Revues des livraisons d'Alexis
+
+| PR | SHA | Verdict |
+|---|---|---|
+| #26 V3-A1 menu simplifié | `e02f2f6` | PASS (m1 : pastille en paysage) |
+| #29 V3-A2 boutique en pièces | `bd461e1` | PASS (à intégrer avec #26) |
+| #32 V3-A3 serveur de classement | `100828c` | PASS, serveur réel essayé |
+| #33 V3-A3 client du classement | `1dc9bc3` | PASS (m1 : ajouter `continueTicks` en v2) |
+| #34 V3-A4 adaptateurs vidéo et paiement, registre | `fa44b5b` | PASS (m1 : drapeau `demo` perdu au rejeu de `consumeLife`) |
+
+### Éléments par état
+
+Rien de la V3 n'est encore sur le site publié : tout attend une revue ou une intégration.
+
+**Fonctionnel dans le code, testé, mais non intégré :**
+- les règles v2 dans le moteur et le rejeu, pour client et serveur (#28) ;
+- les 8 apparences dessinées (#30) ;
+- le menu (#26), la boutique en pièces (#29) et le classement avec son serveur (#32, #33).
+
+**Démo (étiquetée, jamais présentée comme réelle) :**
+- les joueurs de démo du classement (`DEMO=1`) ;
+- la vidéo et les paiements de démo, disponibles en dev seulement (#34).
+
+**Non jouable aujourd'hui (travail FLK restant, non bloqué) :**
+- **F7, montage v2** : jauge et effets dans le canvas, compte à rebours, `continueRun`/`declineContinue`. Tant que F7 n'est pas livré, bonus et reprise ne sont **pas jouables à l'écran**.
+- **F9, carte de résultat** (`summarizeRun`, `renderResultCard`) : pas commencé.
+- **F8b, exposition des apparences au shell** : à coordonner avec les libellés d'Alexis. Avant cela, la boutique affiche honnêtement « Rien à vendre ».
+- Reflets animés de l'holographique : non livrés. L'image est fixe, et le plan a été corrigé.
+
+**Bloqués par des dépendances extérieures** (décisions du propriétaire du projet) :
+- hébergement HTTPS du serveur : sans lui, le classement reste « Indisponible » sur Pages ;
+- prestataire de paiement et comptes : vies et passe premium (`or`, `cristal`) restent Indisponibles ;
+- régie de vidéos récompensées et public visé : la reprise ne pourra passer que par une vie possédée ou par la démo.
+
+Revue interne bloquée : la revue de Codex de #27, #28 et #30.
+
+### Limites
+
+- Aucun test sur un vrai téléphone.
+- Les réglages (jauge 10, durée 5, Ralenti 3/5, compte à rebours 3 s) sont des hypothèses à tester en jeu.
 
 ## Avis V2 indépendant (brief C3, PR #10 `8403cfa`)
 
