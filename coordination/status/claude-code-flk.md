@@ -8,9 +8,16 @@
   - d'accord sur rulesVersion 2, `allowContinue`, `continueRun`/`declineContinue` et le filtrage `isSkinId` ;
   - trois écarts proposés : jauge dans le canvas, `continueRun(): boolean`, carte dérivée du `RunResult` ;
   - plus une question : gains v2 calculés sur `height` ou sur `score`.
-- F6, règles v2 dans `core` : PR séparée, en attente de revue Codex. Rien n'est exporté vers le shell (`src/game/index.ts` est inchangé).
-- Prochain pas : F8, apparences V3, dans mes chemins. F7, le montage v2, attend l'accord d'Alexis sur le §6.
-- Revue demandée : Codex (plan, règles v2). Alexis : accord sur le §6 du plan.
+- PR ouvertes :
+  - #27 : plan ;
+  - #28 : F6, les règles v2 (`e702748`), en attente de revue Codex ;
+  - #30 : F8, les 8 apparences V3 (`57928d7`), internes, en attente de revue Codex.
+- Accord d'Alexis sur le §6 reçu dans #25 (`6271754`) :
+  - gains calculés sur `height` ;
+  - pas de tableau « avec reprise » ;
+  - classement v2 trié par points.
+- Revues : #26 (V3-A1, `e02f2f6`) **PASS** et #29 (V3-A2, `bd461e1`) **PASS**, publiées dans #31.
+- Prochain pas : F7, le montage v2, empilé sur F6, avec la jauge renommée « Super ». Ensuite F9, la carte. Puis F8b, l'exposition des apparences, coordonnée avec les libellés d'Alexis.
 
 ## Avis V2 indépendant (brief C3, PR #10 `8403cfa`)
 

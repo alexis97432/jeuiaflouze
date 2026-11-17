@@ -16,7 +16,9 @@ Objectif : un enfant de 8 ans doit comprendre sans lire. Cela veut dire :
 - des **chiffres entiers** ;
 - **aucune règle cachée**.
 
-## 1. Bonus : une jauge « Étoile », deux bonus en alternance
+## 1. Bonus : une jauge « Super », deux bonus en alternance
+
+(Renommée depuis « Étoile » : le menu V3-A1 d'Alexis affiche déjà l'XP en « étoiles ».)
 
 ### Remplissage
 La jauge compte de 0 à **10** et ne se remplit qu'au moment d'une pose réussie :
@@ -127,7 +129,7 @@ Ce sont de nouveaux `SkinId`, des matières indépendantes des univers comme en 
 |---|---|---|
 | `graphite` | mat sombre, liseré métallique | boutique pièces (60) |
 | `nacre` | irisé doux rose-bleu, statique | boutique pièces (120) |
-| `holographique` | reflets arc-en-ciel qui glissent ; figés en reduced-motion | boutique pièces (240) |
+| `holographique` | bandes arc-en-ciel, image fixe, phase variable par étage (livré dans F8, #30 ; pas d'animation) | boutique pièces (240) |
 | `pixel` | damier 8-bit | passe, palier gratuit |
 | `galaxie` | points d'étoiles sur fond profond | passe, palier gratuit |
 | `lave` | craquelures lumineuses | passe, palier gratuit |
