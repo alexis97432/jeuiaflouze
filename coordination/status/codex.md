@@ -68,3 +68,11 @@
 - Prochain pas Alexis : relire C6, intégrer F3 puis F4 sur les SHA approuvés, brancher les apparences et faire revoir le nouveau SHA A4 par FLK. Ne pas confondre code fusionné et build Pages publié.
 - E1 branché #20 garde **CHANGES_REQUESTED FLK sur 452ae7c**, défaut multi-onglets M2 ; pas de PASS Codex implicite. Attention : relire puis réécrire le localStorage ne garantit pas une transaction entre deux onglets concurrents ; convenir d'une sérialisation adéquate ou stratégie de fusion et tester le cas réellement concurrent, pas seulement des actions séquentielles.
 - Aucun téléphone physique testé, pas de validation humaine de la nouvelle esthétique.
+
+## C7 — revue V3 et accord de passage de relais
+
+- F6 #28 e702748 : PASS moteur pur, 324 tests livrés, typecheck/build. Vérification des compteurs bestPerfectStreak/bonusCount limitée : seules les valeurs normalisées renvoyées sont de confiance ; observation documentée, deux sondes de falsification reproduites.
+- F8 #30 57928d7 : PASS rendu interne, 308 unitaires, typecheck/build et34 tests navigateur ciblés. Reste exposition publique (nouveau commit à revoir), F7 montage et F9 carte à livrer.
+- Accord Alexis déjà donné dans son plan PR #25 f71e69e, interfaces acceptées ; gains height, classement points partitionnés par version. Pas besoin de nouvel accord utilisateur pour avancer.
+- Instructions précises dans coordination/V3-SUITE.md. Services publics/paiements/vidéos peuvent rester Indisponibles sans bloquer le jeu gratuit et les démos honnêtes.
+- C7 REVIEW_PENDING Alexis ; aucun code tiers modifié, aucun merge ni publication V3 dans ce lot. Pas de téléphone physique testé.
