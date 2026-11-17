@@ -29,7 +29,7 @@ describe('vidéo récompensée', () => {
     expect(await b).toBe('rewarded');
     expect(onReward).toHaveBeenCalledTimes(1);
     // Rappel tardif ou nouvel appui après la récompense : rien de plus.
-    expect(await gate.reward('run1', 'revive', onReward)).toBe('dismissed');
+    expect(await gate.reward('run1', 'revive', onReward)).toBe('already-rewarded');
     expect(calls).toHaveLength(1);
     expect(onReward).toHaveBeenCalledTimes(1);
   });

@@ -60,8 +60,9 @@ export function createRewardGate(provider: RewardedAdProvider, timeoutMs = 60_00
   const pending = new Map<string, Promise<AdOutcome>>();
   const granted = new Set<string>();
 
-  const request = (requestId: string, placement: string): Promise<AdOutcome> => {
-    if (granted.has(requestId)) return Promise.resolve('dismissed'); // déjà récompensé : rien de plus
+  const request = (requestId: string, placement: string): Promise<AdOutcome | 'already-rewarded'> => {
+    // Déjà récompensé : aucune vidéo de plus, issue distincte (revue FLK A4, m2).
+    if (granted.has(requestId)) return Promise.resolve('already-rewarded');
     const inFlight = pending.get(requestId);
     if (inFlight) return inFlight;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -83,7 +84,7 @@ export function createRewardGate(provider: RewardedAdProvider, timeoutMs = 60_00
      * Affiche la vidéo et appelle `onReward` au plus une fois par `requestId`.
      * Renvoie le résultat pour que l'écran l'explique (« Pas de vidéo pour l'instant », etc.).
      */
-    async reward(requestId: string, placement: string, onReward: () => void): Promise<AdOutcome> {
+    async reward(requestId: string, placement: string, onReward: () => void): Promise<AdOutcome | 'already-rewarded'> {
       const outcome = await request(requestId, placement);
       if (outcome === 'rewarded' && !granted.has(requestId)) {
         granted.add(requestId);
@@ -98,6 +99,7 @@ export function createRewardGate(provider: RewardedAdProvider, timeoutMs = 60_00
 export const AD_MESSAGES: Record<Exclude<AdOutcome, 'rewarded'>, string> = {
   dismissed: 'Vidéo fermée : pas de reprise cette fois.',
   'no-fill': 'Pas de vidéo pour l’instant.',
-  error: 'La vidéo n’a pas marché.',
+  // Délai dépassé compris : une confirmation tardive de la régie ne rend pas la reprise (FLK A4, m3).
+  error: 'La vidéo n’a pas marché ou a mis trop de temps. Pas de reprise cette fois.',
   unavailable: 'Vidéo indisponible.',
 };

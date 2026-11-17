@@ -34,7 +34,7 @@ export type ReplayFn = (input: unknown) =>
 
 export type AppConfig = {
   allowedOrigins: readonly string[];
-  /** Versions de règles acceptées (v1 maintenant ; v2 quand F6 est intégré). */
+  /** Versions de règles acceptées (v1 et v2, F6). */
   rulesVersions: readonly number[];
   demo: boolean;
   maxBodyBytes: number;
@@ -54,7 +54,7 @@ export type AppDeps = {
 
 export const DEFAULT_CONFIG: AppConfig = {
   allowedOrigins: [],
-  rulesVersions: [1],
+  rulesVersions: [1, 2],
   demo: false,
   maxBodyBytes: 64 * 1024,
   ticketTtlMs: 2 * 60 * 60 * 1000,
@@ -116,7 +116,7 @@ export function createApp(deps: AppDeps) {
     const b = (body ?? {}) as Record<string, unknown>;
     const mode = b.mode === 'daily' ? 'daily' : b.mode === 'free' || b.mode === undefined ? 'free' : null;
     if (!mode) throw new HttpError(400, 'bad_mode', "mode 'free' ou 'daily' attendu");
-    const rulesVersion = b.rulesVersion ?? config.rulesVersions.at(-1);
+    const rulesVersion = b.rulesVersion ?? config.rulesVersions[0];
     if (typeof rulesVersion !== 'number' || !config.rulesVersions.includes(rulesVersion)) {
       throw new HttpError(400, 'bad_rules_version', `versions acceptées : ${config.rulesVersions.join(', ')}`);
     }
@@ -199,7 +199,7 @@ export function createApp(deps: AppDeps) {
 
   const readBoard = (kind: string, url: URL) => {
     if (kind !== 'global' && kind !== 'weekly' && kind !== 'daily') throw new HttpError(404, 'unknown_board', 'tableau inconnu');
-    const rv = Number(url.searchParams.get('rulesVersion') ?? config.rulesVersions.at(-1));
+    const rv = Number(url.searchParams.get('rulesVersion') ?? config.rulesVersions[0]);
     if (!config.rulesVersions.includes(rv)) throw new HttpError(400, 'bad_rules_version', 'version de règles inconnue');
     const now = new Date(deps.now());
     const rawPeriod = url.searchParams.get('period');

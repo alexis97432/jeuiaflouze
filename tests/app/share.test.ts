@@ -44,3 +44,27 @@ describe('shareLink', () => {
     ).toBe('unavailable');
   });
 });
+
+describe('partage avec image (V3-A6)', () => {
+  const file = new File(['png'], 'pile-ou-crash.png', { type: 'image/png' });
+  const data = { title: 't', text: 'x', url: 'https://jeu.test/?s=1', files: [file] };
+
+  it('image jointe si le navigateur sait partager des fichiers', async () => {
+    const share = vi.fn(async () => undefined);
+    expect(await shareLink(data, { share, canShare: (d) => !!d.files })).toBe('shared');
+    expect(share).toHaveBeenCalledWith(data);
+  });
+
+  it('sans partage de fichiers : lien seul, sans image', async () => {
+    const share = vi.fn(async () => undefined);
+    expect(await shareLink(data, { share, canShare: (d) => !d.files })).toBe('shared');
+    expect(share).toHaveBeenCalledWith({ title: 't', text: 'x', url: data.url });
+  });
+
+  it('annulation avec image : pas un succès, pas de copie silencieuse', async () => {
+    const writeText = vi.fn(async () => undefined);
+    const share = vi.fn(async () => { throw Object.assign(new Error('x'), { name: 'AbortError' }); });
+    expect(await shareLink(data, { share, canShare: () => true, clipboard: { writeText } })).toBe('cancelled');
+    expect(writeText).not.toHaveBeenCalled();
+  });
+});

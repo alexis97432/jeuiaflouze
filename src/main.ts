@@ -4,6 +4,8 @@ import { loadGame } from './app/game-loader';
 import { createShell } from './app/shell';
 import { combineSinks, consoleSink, createTracker, memorySink } from './platform/metrics';
 import { randomId, randomSeed } from './platform/random';
+import { createLeaderboardService } from './platform/services/leaderboard';
+import { createDemoAds, noAds } from './platform/ads/rewarded';
 import { shareLink } from './platform/share';
 import { createLocalStore, createMetaStore, getBrowserStorage } from './platform/storage';
 
@@ -33,6 +35,18 @@ createShell({
   share: (data) => shareLink(data),
   newSeed: () => randomSeed(),
   newRunId: () => randomId(),
+  newPlayerId: () => randomId() + randomId(),
+  // Adresse du serveur de classement au build (server/README.md). Vide (GitHub Pages actuel) :
+  // l'écran Classement affiche « Indisponible » et le jeu reste entier.
+  leaderboard: createLeaderboardService(import.meta.env.VITE_LEADERBOARD_URL as string | undefined),
+  // Reprise : aucune régie réelle configurée (docs/SERVICES.md). Vidéo de démo libellée « Mode démo »
+  // seulement en dev ou build de test marqué ; en production, aucune offre de vidéo.
+  // Vies : aucune tant que les achats vérifiés par le serveur ne sont pas exposés.
+  revive: {
+    // Condition écrite en constantes de build (même règle que demoAdsAllowed) : Vite retire
+    // entièrement la démo du build de production.
+    ads: import.meta.env.DEV || import.meta.env.VITE_DEMO_SERVICES === '1' ? createDemoAds() : noAds,
+  },
 });
 
 // Point d'inspection réservé au dev et au build e2e (VITE_EXPOSE_METRICS=1), absent en production.

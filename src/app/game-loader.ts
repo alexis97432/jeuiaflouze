@@ -12,6 +12,11 @@ export type StartOptions = Pick<MountOptions, 'canvas' | 'config' | 'onEnd'> & {
   prefs: ShellPrefs;
   /** Apparence possédée et choisie par le joueur (validée par le shell) — cosmétique seule. */
   appearance?: Appearance;
+  /**
+   * Reprise autorisée (F7, plan FLK §6). Transmise telle quelle au moteur ; un moteur sans F7
+   * l'ignore et termine la partie normalement.
+   */
+  allowContinue?: boolean;
   /** Appelé à la première pose réussie de la partie (mesure first_placement). */
   onFirstPlacement?(): void;
   /** Tous les événements du moteur, dans l'ordre (résumé de partie pour les objectifs). */
@@ -21,9 +26,13 @@ export type StartGame = (options: StartOptions) => GameHandle;
 
 /** Adaptateur pur, testable avec un faux `mountGame`. */
 export function createStartGame(mount: (options: MountOptions) => GameHandle): StartGame {
-  return ({ prefs, appearance, onFirstPlacement, onGameEvent, canvas, config, onEnd }) => {
+  return ({ prefs, appearance, allowContinue, onFirstPlacement, onGameEvent, canvas, config, onEnd }) => {
     let placed = false;
+    // `allowContinue` n'est dans MountOptions qu'à partir de F7 : option additive, passée sans cast
+    // de type sur le reste des options.
+    const extra: Record<string, unknown> = allowContinue ? { allowContinue: true } : {};
     return mount({
+      ...extra,
       canvas,
       config,
       onEnd,

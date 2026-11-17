@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { RunResult } from '../../src/app/game-contract';
 import type { StartGame, StartOptions } from '../../src/app/game-loader';
-import { createShell, PROGRESS_LOCK, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
+import { createShell, type LivesProvider, PROGRESS_LOCK, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
 import { createTracker, memorySink } from '../../src/platform/metrics';
 import type { ShareOutcome } from '../../src/platform/share';
 import { createLocalStore, createMetaStore } from '../../src/platform/storage';
 import { dailySeed } from '../../src/platform/daily';
+import { AD_MESSAGES, type AdOutcome, type RewardedAdProvider } from '../../src/platform/ads/rewarded';
+import type { BoardPage, LeaderboardService, RankTicket, ServiceResult } from '../../src/platform/services/leaderboard';
 
 type Mount = { options: StartOptions; pause: number; resume: number; destroyed: boolean };
 
@@ -544,7 +546,7 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
 
     const saved = storage.dump('poc:meta:v1:progress');
     expect(saved).toMatchObject({
-      version: 2,
+      version: 3,
       xp: 14,
       coins: 40,
       selected: { skin: 'marbre' },
@@ -571,12 +573,12 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     expect(text('coins')).toBe('20 pièces');
     button('Jouer').click();
     await end(3); // perfectCount 1 : 1 + 1 = 2 pièces, 3 + 2 = 5 XP
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 2, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 3, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
   });
 
   it('sauvegarde d’une version future : lue, jamais réécrite', async () => {
     const storage = memoryStorage();
-    const future = { version: 3, completed: [], xp: 900, coins: 400, champInconnu: true };
+    const future = { version: 4, completed: [], xp: 900, coins: 400, champInconnu: true };
     storage.setItem('poc:meta:v1:progress', JSON.stringify(future));
     const { text, button, end } = setup({ meta: createMetaStore(storage) });
     expect(text('coins')).toBe('400 pièces');
@@ -778,10 +780,10 @@ describe('apparences branchées (A4)', () => {
 });
 
 describe('menu V3 (lisible par un enfant de 8 ans)', () => {
-  it("accueil : Jouer, Défi du jour, record, et une barre Boutique / Récompenses / Réglages — rien d'autre", () => {
+  it("accueil : Jouer, Défi du jour, record, et une barre Boutique / Classement / Récompenses / Réglages — rien d'autre", () => {
     const { root } = setup();
     const buttons = [...root.querySelectorAll('button')].map((b) => b.textContent);
-    expect(buttons).toEqual(['Jouer', 'Défi du jour', 'Boutique', 'Récompenses', 'Réglages']);
+    expect(buttons).toEqual(['Jouer', 'Défi du jour', 'Boutique', 'Classement', 'Récompenses', 'Réglages']);
     expect(root.querySelectorAll('.btn.primary')).toHaveLength(1);
     expect(root.querySelector('[data-testid="play"]')?.getAttribute('data-icon')).toBe('▶');
     // Aucun panneau empilé ni explication technique sur l'accueil.
@@ -895,5 +897,371 @@ describe('boutique en pièces (V3-A2)', () => {
     const { button, text } = setup({ shop: { catalog: [{ id: 'graphite', kind: 'skin', price: 60, name: 'Graphite' }], isAvailable: () => false } });
     button('Boutique').click();
     expect(text('shop-empty')).toBe('Rien à vendre pour l’instant. Reviens bientôt !');
+  });
+});
+
+describe('classement (V3-A3)', () => {
+  const T = (mode: 'free' | 'daily', n = 1, seed = 4242, day?: string): RankTicket => ({
+    ticket: n.toString(16).padStart(32, '0'),
+    seed,
+    rulesVersion: 1,
+    mode,
+    ...(day ? { day } : {}),
+    expiresAt: Date.parse('2026-11-17T02:00:00Z'),
+  });
+  const page = (over: Partial<BoardPage> = {}): BoardPage => ({
+    kind: 'global', demo: false, total: 2, nextOffset: null,
+    entries: [
+      { rank: 1, pseudo: 'Lune', score: 12, height: 12, perfectCount: 2 },
+      { rank: 2, pseudo: 'Alex', score: 9, height: 9, perfectCount: 1, you: true },
+    ],
+    you: { rank: 2, score: 9 },
+    ...over,
+  });
+  type Fn<K extends keyof LeaderboardService> = Exclude<LeaderboardService[K], boolean>;
+  function fakeService(over: { issueTicket?: Mock<Fn<'issueTicket'>>; read?: Mock<Fn<'read'>> } = {}) {
+    let n = 0;
+    return {
+      available: true,
+      issueTicket: over.issueTicket ?? vi.fn<Fn<'issueTicket'>>(async (mode) => ({ ok: true, value: T(mode, ++n, mode === 'daily' ? dailySeed('2026-11-16') : 4242, mode === 'daily' ? '2026-11-16' : undefined) })),
+      submit: vi.fn<Fn<'submit'>>(async () => ({ ok: true, value: { ranked: true, score: 9, placements: { global: { rank: 2, total: 7, improved: true } } } })),
+      read: over.read ?? vi.fn<Fn<'read'>>(async () => ({ ok: true, value: page() })),
+    };
+  }
+  const withPseudo = () => {
+    const meta = createMetaStore(null);
+    meta.writePlayer({ id: 'c'.repeat(32), pseudo: 'Alex' });
+    return meta;
+  };
+
+  it('sans serveur : écran « Indisponible », aucune requête, la partie reste libre et locale', async () => {
+    const { button, text, root, end } = setup();
+    button('Classement').click();
+    expect(text('board-unavailable')).toContain('indisponible');
+    button('Retour').click();
+    expect(document.activeElement?.textContent).toBe('Classement');
+    button('Jouer').click();
+    await end(3);
+    expect(text('rank-status')).toBe('Score local, non vérifié.');
+    expect(root.querySelector('[data-testid="rank-retry"]')?.hasAttribute('hidden')).toBe(true);
+  });
+
+  it('pseudo : refuse un pseudo invalide, enregistre un pseudo valide, puis précharge les tickets', async () => {
+    const svc = fakeService();
+    const meta = createMetaStore(null);
+    const { button, text, root } = setup({ leaderboard: svc, meta, newPlayerId: () => 'd'.repeat(32) });
+    expect(svc.issueTicket).not.toHaveBeenCalled(); // pas de pseudo : pas de requête
+    button('Classement').click();
+    await flush();
+    const input = root.querySelector<HTMLInputElement>('[data-testid="pseudo-input"]')!;
+    input.value = '<b>';
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(text('pseudo-error')).toContain('ne va pas');
+    root.querySelector<HTMLInputElement>('[data-testid="pseudo-input"]')!.value = '  Super   Kiwi ';
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(text('pseudo')).toBe('Ton pseudo : Super Kiwi');
+    expect(meta.readPlayer()).toEqual({ id: 'd'.repeat(32), pseudo: 'Super Kiwi' });
+    expect(svc.issueTicket.mock.calls.map((c) => c[0]).sort()).toEqual(['daily', 'free']);
+    await flush();
+    expect(text('board-you')).toBe('Ta place : 2e sur 2');
+  });
+
+  it('partie avec ticket : seed du serveur, envoi des entrées (pas du score), rang affiché', async () => {
+    const svc = fakeService();
+    const { button, text, game, end } = setup({ leaderboard: svc, meta: withPseudo() });
+    await flush();
+    button('Jouer').click();
+    expect(game.mounts[0]!.options.config.seed).toBe(4242);
+    await end(9);
+    await flush();
+    expect(svc.submit).toHaveBeenCalledTimes(1);
+    const sent = svc.submit.mock.calls[0]![0] as unknown as Record<string, unknown>;
+    expect(sent).toEqual({ ticket: '1'.padStart(32, '0'), playerId: 'c'.repeat(32), pseudo: 'Alex', inputTicks: [1, 2] });
+    expect(text('rank-status')).toBe('Classement Monde : 2e sur 7.');
+  });
+
+  it('hors ligne à l’envoi : message honnête et « Envoyer encore » rejoue la même soumission', async () => {
+    const svc = fakeService();
+    svc.submit.mockResolvedValueOnce({ ok: false, error: 'offline' });
+    const { button, text, end, root } = setup({ leaderboard: svc, meta: withPseudo() });
+    await flush();
+    button('Jouer').click();
+    await end(9);
+    await flush();
+    expect(text('rank-status')).toBe('Pas envoyé. Pas de connexion. Vérifie Internet, puis réessaie.');
+    const retry = root.querySelector<HTMLButtonElement>('[data-testid="rank-retry"]')!;
+    expect(retry.hidden).toBe(false);
+    retry.click();
+    await flush();
+    expect(svc.submit).toHaveBeenCalledTimes(2);
+    expect(svc.submit.mock.calls[1]![0]).toEqual(svc.submit.mock.calls[0]![0]);
+    expect(text('rank-status')).toBe('Classement Monde : 2e sur 7.');
+  });
+
+  it('pas de ticket (serveur injoignable au départ) : partie jouable, non classée, rien envoyé', async () => {
+    const svc = fakeService({ issueTicket: vi.fn<Fn<'issueTicket'>>(async () => ({ ok: false, error: 'offline' })) });
+    const { button, text, game, end } = setup({ leaderboard: svc, meta: withPseudo() });
+    await flush();
+    button('Jouer').click();
+    expect(game.mounts[0]!.options.config.seed).toBe(100); // seed locale
+    await end(5);
+    expect(svc.submit).not.toHaveBeenCalled();
+    expect(text('rank-status')).toContain('non classée');
+  });
+
+  it('défi du jour : ticket du jour seulement si sa seed est celle du jour ; défi d’un ami jamais classé', async () => {
+    const svc = fakeService();
+    const { button, game, end } = setup({ leaderboard: svc, meta: withPseudo() });
+    await flush();
+    button('Défi du jour').click();
+    expect(game.mounts[0]!.options.config.seed).toBe(dailySeed('2026-11-16'));
+    await end(4);
+    await flush();
+    expect(svc.submit).toHaveBeenCalledTimes(1);
+    expect((svc.submit.mock.calls[0]![0] as { ticket: string }).ticket).toBe('2'.padStart(32, '0'));
+  });
+
+  it('ticket du jour incohérent (autre seed ou autre jour) : ignoré, partie du jour locale non classée', async () => {
+    for (const bad of [T('daily', 9, 777, '2026-11-16'), T('daily', 9, dailySeed('2026-11-15'), '2026-11-15')]) {
+      const svc = fakeService({ issueTicket: vi.fn<Fn<'issueTicket'>>(async (mode) => ({ ok: true, value: mode === 'daily' ? bad : T('free') })) });
+      const { button, game, end } = setup({ leaderboard: svc, meta: withPseudo() });
+      await flush();
+      button('Défi du jour').click();
+      expect(game.mounts[0]!.options.config.seed).toBe(dailySeed('2026-11-16'));
+      await end(4);
+      await flush();
+      expect(svc.submit).not.toHaveBeenCalled();
+      shell?.destroy();
+    }
+  });
+
+  it('tableaux : chargement, démo signalée, erreur avec Réessayer, pagination, réponse périmée ignorée', async () => {
+    let resolveSlow: (v: ServiceResult<BoardPage>) => void = () => undefined;
+    const read = vi.fn<LeaderboardService['read']>();
+    const svc = fakeService({ read });
+    read
+      .mockImplementationOnce(() => new Promise((r) => (resolveSlow = r)))
+      .mockResolvedValueOnce({ ok: true, value: page({ demo: true, nextOffset: 2, total: 3 }) })
+      .mockResolvedValueOnce({ ok: true, value: page({ entries: [{ rank: 3, pseudo: 'Kiwi', score: 1, height: 1, perfectCount: 0 }], total: 3 }) })
+      .mockResolvedValueOnce({ ok: false, error: 'busy' })
+      .mockResolvedValueOnce({ ok: true, value: page({ entries: [], total: 0 }) });
+    const { button, text, root } = setup({ leaderboard: svc, meta: withPseudo() });
+    button('Classement').click();
+    expect(text('board-loading')).toBe('Chargement…');
+    button('Semaine').click(); // la réponse lente du tableau Monde ne doit plus s'afficher
+    await flush();
+    resolveSlow({ ok: true, value: page({ entries: [{ rank: 1, pseudo: 'Périmé', score: 99, height: 99, perfectCount: 0 }] }) });
+    await flush();
+    expect(root.textContent).not.toContain('Périmé');
+    expect(text('board-demo')).toContain('Mode démo');
+    expect(root.querySelector('[data-testid="board-weekly"]')!.getAttribute('aria-pressed')).toBe('true');
+    button('Voir plus').click();
+    await flush();
+    expect([...root.querySelectorAll('.board-list li')].map((li) => li.textContent)).toEqual(['1erLune12 étages', '2eAlex (toi)9 étages', '3eKiwi1 étage']);
+    button('Aujourd’hui').click();
+    await flush();
+    expect(text('board-error')).toBe('Beaucoup de monde en ce moment. Réessaie dans une minute.');
+    button('Réessayer').click();
+    await flush();
+    expect(text('board-empty')).toBe('Personne pour l’instant. Sois le premier !');
+    expect(read.mock.calls.map((c) => c[0])).toEqual(['global', 'weekly', 'weekly', 'daily', 'daily']);
+  });
+});
+
+describe('passe de saison (V3-A5)', () => {
+  it('avant la saison : étoiles non comptées, date de début affichée', async () => {
+    const storage = memoryStorage();
+    const { button, text, end, root, place } = setup({ meta: createMetaStore(storage) });
+    button('Jouer').click();
+    place([true, true, true]);
+    await end(15); // date du test : 16/11, la saison commence le 17/11
+    button('Accueil').click();
+    button('Récompenses').click();
+    expect(text('season-summary')).toBe('Commence le 17 novembre.');
+    expect(storage.dump('poc:meta:v1:progress')).not.toHaveProperty('season');
+    expect(root.querySelector('[data-testid="nav-rewards"]')).toBeNull();
+  });
+
+  it('pendant la saison : une partie ajoute ses étoiles une seule fois', async () => {
+    const storage = memoryStorage();
+    const { button, end, game, day } = setup({ meta: createMetaStore(storage) });
+    day.now = new Date('2026-12-01T10:00:00Z');
+    button('Jouer').click();
+    await end(15);
+    game.mounts[0]!.options.onEnd({ seed: 1, rulesVersion: 1, score: 15, perfectCount: 1, durationTicks: 500, inputTicks: [1, 2] }); // rappel répété
+    await flush();
+    const xp = (storage.dump('poc:meta:v1:progress') as { xp: number }).xp;
+    expect(xp).toBeGreaterThan(0);
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ season: { id: 's1', stars: xp } });
+  });
+
+  it('pendant la saison : jauge, réclamation, aucune double prise entre deux onglets', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 0, grants: ['v2-objectives-backfill'], season: { id: 's1', stars: 25, claimed: [] } }));
+    const a = setup({ meta: createMetaStore(storage) });
+    a.day.now = new Date('2026-12-01T10:00:00Z');
+    a.button('Récompenses').click();
+    expect(a.text('season-summary')).toBe('Palier 2 dans 35 étoiles · jusqu’au 28 février');
+    a.button('Voir le passe · cadeau à prendre').click();
+    expect(a.text('premium-note')).toContain('indisponible');
+    expect(a.text('tier-1-premium')).toContain('Indisponible');
+    expect(a.text('tier-2-free')).toContain('🔒 35 étoiles');
+    const stale = a.root.querySelector<HTMLButtonElement>('[data-testid="claim-tier-1"]')!;
+    stale.click();
+    await flush();
+    expect(a.text('season-notice')).toBe('Pris : +10 pièces.');
+    stale.click(); // bouton périmé (double appui) : déjà pris
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, season: { claimed: ['free:1'] } });
+    expect(a.text('tier-1-free')).toContain('Pris ✓');
+  });
+});
+
+describe('reprise, bonus et résultats v2 (V3-A6)', () => {
+  type Handle = { continueRun: ReturnType<typeof vi.fn>; declineContinue: ReturnType<typeof vi.fn> };
+  function reviveGame() {
+    const mounts: { options: StartOptions; handle: Handle }[] = [];
+    const startGame: StartGame = (options) => {
+      const handle = { pause: vi.fn(), resume: vi.fn(), destroy: vi.fn(), continueRun: vi.fn(() => true), declineContinue: vi.fn() };
+      mounts.push({ options, handle });
+      return handle;
+    };
+    return { startGame, mounts };
+  }
+  const v2 = (height: number, score: number, continues: 0 | 1 = 0) => ({
+    seed: 7, rulesVersion: 2 as const, score, height, perfectCount: 1, bestPerfectStreak: 1, bonusCount: 1,
+    continues, durationTicks: 900, inputTicks: [1, 2, 3], continueTicks: continues ? [2] : [],
+  });
+  const manualAds = () => {
+    const calls: ((o: AdOutcome) => void)[] = [];
+    const ads: RewardedAdProvider = { kind: 'demo', label: 'Mode démo : pas de vraie vidéo', show: () => new Promise((r) => calls.push(r)) };
+    return { ads, calls };
+  };
+
+  it('sans régie ni vie : pas d’allowContinue ; une offre éventuelle se termine aussitôt', () => {
+    const g = reviveGame();
+    const { button, root } = setup({ startGame: g.startGame });
+    button('Jouer').click();
+    expect(g.mounts[0]!.options.allowContinue).toBeUndefined();
+    g.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    expect(root.querySelector('[data-testid="revive"]')).toBeNull();
+    expect(g.mounts[0]!.handle.declineContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('vidéo (démo libellée) : double appui et rappel répété → une seule reprise', async () => {
+    const g = reviveGame();
+    const { ads, calls } = manualAds();
+    const { button, root, text } = setup({ startGame: g.startGame, revive: { ads } });
+    button('Jouer').click();
+    const m = g.mounts[0]!;
+    expect(m.options.allowContinue).toBe(true);
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    expect(text('revive-demo')).toContain('Mode démo');
+    expect(document.activeElement?.textContent).toBe('Regarder une vidéo');
+    const video = root.querySelector<HTMLButtonElement>('[data-testid="revive-ad"]')!;
+    video.click();
+    video.click();
+    expect(calls).toHaveLength(1);
+    calls[0]!('rewarded');
+    await flush();
+    expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
+    expect(root.querySelector('[data-testid="revive"]')).toBeNull();
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 90 } as never); // second raté : déjà récompensé
+    expect(root.querySelector('[data-testid="revive"]')).not.toBeNull();
+  });
+
+  it.each(['dismissed', 'no-fill', 'error'] as const)('vidéo « %s » : pas de reprise, message, Terminer finit la partie', async (outcome) => {
+    const g = reviveGame();
+    const { ads, calls } = manualAds();
+    const { button, text } = setup({ startGame: g.startGame, revive: { ads } });
+    button('Jouer').click();
+    const m = g.mounts[0]!;
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    button('Regarder une vidéo').click();
+    calls[0]!(outcome);
+    await flush();
+    expect(m.handle.continueRun).not.toHaveBeenCalled();
+    expect(text('revive-status')).toBe(AD_MESSAGES[outcome]);
+    button('Terminer').click();
+    expect(m.handle.declineContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('vie possédée : consommée une fois, reprise ; échec : rien retiré, message', async () => {
+    const g = reviveGame();
+    const consume = vi.fn<LivesProvider['consume']>().mockResolvedValueOnce('error').mockResolvedValueOnce('ok');
+    const { button, text } = setup({ startGame: g.startGame, revive: { lives: { count: () => 2, consume } } });
+    button('Jouer').click();
+    const m = g.mounts[0]!;
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    button('Utiliser une vie (2)').click();
+    await flush();
+    expect(text('revive-status')).toContain('Rien n’a été retiré');
+    expect(m.handle.continueRun).not.toHaveBeenCalled();
+    button('Utiliser une vie (2)').click();
+    await flush();
+    expect(consume).toHaveBeenLastCalledWith('run1:revive');
+    expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('Tour du jour et défi : jamais de reprise', () => {
+    const g = reviveGame();
+    const { ads } = manualAds();
+    const { button } = setup({ startGame: g.startGame, revive: { ads } });
+    button('Défi du jour').click();
+    expect(g.mounts[0]!.options.allowContinue).toBeUndefined();
+  });
+
+  it('bonus annoncés pour les lecteurs d’écran', () => {
+    const g = reviveGame();
+    const { button, text } = setup({ startGame: g.startGame });
+    button('Jouer').click();
+    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-start', bonus: 'double', floors: 5 } as never);
+    expect(text('live')).toBe('Bonus ×2 pour 5 étages !');
+    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-end', bonus: 'double' } as never);
+    expect(text('live')).toBe('Fin du bonus ×2.');
+  });
+
+  it('résultat v2 : points affichés, gains et record sur la hauteur ; reprise hors classement', async () => {
+    const g = reviveGame();
+    const storage = memoryStorage();
+    const svc = { available: true, issueTicket: vi.fn(async (mode: 'free' | 'daily') => ({ ok: true as const, value: { ticket: '1'.padStart(32, '0'), seed: 5, rulesVersion: 1, mode, expiresAt: Date.parse('2026-11-17T02:00:00Z'), ...(mode === 'daily' ? { day: '2026-11-16' } : {}) } })), submit: vi.fn(), read: vi.fn() };
+    const meta = createMetaStore(storage);
+    meta.writePlayer({ id: 'c'.repeat(32), pseudo: 'Alex' });
+    const { button, text, store } = setup({ startGame: g.startGame, meta, leaderboard: svc as unknown as LeaderboardService });
+    await flush();
+    button('Jouer').click();
+    g.mounts[0]!.options.onEnd(v2(6, 40, 1) as never);
+    await flush();
+    expect(text('score')).toBe('6 étages');
+    expect(text('points')).toBe('40 points');
+    expect(text('revived')).toContain('hors classement');
+    expect(store.readBest()).toBe(6);
+    expect((storage.dump('poc:meta:v1:progress') as { xp: number }).xp).toBe(6 + 2); // hauteur + 2×parfait, pas les points
+    expect(svc.submit).not.toHaveBeenCalled();
+    expect(text('rank-status')).toContain('reprise');
+  });
+});
+
+describe('carte de résultat (V3-A6, F9 injectée)', () => {
+  it('image partagée avec le lien et enregistrable ; sans F9 : aucun bouton d’image', async () => {
+    const file = new File(['png'], 'pile-ou-crash.png', { type: 'image/png' });
+    const resultImage = vi.fn(async () => file);
+    const saveFile = vi.fn(() => true);
+    const { button, end, share, text } = setup({ resultImage, saveFile });
+    button('Jouer').click();
+    await end(4);
+    button('Défier un ami').click();
+    await flush();
+    expect(share).toHaveBeenCalledWith(expect.objectContaining({ files: [file] }));
+    button('Enregistrer l’image').click();
+    await flush();
+    expect(saveFile).toHaveBeenCalledWith(file);
+    expect(text('share-status')).toBe('Image enregistrée.');
+    expect(resultImage).toHaveBeenCalledTimes(1); // image calculée une seule fois
+    shell?.destroy();
+    const plain = setup();
+    plain.button('Jouer').click();
+    await plain.end(4);
+    expect([...plain.root.querySelectorAll('button')].some((b) => b.textContent === 'Enregistrer l’image')).toBe(false);
   });
 });

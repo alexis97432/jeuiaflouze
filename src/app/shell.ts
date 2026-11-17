@@ -10,11 +10,13 @@ import {
   type Challenge,
   type InvalidReason,
 } from './challenge-url';
-import { RULES_VERSION, type GameHandle, type RunResult } from './game-contract';
+import { RULES_VERSION, type GameHandle } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
+import { asShellEvent, BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult, type ContinueControls } from './run-result';
+import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
+import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
-import type { SkinId } from './progression';
 import { isSkinId, renderAppearancePreview } from '../game';
 import {
   applyRunEconomy,
@@ -42,10 +44,21 @@ import {
 import { createRunTracker, type RunTracker } from './run-tracker';
 import { dailySeed, nextDailyChange, utcDateKey } from '../platform/daily';
 import type { Mode, Tracker } from '../platform/metrics';
-import type { ShareData, ShareOutcome } from '../platform/share';
+import { downloadFile, type ShareData, type ShareOutcome } from '../platform/share';
 import type { LocalStore, MetaStore } from '../platform/storage';
+import {
+  cleanPseudo,
+  isPlayerIdentity,
+  unavailableLeaderboard,
+  type BoardEntry,
+  type BoardKind,
+  type LeaderboardService,
+  type PlayerIdentity,
+  type RankTicket,
+  type ServiceError,
+} from '../platform/services/leaderboard';
 
-export type Screen = 'home' | 'game' | 'result' | 'collection' | 'rewards' | 'settings' | 'shop';
+export type Screen = 'home' | 'game' | 'result' | 'collection' | 'rewards' | 'settings' | 'shop' | 'leaderboard' | 'season';
 
 /**
  * Délai pendant lequel les boutons du résultat ignorent les activations : un joueur qui tape
@@ -79,7 +92,33 @@ export type ShellOptions = {
   locks?: Pick<LockManager, 'request'> | null;
   /** Boutique en pièces : catalogue et test « le moteur sait dessiner ». Injectables (tests). */
   shop?: { catalog: readonly ShopItem[]; isAvailable: (id: string) => boolean; preview?: PreviewFn };
+  /** Service de classement (V3-A3). Absent : « Indisponible », le jeu reste entier. */
+  leaderboard?: LeaderboardService;
+  /** Identifiant pseudonyme de l'appareil pour le classement (32 hex). */
+  newPlayerId?: () => string;
+  /** Saison en cours (V3-A5) ; injectable pour les tests. */
+  season?: Season;
+  /**
+   * Reprise après une chute (V3-A6, F7) : vidéo récompensée et vies. Sans régie ni vie,
+   * aucune offre n'est faite (la partie se termine comme avant). Jamais en Tour du jour ni défi.
+   */
+  revive?: { ads?: RewardedAdProvider; lives?: LivesProvider };
+  /**
+   * Image de résultat (F9, `renderResultCard`, convertie en PNG par main.ts). Absente ou null :
+   * partage du lien seul, sans bouton d'image.
+   */
+  resultImage?: (result: AnyRunResult, mode: Mode, day: string | null) => Promise<File | null>;
+  /** Enregistre un fichier (téléchargement) ; injectable pour les tests. */
+  saveFile?: (file: File) => boolean;
 };
+
+/** Vies de reprise possédées (achats vérifiés par le serveur). Par défaut : aucune. */
+export type LivesProvider = {
+  count(): number;
+  /** Consomme une vie pour `requestId` (idempotent côté serveur). */
+  consume(requestId: string): Promise<'ok' | 'none' | 'error'>;
+};
+const NO_LIVES: LivesProvider = { count: () => 0, consume: () => Promise.resolve('none') };
 
 /** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
 export const PROGRESS_LOCK = 'poc:meta:v1:progress';
@@ -100,7 +139,29 @@ type RunState = {
   activeAtStart: ObjectiveId[];
   events: RunTracker;
   handle: GameHandle | null;
+  /** Ticket du serveur de classement : seule une partie lancée avec un ticket peut être classée. */
+  ticket: RankTicket | null;
+  /** Moyen de la reprise acceptée (« vie », « vidéo »), sinon null. */
+  revivedWith: string | null;
 };
+
+const BOARD_LABELS: Record<BoardKind, string> = { global: 'Monde', weekly: 'Semaine', daily: 'Aujourd’hui' };
+const ordinal = (n: number) => (n === 1 ? '1er' : `${n}e`);
+const SERVICE_MESSAGES: Record<ServiceError, string> = {
+  unavailable: 'Classement indisponible pour cette version du jeu.',
+  offline: 'Pas de connexion. Vérifie Internet, puis réessaie.',
+  busy: 'Beaucoup de monde en ce moment. Réessaie dans une minute.',
+  rejected: 'Le classement a refusé la demande.',
+  server: 'Le classement ne répond pas. Réessaie plus tard.',
+};
+/** Marge avant expiration pour qu'une partie lancée avec ce ticket ait le temps de finir. */
+const TICKET_MARGIN_MS = 15 * 60_000;
+
+function defaultPlayerId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 /** Heure locale du prochain changement de tour (minuit UTC), calculée par le navigateur. */
 const formatLocalTime = (at: Date) =>
@@ -163,6 +224,42 @@ export function createShell(options: ShellOptions): Shell {
   let destroyed = false;
   let pausedByVisibility = false;
   let prefs: ShellPrefs = store.readPrefs();
+
+  // --- Classement (V3-A3) : identité pseudonyme et tickets préchargés -------------------------
+  const leaderboard = options.leaderboard ?? unavailableLeaderboard;
+  const storedPlayer = meta.readPlayer();
+  let player: PlayerIdentity | null = isPlayerIdentity(storedPlayer) ? storedPlayer : null;
+  const tickets: { free?: RankTicket; daily?: RankTicket } = {};
+  const ticketLoading = { free: false, daily: false };
+  const freshTicket = (t: RankTicket | undefined): t is RankTicket => {
+    if (!t) return false;
+    const at = today();
+    return t.expiresAt - at.getTime() > TICKET_MARGIN_MS && (t.mode !== 'daily' || t.day === utcDateKey(at));
+  };
+  /**
+   * Demande à l'avance un ticket par mode : la partie démarre sans attendre le réseau. Sans
+   * pseudo, sans serveur ou hors ligne, la partie se joue quand même, simplement non classée.
+   */
+  const prefetchTickets = () => {
+    if (!leaderboard.available || !player?.pseudo || destroyed) return;
+    for (const mode of ['free', 'daily'] as const) {
+      if (freshTicket(tickets[mode]) || ticketLoading[mode]) continue;
+      ticketLoading[mode] = true;
+      void leaderboard.issueTicket(mode, RULES_VERSION).then((r) => {
+        ticketLoading[mode] = false;
+        if (r.ok && r.value.mode === mode && r.value.rulesVersion === RULES_VERSION) tickets[mode] = r.value;
+      });
+    }
+  };
+  const takeTicket = (mode: Mode, day: string | null): RankTicket | null => {
+    const key = mode === 'daily' ? 'daily' : mode === 'free' ? 'free' : null;
+    if (!key) return null; // défi d'un ami : séquence imposée par le lien, jamais classée
+    const t = tickets[key];
+    if (!freshTicket(t)) return null;
+    if (key === 'daily' && (t.day !== day || t.seed !== dailySeed(t.day))) return null;
+    delete tickets[key];
+    return t;
+  };
 
   const parsed = parseChallenge(new URL(options.url).search);
   let challenge: Challenge | null = parsed.kind === 'challenge' ? parsed.challenge : null;
@@ -285,7 +382,101 @@ export function createShell(options: ShellOptions): Shell {
     const note = el(doc, 'p', { class: 'hint small' }, writable
       ? 'Ta progression est gardée sur cet appareil.'
       : 'Sauvegarde d’une version plus récente du jeu : progression de cette session non enregistrée.');
-    show('rewards', [header, statusChips(), gift, level, goalsPanel, collectionButton(), note], title);
+    show('rewards', [header, statusChips(), gift, seasonPanel(), level, goalsPanel, collectionButton(), note], title);
+    if (focusTestId) view.querySelector<HTMLElement>(`[data-testid="${focusTestId}"]`)?.focus();
+  };
+
+  // --- Passe de saison (V3-A5) ---------------------------------------------------------------
+  const season = options.season ?? SEASON_1;
+  const canDraw = (id: string) => isSkinId(id);
+  const formatSeasonDay = (key: string) =>
+    new Date(`${key}T12:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const seasonClaimable = () => {
+    const day = utcDateKey(today());
+    return season.tiers.some((t) => tierStatus(progress, season, t, 'free', day, canDraw) === 'claimable');
+  };
+  const rewardText = (r: SeasonReward) => (r.kind === 'coins' ? `+${r.amount} pièces` : `Apparence ${r.name}`);
+
+  const seasonPanel = () => {
+    const day = utcDateKey(today());
+    const phase = seasonPhase(season, day);
+    const panel = el(doc, 'section', { class: 'panel', 'aria-labelledby': 'season-title' });
+    panel.append(el(doc, 'h2', { id: 'season-title', 'data-icon': '🏅' }, season.name));
+    const stars = seasonState(progress, season).stars;
+    const next = nextTier(progress, season);
+    if (phase === 'upcoming') {
+      panel.append(el(doc, 'p', { 'data-testid': 'season-summary' }, `Commence le ${formatSeasonDay(season.start)}.`));
+    } else if (phase === 'ended') {
+      panel.append(el(doc, 'p', { 'data-testid': 'season-summary' }, 'Saison finie. Tes apparences restent à toi.'));
+    } else if (next) {
+      const prev = season.tiers.filter((t) => t.stars <= stars).at(-1)?.stars ?? 0;
+      panel.append(
+        el(doc, 'progress', { max: String(next.stars - prev), value: String(stars - prev), 'aria-label': `Vers le palier ${next.tier}` }),
+        el(doc, 'p', { class: 'hint', 'data-testid': 'season-summary' },
+          `Palier ${next.tier} dans ${next.stars - stars} étoile${next.stars - stars > 1 ? 's' : ''} · jusqu’au ${formatSeasonDay(season.end)}`),
+      );
+    } else {
+      panel.append(el(doc, 'p', { 'data-testid': 'season-summary' }, 'Tous les paliers sont atteints. Bravo !'));
+    }
+    const open = iconButton(doc, '🏅', seasonClaimable() ? 'Voir le passe · cadeau à prendre' : 'Voir le passe', () => renderSeason(), 'secondary', 'open-season');
+    panel.append(open);
+    return panel;
+  };
+
+  const claimTier = (tier: number, track: Track) => withProgressLock(() => {
+    const r = updateDoc((current) => {
+      const c = claimSeasonTier(current, season, tier, track, utcDateKey(today()), canDraw);
+      return { doc: c.doc, result: c };
+    });
+    const text = r.ok ? `Pris : ${rewardText(r.reward)}.` : r.reason === 'claimed' ? 'Déjà pris.' : 'Pas encore disponible.';
+    announce(text);
+    if (screen === 'season') renderSeason(`tier-${tier}`, text);
+  });
+
+  /** Écran du passe : paliers, piste gratuite réclamable, piste premium en aperçu (indisponible). */
+  const renderSeason = (focusTestId?: string, notice?: string) => {
+    const { header, title } = screenHeader(season.name, () => renderRewards('open-season'));
+    const day = utcDateKey(today());
+    const stars = seasonState(progress, season).stars;
+    const parts: HTMLElement[] = [header];
+    if (notice) parts.push(el(doc, 'p', { class: 'notice', role: 'status', 'data-testid': 'season-notice' }, notice));
+    parts.push(
+      el(doc, 'p', { 'data-testid': 'season-stars', 'data-icon': '⭐' }, `${stars} étoile${stars > 1 ? 's' : ''} de saison`),
+      el(doc, 'p', { class: 'hint small' }, `Du ${formatSeasonDay(season.start)} au ${formatSeasonDay(season.end)}. Les étoiles se gagnent en jouant.`),
+      el(doc, 'p', { class: 'hint small', 'data-testid': 'premium-note' }, 'Piste ✨ Premium : indisponible pour l’instant. Rien n’est en vente.'),
+    );
+    const list = el(doc, 'ol', { class: 'tiers', 'aria-label': 'Paliers' });
+    for (const t of season.tiers) {
+      const li = el(doc, 'li', { class: 'tier', 'data-testid': `tier-${t.tier}`, tabindex: '-1' });
+      li.append(el(doc, 'p', { class: 'tier-head' }, `Palier ${t.tier} · ${t.stars} ⭐`));
+      for (const track of ['free', 'premium'] as const) {
+        const reward = track === 'free' ? t.free : t.premium;
+        const st = tierStatus(progress, season, t, track, day, canDraw);
+        const cell = el(doc, 'div', { class: `tier-cell ${track} ${st}`, 'data-testid': `tier-${t.tier}-${track}` });
+        if (reward.kind === 'skin') {
+          // Pas encore dessinée par le moteur : pastille « ? », jamais l'aperçu d'une autre apparence.
+          cell.append(isSkinId(reward.id)
+            ? previewOrSwatch(doc, reward.id, { theme: progress.selected.theme, skin: reward.id }, renderAppearancePreview)
+            : el(doc, 'div', { class: 'swatch soon', 'aria-hidden': 'true' }, '?'));
+        }
+        cell.append(el(doc, 'p', { class: 'tier-reward' }, `${track === 'premium' ? '✨ ' : ''}${rewardText(reward)}`));
+        const label: Record<typeof st, string> = {
+          claimed: 'Pris ✓',
+          claimable: '',
+          locked: `🔒 ${t.stars - stars} étoile${t.stars - stars > 1 ? 's' : ''}`,
+          soon: 'Bientôt',
+          'premium-unavailable': 'Indisponible',
+          ended: 'Saison finie',
+        };
+        cell.append(st === 'claimable'
+          ? domButton(doc, 'Prendre', () => claimTier(t.tier, track), 'primary', `claim-tier-${t.tier}`)
+          : el(doc, 'p', { class: 'tier-state' }, label[st]));
+        li.append(cell);
+      }
+      list.append(li);
+    }
+    parts.push(list);
+    show('season', parts, title);
     if (focusTestId) view.querySelector<HTMLElement>(`[data-testid="${focusTestId}"]`)?.focus();
   };
 
@@ -324,7 +515,7 @@ export function createShell(options: ShellOptions): Shell {
         const st = itemState(progress, item);
         const li = el(doc, 'li', { class: `card ${st}`, 'data-testid': `shop-${item.id}`, tabindex: '-1' });
         li.append(
-          previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: item.id as SkinId }, shopPreview),
+          previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: isSkinId(item.id) ? item.id : progress.selected.skin }, shopPreview),
           el(doc, 'p', { class: 'card-name' }, item.name),
         );
         if (st === 'owned') {
@@ -375,7 +566,8 @@ export function createShell(options: ShellOptions): Shell {
 
   const wear = (item: ShopItem) => withProgressLock(() => {
     updateDoc((current) => {
-      const updated = selectAppearance(current, { skin: item.id as SkinId });
+      if (!isSkinId(item.id)) return { doc: current, result: null };
+      const updated = selectAppearance(current, { skin: item.id });
       return { doc: updated, result: null };
     });
     if (screen === 'shop') renderShop({ notice: { text: `${item.name} est mis pour ta prochaine partie.`, testId: 'shop-worn' }, focus: 'shop-worn' });
@@ -463,7 +655,7 @@ export function createShell(options: ShellOptions): Shell {
     const dailyHint = el(doc, 'p', { class: 'hint small', 'data-testid': 'daily-hint', 'data-day': day },
       `Le même pour tous · nouveau à ${formatLocalTime(nextDailyChange(now))}`);
 
-    const giftReady = calendarStatus(progress, day).canClaim;
+    const giftReady = calendarStatus(progress, day).canClaim || seasonClaimable();
     const rewardsTab = iconButton(doc, '🎁', 'Récompenses', () => renderRewards(), 'tab', 'nav-rewards');
     if (giftReady) {
       rewardsTab.classList.add('has-dot');
@@ -472,10 +664,134 @@ export function createShell(options: ShellOptions): Shell {
     const tabbar = el(doc, 'nav', { class: 'tabbar', 'aria-label': 'Menu' });
     tabbar.append(
       iconButton(doc, '🛍️', 'Boutique', () => renderShop(), 'tab', 'nav-shop'),
+      iconButton(doc, '🏆', 'Classement', () => renderLeaderboard(), 'tab', 'nav-leaderboard'),
       rewardsTab,
       iconButton(doc, '⚙️', 'Réglages', () => renderSettings(), 'tab', 'nav-settings'),
     );
     show('home', [statusChips(), brand, play, daily, dailyHint, recordLine(), tabbar], play);
+    prefetchTickets();
+  };
+
+  /** Choix du pseudo : jamais le vrai nom, validé comme sur le serveur. */
+  const pseudoBlock = (editing: boolean, kind: BoardKind) => {
+    const box = el(doc, 'div', { class: 'pseudo', 'data-testid': 'pseudo-block' });
+    if (player?.pseudo && !editing) {
+      box.append(
+        el(doc, 'p', { 'data-testid': 'pseudo' }, `Ton pseudo : ${player.pseudo}`),
+        domButton(doc, 'Changer', () => renderLeaderboard(kind, true), 'ghost', 'pseudo-change'),
+      );
+      return box;
+    }
+    const form = el(doc, 'form', { class: 'pseudo-form' });
+    const input = el(doc, 'input', {
+      id: 'pseudo-input', type: 'text', maxlength: '16', autocomplete: 'off', 'data-testid': 'pseudo-input',
+    });
+    input.value = player?.pseudo ?? '';
+    const error = el(doc, 'p', { class: 'hint small', role: 'alert', 'data-testid': 'pseudo-error' });
+    form.append(
+      el(doc, 'label', { for: 'pseudo-input' }, 'Choisis un pseudo pour être classé'),
+      el(doc, 'p', { class: 'hint small' }, 'Pas ton vrai nom. 3 à 16 lettres ou chiffres.'),
+      input,
+      domButton(doc, 'Valider', () => undefined, 'primary', 'pseudo-save'),
+      error,
+    );
+    form.querySelector('button')!.type = 'submit';
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const pseudo = cleanPseudo(input.value);
+      if (!pseudo) {
+        error.textContent = 'Ce pseudo ne va pas : 3 à 16 lettres ou chiffres.';
+        input.focus();
+        return;
+      }
+      player = { id: player?.id ?? (options.newPlayerId ?? defaultPlayerId)(), pseudo };
+      meta.writePlayer(player);
+      announce(`Pseudo enregistré : ${pseudo}.`);
+      prefetchTickets();
+      renderLeaderboard(kind);
+    });
+    box.append(form);
+    return box;
+  };
+
+  let boardRequest = 0;
+  /** Écran Classement : Monde, Semaine, Aujourd'hui ; chargement, erreurs, démo, pagination. */
+  const renderLeaderboard = (kind: BoardKind = 'global', editingPseudo = false) => {
+    const { header, title } = screenHeader('Classement', () => {
+      renderHome();
+      view.querySelector<HTMLElement>('[data-testid="nav-leaderboard"]')?.focus();
+    });
+    const parts: HTMLElement[] = [header];
+    if (!leaderboard.available) {
+      parts.push(
+        el(doc, 'p', { class: 'notice', 'data-testid': 'board-unavailable' },
+          'Classement indisponible : cette version du jeu n’est reliée à aucun serveur.'),
+        el(doc, 'p', { class: 'hint' }, 'Tu peux jouer quand même. Ton record reste sur cet appareil.'),
+        recordLine(),
+      );
+      show('leaderboard', parts, title);
+      return;
+    }
+    const tabs = el(doc, 'div', { class: 'segmented', role: 'group', 'aria-label': 'Tableau' });
+    for (const k of ['global', 'weekly', 'daily'] as const) {
+      const b = domButton(doc, BOARD_LABELS[k], () => renderLeaderboard(k), 'ghost', `board-${k}`);
+      b.setAttribute('aria-pressed', String(k === kind));
+      tabs.append(b);
+    }
+    const content = el(doc, 'div', { class: 'board', 'data-testid': 'board' });
+    parts.push(pseudoBlock(editingPseudo, kind), tabs, content);
+    show('leaderboard', parts, title);
+    if (editingPseudo) view.querySelector<HTMLElement>('#pseudo-input')?.focus();
+    void loadBoard(kind, content, 0, []);
+  };
+
+  const loadBoard = async (kind: BoardKind, content: HTMLElement, offset: number, shown: BoardEntry[]) => {
+    const request = ++boardRequest;
+    const loading = el(doc, 'p', { role: 'status', 'data-testid': 'board-loading' }, 'Chargement…');
+    if (offset === 0) content.replaceChildren(loading);
+    else content.append(loading);
+    const r = await leaderboard.read(kind, {
+      rulesVersion: RULES_VERSION,
+      offset,
+      limit: 20,
+      ...(player ? { player: player.id } : {}),
+    });
+    if (destroyed || screen !== 'leaderboard' || request !== boardRequest) return; // réponse périmée
+    loading.remove();
+    if (!r.ok) {
+      const retry = domButton(doc, 'Réessayer', () => void loadBoard(kind, content, offset, shown), 'secondary', 'board-retry');
+      content.append(el(doc, 'p', { role: 'alert', 'data-testid': 'board-error' }, SERVICE_MESSAGES[r.error]), retry);
+      return;
+    }
+    const pageData = r.value;
+    const entries = [...shown, ...pageData.entries];
+    const nodes: HTMLElement[] = [];
+    if (pageData.demo) {
+      nodes.push(el(doc, 'p', { class: 'notice', 'data-testid': 'board-demo' }, 'Mode démo : ces joueurs sont inventés pour l’essai.'));
+    }
+    if (pageData.you) {
+      nodes.push(el(doc, 'p', { 'data-testid': 'board-you' }, `Ta place : ${ordinal(pageData.you.rank)} sur ${pageData.total}`));
+    }
+    if (entries.length === 0) {
+      nodes.push(el(doc, 'p', { 'data-testid': 'board-empty' }, 'Personne pour l’instant. Sois le premier !'));
+    } else {
+      const list = el(doc, 'ol', { class: 'board-list', 'aria-label': `Classement ${BOARD_LABELS[kind]}` });
+      for (const e of entries) {
+        const li = el(doc, 'li', { class: e.you ? 'you' : '' });
+        li.append(
+          el(doc, 'span', { class: 'board-rank' }, ordinal(e.rank)),
+          el(doc, 'span', { class: 'board-name' }, e.you ? `${e.pseudo} (toi)` : e.pseudo),
+          el(doc, 'span', { class: 'board-score' }, floors(e.score)),
+        );
+        list.append(li);
+      }
+      nodes.push(list);
+    }
+    if (pageData.nextOffset !== null) {
+      const next = pageData.nextOffset;
+      nodes.push(domButton(doc, 'Voir plus', () => void loadBoard(kind, content, next, entries), 'ghost', 'board-more'));
+    }
+    content.replaceChildren(...nodes);
   };
 
   const stopRun = () => {
@@ -490,8 +806,10 @@ export function createShell(options: ShellOptions): Shell {
     // Défi : même séquence. Tour du jour : seed de la date UTC, figée au lancement de cette partie.
     // Libre : nouvelle seed.
     const day = mode === 'daily' ? utcDateKey(today()) : null;
-    const seed =
-      mode === 'daily' && day ? dailySeed(day) : mode === 'challenge' && challenge ? challenge.seed : options.newSeed();
+    const ticket = takeTicket(mode, day);
+    const seed = ticket
+      ? ticket.seed
+      : mode === 'daily' && day ? dailySeed(day) : mode === 'challenge' && challenge ? challenge.seed : options.newSeed();
     const runId = options.newRunId();
     run = {
       runId,
@@ -502,6 +820,8 @@ export function createShell(options: ShellOptions): Shell {
       activeAtStart: activeObjectives(progress).map((o) => o.id),
       events: createRunTracker(),
       handle: null,
+      ticket,
+      revivedWith: null,
     };
 
     const runChallenge = run.challenge;
@@ -540,14 +860,24 @@ export function createShell(options: ShellOptions): Shell {
     const current = run;
     let ended = false;
     let placed = false;
+    // Reprise proposée seulement en partie libre, et seulement si un moyen réel existe.
+    const allowContinue = mode === 'free' && (reviveAds.kind !== 'none' || reviveLives.count() > 0);
     try {
       current.handle = options.startGame({
         canvas,
         config: { seed, rulesVersion: RULES_VERSION },
         prefs,
         appearance: progress.selected,
+        ...(allowContinue ? { allowContinue } : {}),
         onGameEvent: (event) => {
-          if (run === current) current.events.onEvent(event);
+          if (run !== current) return;
+          current.events.onEvent(event);
+          const e = asShellEvent(event);
+          if (!e) return;
+          if (e.type === 'continue-offer') showReviveOffer(current, stage, canvas);
+          else if (e.type === 'continue-start') announce('C’est reparti ! Prêt dans 3 secondes.');
+          else if (e.type === 'bonus-start') announce(`Bonus ${BONUS_NAMES[e.bonus]} pour ${e.floors} étages !`);
+          else announce(`Fin du bonus ${BONUS_NAMES[e.bonus]}.`);
         },
         onFirstPlacement: () => {
           if (placed || destroyed || run !== current) return;
@@ -576,7 +906,85 @@ export function createShell(options: ShellOptions): Shell {
     }
   };
 
-  const finishRun = (current: RunState, result: RunResult) => {
+  // --- Reprise (V3-A6) -----------------------------------------------------------------------
+  const reviveAds = options.revive?.ads ?? noAds;
+  const reviveLives = options.revive?.lives ?? NO_LIVES;
+  const rewardGate = createRewardGate(reviveAds);
+
+  /**
+   * Offre DOM après la chute (le moteur attend, aucun onEnd avant la décision) :
+   * vie possédée, vidéo récompensée (démo libellée en dev), ou Terminer, toujours disponible.
+   * Un refus, une vidéo absente ou une erreur ne donnent jamais de reprise.
+   */
+  const showReviveOffer = (current: RunState, stage: HTMLElement, canvas: HTMLCanvasElement) => {
+    const handle = current.handle as (GameHandle & ContinueControls) | null;
+    if (!handle?.continueRun || !handle.declineContinue || stage.querySelector('[data-testid="revive"]')) return;
+    if (reviveLives.count() === 0 && reviveAds.kind === 'none') {
+      handle.declineContinue(); // aucun moyen réel : fin normale, aucune offre vide
+      return;
+    }
+    const requestId = `${current.runId}:revive`;
+    const box = el(doc, 'div', { class: 'pause revive', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'revive-title', 'data-testid': 'revive' });
+    const msg = el(doc, 'p', { role: 'status', 'data-testid': 'revive-status' });
+    const buttons: HTMLButtonElement[] = [];
+    const busy = (on: boolean) => buttons.forEach((b) => (b.disabled = on));
+    const close = () => box.remove();
+    const resumeWith = (how: string) => {
+      if (run !== current) return;
+      const accepted = handle.continueRun!();
+      if (!accepted) {
+        msg.textContent = 'Reprise impossible.';
+        busy(false);
+        return;
+      }
+      current.revivedWith = how;
+      close();
+      canvas.focus();
+    };
+    const finish = () => {
+      close();
+      handle.declineContinue!();
+    };
+    const lives = reviveLives.count();
+    if (lives > 0) {
+      const b = iconButton(doc, '❤️', `Utiliser une vie (${lives})`, () => {
+        busy(true);
+        msg.textContent = '';
+        void reviveLives.consume(requestId).then((r) => {
+          if (run !== current || !box.isConnected) return;
+          if (r === 'ok') resumeWith('vie');
+          else {
+            msg.textContent = r === 'none' ? 'Plus de vie.' : 'La vie n’a pas pu être utilisée. Rien n’a été retiré.';
+            busy(false);
+          }
+        });
+      }, 'primary', 'revive-life');
+      buttons.push(b);
+    }
+    if (reviveAds.kind !== 'none') {
+      const b = iconButton(doc, '▶', 'Regarder une vidéo', () => {
+        busy(true);
+        msg.textContent = 'Vidéo en cours…';
+        void rewardGate.reward(requestId, 'revive', () => resumeWith('vidéo')).then((outcome) => {
+          if (run !== current || !box.isConnected) return;
+          if (outcome === 'rewarded' || outcome === 'already-rewarded') return;
+          msg.textContent = AD_MESSAGES[outcome];
+          busy(false);
+        });
+      }, lives > 0 ? 'secondary' : 'primary', 'revive-ad');
+      buttons.push(b);
+    }
+    const end = domButton(doc, 'Terminer', finish, 'ghost', 'revive-end');
+    buttons.push(end);
+    box.append(el(doc, 'p', { id: 'revive-title', class: 'revive-title' }, 'Oups ! Encore une chance ?'));
+    if (reviveAds.kind === 'demo') box.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'revive-demo' }, reviveAds.label));
+    box.append(...buttons, msg);
+    stage.append(box);
+    buttons[0]!.focus();
+    announce('Oups ! Encore une chance ? Choisis, ou Terminer.');
+  };
+
+  const finishRun = (current: RunState, result: AnyRunResult) => {
     if (destroyed || run !== current) return;
     tracker.track('run_end', {
       mode: current.mode,
@@ -586,10 +994,12 @@ export function createShell(options: ShellOptions): Shell {
       perfectCount: result.perfectCount,
     });
     stopRun();
+    prefetchTickets();
     // Record, progression et record du jour : une seule section exclusive entre onglets.
     withProgressLock(() => {
+      const height = heightOf(result);
       const isRecord = store.submitScore({
-        score: result.score,
+        score: height,
         perfectCount: result.perfectCount,
         mode: current.mode,
       });
@@ -597,13 +1007,14 @@ export function createShell(options: ShellOptions): Shell {
         const e = applyRunEconomy(doc, current.activeAtStart, {
           runId: current.runId,
           mode: current.mode,
-          score: result.score,
+          score: height, // gains sur la hauteur, jamais sur les points ×2 (accord #27, C7)
           perfectCount: result.perfectCount,
           longestStreak: current.events.longestStreak,
         });
-        return { doc: e.doc, result: e };
+        // Étoiles de saison : mêmes étoiles, même écriture ; 0 si la partie était déjà comptée.
+        return { doc: addSeasonStars(e.doc, season, utcDateKey(today()), e.gained.xp), result: e };
       });
-      const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
+      const isDailyRecord = current.day ? meta.submitDaily(current.day, height) : false;
       renderResult(current, result, {
         isRecord,
         isDailyRecord,
@@ -620,12 +1031,23 @@ export function createShell(options: ShellOptions): Shell {
     gained: { xp: number; coins: number; levelUp: { from: number; to: number } | null };
   };
 
-  const renderResult = (current: RunState, result: RunResult, outcome: Outcome) => {
+  const renderResult = (current: RunState, result: AnyRunResult, outcome: Outcome) => {
     const { isRecord } = outcome;
+    const height = heightOf(result);
+    const points = pointsOf(result);
+    const revived = continuesOf(result) > 0;
     const title = el(doc, 'h2', { tabindex: '-1' }, 'Partie terminée');
-    const score = el(doc, 'p', { class: 'score', 'data-testid': 'score' }, floors(result.score));
+    const score = el(doc, 'p', { class: 'score', 'data-testid': 'score' }, floors(height));
     const parts: (HTMLElement | null)[] = [title, el(doc, 'p', { class: 'score-label', 'aria-hidden': 'true' }, 'Hauteur'), score];
-    let summary = `Partie terminée. Score : ${result.score}.`;
+    let summary = `Partie terminée. Hauteur : ${height}.`;
+    if (points !== null) {
+      parts.push(el(doc, 'p', { class: 'points', 'data-testid': 'points' }, `${points} point${points > 1 ? 's' : ''}`));
+      summary += ` ${points} points.`;
+    }
+    if (revived) {
+      parts.push(el(doc, 'p', { class: 'hint', 'data-testid': 'revived' }, 'Partie avec une reprise : hors classement.'));
+      summary += ' Partie avec une reprise.';
+    }
 
     if (isRecord) {
       parts.push(el(doc, 'p', { class: 'record', 'data-testid': 'new-record' }, 'Nouveau record !'));
@@ -634,11 +1056,11 @@ export function createShell(options: ShellOptions): Shell {
     if (current.challenge) {
       const t = current.challenge.target;
       const text =
-        result.score > t
-          ? `Défi relevé : ${result.score} contre ${t} annoncés.`
-          : result.score === t
+        height > t
+          ? `Défi relevé : ${height} contre ${t} annoncés.`
+          : height === t
             ? `Égalité avec les ${t} annoncés. Encore un étage !`
-            : `Pas encore : ${result.score} sur ${t} annoncés.`;
+            : `Pas encore : ${height} sur ${t} annoncés.`;
       parts.push(el(doc, 'p', { 'data-testid': 'challenge-outcome' }, text));
       summary += ` ${text}`;
     }
@@ -671,7 +1093,22 @@ export function createShell(options: ShellOptions): Shell {
       summary += ` ${outcome.completedNow.length} objectif(s) accompli(s).`;
     }
     const rewardShortcut = outcome.completedNow.length > 0;
-    parts.push(el(doc, 'p', { class: 'hint' }, 'Score local, non vérifié.'), recordLine());
+    const rankStatus = el(doc, 'p', { class: 'hint', role: 'status', 'data-testid': 'rank-status' });
+    const rankRetry = domButton(doc, 'Envoyer encore', () => void sendRank(current, result, rankStatus, rankRetry), 'ghost', 'rank-retry');
+    rankRetry.hidden = true;
+    if (revived) {
+      rankStatus.textContent = 'Score local. Une partie avec reprise n’entre pas au classement.';
+    } else if (current.ticket && player?.pseudo) {
+      rankStatus.textContent = 'Envoi au classement…';
+    } else {
+      rankStatus.textContent = 'Score local, non vérifié.';
+      if (leaderboard.available && current.mode !== 'challenge') {
+        rankStatus.textContent += player?.pseudo
+          ? ' Partie non classée : pas de connexion au départ.'
+          : ' Choisis un pseudo dans Classement pour être classé.';
+      }
+    }
+    parts.push(rankStatus, rankRetry, recordLine());
 
     const status = el(doc, 'p', { class: 'hint', role: 'status', 'data-testid': 'share-status' });
     const fallback = el(doc, 'div', { class: 'fallback', hidden: '' });
@@ -684,16 +1121,31 @@ export function createShell(options: ShellOptions): Shell {
     const shareButton = button('Défier un ami', guarded(() => void doShare()), false, 'share');
     const home = domButton(doc, 'Accueil', guarded(renderHome), 'ghost');
 
+    let imagePromise: Promise<File | null> | null = null;
+    const resultImage = () => {
+      if (!options.resultImage) return Promise.resolve(null);
+      imagePromise ??= options.resultImage(result, current.mode, current.day).catch(() => null);
+      return imagePromise;
+    };
+    const saveImage = domButton(doc, 'Enregistrer l’image', guarded(() => {
+      void resultImage().then((file) => {
+        if (destroyed || screen !== 'result') return;
+        const ok = file ? (options.saveFile ?? ((f: File) => downloadFile(f, doc)))(file) : false;
+        status.textContent = ok ? 'Image enregistrée.' : 'Image indisponible sur cet appareil.';
+      });
+    }), 'ghost', 'save-image');
     const doShare = async () => {
-      const url = buildChallengeUrl(options.url, current.seed, result.score);
+      const url = buildChallengeUrl(options.url, current.seed, height);
       shareButton.disabled = true;
       tracker.track('share_attempt', { mode: current.mode, runId: current.runId });
       let outcome: ShareOutcome;
       try {
+        const image = await resultImage();
         outcome = await options.share({
           title: 'Pile ou Crash',
-          text: `J’ai empilé ${floors(result.score)}. Tu fais mieux sur la même séquence ?`,
+          text: `J’ai empilé ${floors(height)}${revived ? ' (avec une reprise)' : ''}. Tu fais mieux sur la même séquence ?`,
           url,
+          ...(image ? { files: [image] } : {}),
         });
       } catch {
         outcome = 'unavailable';
@@ -727,16 +1179,52 @@ export function createShell(options: ShellOptions): Shell {
 
     const actions = el(doc, 'div', { class: 'actions' });
     actions.append(retry, shareButton);
+    if (options.resultImage) actions.append(saveImage);
     if (rewardShortcut) actions.append(domButton(doc, 'Voir la collection', guarded(() => renderCollectionScreen()), 'ghost', 'result-collection'));
     actions.append(home);
     const info = el(doc, 'div', { class: 'result-info' });
     info.append(...parts.filter((p): p is HTMLElement => p !== null));
     show('result', [info, actions, status, fallback], retry);
+    if (current.ticket && player?.pseudo && !revived) void sendRank(current, result, rankStatus, rankRetry);
     // Marqueur observable (tests, styles) de la fin du délai de garde.
     guardTimer = setTimeout(() => {
       if (screen === 'result') view.dataset.inputReady = 'true';
     }, RESULT_INPUT_GUARD_MS);
     announce(summary);
+  };
+
+  /**
+   * Envoie la partie (ticket + entrées) : le serveur rejoue et calcule lui-même le score.
+   * Idempotent côté serveur : « Envoyer encore » après une coupure ne compte jamais deux fois.
+   */
+  const sendRank = async (current: RunState, result: AnyRunResult, status: HTMLElement, retry: HTMLButtonElement) => {
+    if (!current.ticket || !player?.pseudo) return;
+    retry.hidden = true;
+    status.textContent = 'Envoi au classement…';
+    const r = await leaderboard.submit({
+      ticket: current.ticket.ticket,
+      playerId: player.id,
+      pseudo: player.pseudo,
+      inputTicks: result.inputTicks,
+      ...(result.rulesVersion === 2 ? { continueTicks: continueTicksOf(result) } : {}),
+    });
+    if (destroyed || !status.isConnected) return;
+    let text: string;
+    if (r.ok && r.value.ranked) {
+      const kind: BoardKind = current.ticket.mode === 'daily' ? 'daily' : 'global';
+      const p = r.value.placements[kind];
+      text = p ? `Classement ${BOARD_LABELS[kind]} : ${ordinal(p.rank)} sur ${p.total}.` : 'Partie classée.';
+      if (p && !p.improved) text += ' Ton meilleur score reste celui d’avant.';
+    } else if (r.ok) {
+      text = 'Partie avec reprise : elle n’entre pas au classement.';
+    } else if (r.error === 'rejected') {
+      text = r.code === 'unknown_ticket' ? 'Partie non classée : trop ancienne.' : 'Partie non classée : refusée par le serveur.';
+    } else {
+      text = `Pas envoyé. ${SERVICE_MESSAGES[r.error]}`;
+      retry.hidden = false;
+    }
+    status.textContent = text;
+    announce(text);
   };
 
   // Modalité de la dernière interaction : l'anneau de focus du canvas n'apparaît qu'au clavier

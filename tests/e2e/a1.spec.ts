@@ -277,7 +277,7 @@ test('E1 : XP, pièces et récompense de connexion conservées après rechargeme
   await expect(page.getByTestId('xp')).toHaveText(before.xp!);
   await expect(page.getByTestId('calendar')).toContainText('Déjà pris');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
-  expect(saved).toMatchObject({ version: 2, grants: ['v2-objectives-backfill'] });
+  expect(saved).toMatchObject({ version: 3, grants: ['v2-objectives-backfill'] });
 });
 
 test('E1 : deux onglets du même navigateur ne perdent ni gains ni réclamation', async ({ page, context }) => {
@@ -363,7 +363,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }
     const page = await context.newPage();
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Jouer', exact: true })).toBeInViewport({ ratio: 1 });
-    for (const name of ['Défi du jour', 'Boutique', 'Récompenses', 'Réglages']) {
+    for (const name of ['Défi du jour', 'Boutique', 'Classement', 'Récompenses', 'Réglages']) {
       await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
     }
     await noHorizontalOverflow(page);
@@ -380,6 +380,52 @@ test('boutique : état réel tant que le moteur n’a pas les apparences de bout
   const sellable = await page.locator('.cards.shop li').count();
   if (sellable === 0) await expect(page.getByTestId('shop-empty')).toBeVisible();
   await noHorizontalOverflow(page);
+});
+
+test('classement : sans serveur configuré (build Pages), « Indisponible » et jeu entier', async ({ page }) => {
+  const requests: string[] = [];
+  page.on('request', (r) => {
+    if (!r.url().startsWith('http://localhost') && !r.url().startsWith('http://127.0.0.1')) requests.push(r.url());
+  });
+  await page.goto('/');
+  await page.getByTestId('nav-leaderboard').tap();
+  await expect(page.getByRole('heading', { name: 'Classement' })).toBeFocused();
+  await expect(page.getByTestId('board-unavailable')).toContainText('indisponible');
+  await noHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Retour' }).tap();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  await tapUntilResult(page);
+  await expect(page.getByTestId('rank-status')).toHaveText('Score local, non vérifié.');
+  expect(requests).toEqual([]);
+});
+
+test('passe de saison : écran lisible sans débordement, premium indisponible', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('nav-rewards').tap();
+  await page.getByTestId('open-season').tap();
+  await expect(page.getByTestId('premium-note')).toContainText('indisponible');
+  await expect(page.getByTestId('tier-10-premium')).toContainText('Indisponible');
+  await noHorizontalOverflow(page);
+});
+
+test('sauvegarde V2 publiée : migrée en v3 sans perte (XP, pièces, objectifs, apparence)', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    localStorage.setItem('poc:meta:v1:progress', JSON.stringify({
+      version: 2, xp: 140, coins: 37, completed: ['floors-5'], grants: ['v2-objectives-backfill'],
+      calendar: { lastClaimDate: '2026-11-10', cycle: 0, index: 2 },
+    }));
+  });
+  await page.goto('/');
+  await expect(page.getByTestId('coins')).toHaveText('37 pièces');
+  await expect(page.getByTestId('level')).toHaveText('Niveau 3');
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  await tapUntilResult(page);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
+  expect(saved).toMatchObject({ version: 3, completed: expect.arrayContaining(['floors-5']) });
+  expect(saved.xp).toBeGreaterThanOrEqual(140);
+  expect(saved.coins).toBeGreaterThanOrEqual(37);
 });
 
 /** Polices larges (repli Android, runner CI) : la CI échouait à 320 px avec DejaVu Sans. */

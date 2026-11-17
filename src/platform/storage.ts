@@ -169,6 +169,9 @@ export type MetaStore = {
   readDailyBest(dateKey: string): number;
   /** Enregistre un score du jour ; renvoie true s'il bat le record de cette date. */
   submitDaily(dateKey: string, score: number): boolean;
+  /** Identité de classement brute ; à valider par `isPlayerIdentity` (services/leaderboard.ts). */
+  readPlayer(): unknown;
+  writePlayer(player: unknown): void;
 };
 
 type DailyRecords = Record<string, number>;
@@ -190,6 +193,8 @@ export function createMetaStore(storage: Storage | null): MetaStore {
     readProgress: () => kv.readRaw('progress'),
     writeProgress: (progress) => kv.writeJson('progress', progress),
     readDailyBest: (dateKey) => readDaily()[dateKey] ?? 0,
+    readPlayer: () => kv.readRaw('player'),
+    writePlayer: (player) => kv.writeJson('player', player),
     submitDaily(dateKey, score) {
       if (!DATE_KEY.test(dateKey) || !isScore(score)) return false;
       const records = readDaily();

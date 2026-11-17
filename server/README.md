@@ -34,7 +34,20 @@ PORT=8787 HOST=0.0.0.0 ALLOWED_ORIGINS=https://alexis97432.github.io DATA_FILE=.
 ```
 
 Variables (aucun secret) : `PORT`, `HOST`, `ALLOWED_ORIGINS`, `DATA_FILE`, `DEMO`, `RULES_VERSIONS`
-— détail dans `server/config.ts`. Le client lira l'adresse dans `VITE_LEADERBOARD_URL` au build.
+— détail dans `server/config.ts`.
+
+Client : l'adresse est lue au build dans `VITE_LEADERBOARD_URL` (ex.
+`VITE_LEADERBOARD_URL=https://classement.exemple/api/v1 npm run build`). Vide (build GitHub Pages
+actuel) : l'écran Classement affiche « Indisponible » et aucune requête n'est faite.
+Essai complet en local :
+
+```bash
+npm run server:dev
+```
+
+```bash
+VITE_LEADERBOARD_URL=http://127.0.0.1:8787/api/v1 npm run dev
+```
 
 ## API v1
 
