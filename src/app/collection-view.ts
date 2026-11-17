@@ -22,9 +22,26 @@ import {
   unlockedSkins,
   unlockedThemes,
   type Appearance,
+  type ObjectiveId,
   type ProgressState,
   type Reward,
 } from './progression';
+
+/**
+ * Condition de déblocage courte, au tutoiement, pour les cartes de la collection (V4) : tient sur
+ * deux lignes dans une carte de 120 px. La liste complète des missions garde les phrases longues.
+ */
+const SHORT_GOALS: Record<ObjectiveId, string> = {
+  'floors-5': 'Pose 5 étages en une partie',
+  'streak-2': 'Fais 2 parfaits d’affilée',
+  'floors-12': 'Pose 12 étages en une partie',
+  'perfects-5': 'Fais 5 parfaits en une partie',
+  'floors-18': 'Pose 18 étages en une partie',
+  'daily-8': 'Fais 8 étages au Défi du jour',
+  'streak-4': 'Fais 4 parfaits d’affilée',
+  'floors-25': 'Pose 25 étages en une partie',
+  'perfects-10': 'Fais 10 parfaits en une partie',
+};
 
 /** Dessine un aperçu ; false si Canvas indisponible (contrat C6). Injectable pour les tests. */
 export type PreviewFn = (
@@ -87,7 +104,8 @@ function card(
     const goal = objectiveFor(reward);
     const source = reward.kind === 'skin' ? V3_SKIN_SOURCE[reward.id] : undefined;
     const lock = el(doc, 'p', { class: 'item-meta lock' });
-    lock.append(icon(doc, 'lock'), el(doc, 'span', {}, goal ? `À débloquer : ${goal.label.toLowerCase()}` : source ?? 'Verrouillé'));
+    // « À débloquer » est lu par les lecteurs d'écran ; à l'écran, le cadenas suffit.
+    lock.append(icon(doc, 'lock'), el(doc, 'span', { class: 'sr-only' }, 'À débloquer : '), el(doc, 'span', {}, goal ? SHORT_GOALS[goal.id] : source ?? 'Verrouillé'));
     box.append(lock);
   }
   item.append(box);

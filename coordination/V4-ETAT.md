@@ -62,11 +62,21 @@ Fichier de reprise : si une session s'interrompt, repartir d'ici. Mis à jour à
 | S3 | Composants d'interface : feuille modale, barre du haut, dock, segments, interrupteur, curseur (`src/app/ui/components.ts`) | fait |
 | S4 | Écrans : accueil, récompenses, passe, boutique, collection, classement, réglages, aide, résultat, partie et pause, reprise (`src/app/shell.ts`, `src/app/collection-view.ts`) | fait, typecheck propre |
 | S5 | Moteur : qualité d'effets, volume, police (`src/game/render/`) | fait |
-| S6 | Tests : mise à jour, régressions, exploration de tous les boutons, contrastes, thèmes, petits écrans | en cours (tests mis à jour et ajoutés ; exploration et contrastes à faire) |
-| S7 | Documentation, statut, PR, fusion, publication Pages, vérification en ligne | à faire |
+| S6 | Tests : mise à jour, régressions, exploration de tous les boutons, contrastes, thèmes, petits écrans | fait (501 unitaires, 92 e2e, 39 moteur ; exploration 36 boutons ; contrastes clair/sombre) |
+| S7 | Documentation, statut, PR, fusion, publication Pages, vérification en ligne | en cours (documentation faite : `docs/V4.md`, `docs/LICENCES-TIERS.md`) |
 
 ## Reprise
 
-- Point d'étape : interface V4 complète, `npm run typecheck`, `npm test` (497), `npm run build`, e2e (71 passés, 0 échec au dernier passage) et `test:game-browser` (39) verts en local.
-- Corrections trouvées en route (à reporter dans `docs/V4.md`) : classement v2 affiché en « étages » au lieu de points ; offre de reprise sans délai de garde (une vie pouvait partir sur un appui en rafale) ; test e2e V3 fragile (cible du lien comparée aux points) ; phrase « hors classement » en double.
-- Prochaine action : exploration de tous les boutons (aucun bouton mort), contrastes clair/sombre, captures « après » (`coordination/captures/v4-apres/`), puis S7 (docs, PR, CI, fusion, Pages, vérification en ligne).
+- **Dernier état local, vérifié après `npm ci` (npm 10) :**
+  - `npm run typecheck` : OK ;
+  - `npm test` : 501 tests ;
+  - `npm run build` : OK ;
+  - `CI=1 npm run test:e2e` : 92 tests passés, 46 ignorés par conception (profils), plus 39 tests moteur.
+- **Verrou corrigé :** l'installation de la police et des icônes avec npm 11 avait retiré `@emnapi/core` et `@emnapi/runtime` du `package-lock.json`, et `npm ci` (npm 10, CI) échouait. Les deux entrées sont restaurées depuis la V3.
+- **Prochaine action :**
+  1. contrôle par mutation des nouveaux tests (contraste, exploration des boutons, délai de garde) ;
+  2. PR vers `claude/youthful-mayer-n4f7oy`, avec l'exception documentée ;
+  3. CI ;
+  4. fusion ;
+  5. `pages.yml` avec le SHA exact ;
+  6. vérification en ligne (`source-commit.txt`, ressources, parcours).

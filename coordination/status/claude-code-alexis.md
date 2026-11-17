@@ -1,5 +1,34 @@
 # Claude Code Alexis
 
+## V4 — interface modernisée (17 novembre 2026)
+
+- **Cadre :** exception de l'utilisateur pour la V4 uniquement.
+  - Alexis travaille seul ; FLK et Codex ne participent pas.
+  - Il modifie tous les périmètres, sans revue externe.
+  - Il fusionne ses propres PR et publie sur Pages après vérification.
+  - Les vérifications sont des **auto-vérifications**, pas une revue indépendante.
+- **Branche :** `agent/claude-code-alexis/v4-interface`. La PR, la CI, la fusion et la publication sont suivies dans `coordination/V4-ETAT.md`.
+- **Livré :**
+  - préférences v2 ;
+  - système visuel clair et sombre ;
+  - composants ;
+  - tous les écrans repensés ;
+  - pause et sortie de partie ;
+  - retour du téléphone ;
+  - fenêtres accessibles ;
+  - vibrations et sons d'interface ;
+  - délai de garde de la reprise ;
+  - classement v2 en points.
+- **Bilan détaillé :** [`docs/V4.md`](../../docs/V4.md), à partir de l'audit [`docs/V4-AUDIT.md`](../../docs/V4-AUDIT.md).
+- **Limites :**
+  - aucun téléphone physique ;
+  - ni Safari ni Firefox ;
+  - zones sûres non simulées ;
+  - aucun test avec des enfants ;
+  - classement en ligne, vidéos et paiements non connectés : affichés comme indisponibles, jamais simulés.
+
+## Historique (avant V4)
+
 ## Tâches
 
 | Tâche | État | Branche | SHA / PR | Tests |

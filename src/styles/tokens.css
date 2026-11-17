@@ -2,7 +2,7 @@
  * V4 — jetons de couleur et de forme. Thème clair par défaut ; sombre si l'utilisateur le choisit
  * (data-theme="dark") ou si l'appareil est en sombre et que le joueur a laissé « Auto ».
  * Le thème de l'interface est indépendant des univers des blocs (Confiserie, Orbital, Jardin).
- * Contrastes vérifiés (texte ≥ 4,5:1) par le test e2e « contrastes ».
+ * Contrastes vérifiés (texte ≥ 4,5:1) par tests/app/contrast.test.ts (jetons) et tests/e2e/v4.spec.ts (rendu).
  */
 :root {
   --font: 'Fredoka Variable', 'Fredoka', ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -28,6 +28,10 @@
   --accent-hi: #ffdc7d;
   --violet: #7c5cff;
   --violet-ink: #5536d1;
+  /* Ruban « Niveau atteint » : texte blanc, même fond dans les deux thèmes (contraste ≥ 4,5:1). */
+  --ribbon-violet: #5536d1;
+  /* Mot « Crash » du titre : corail assez foncé pour le grand texte (≥ 3:1 sur le fond). */
+  --brand-accent: #e0364a;
   --on-color: #23204a;
 
   --coin: #f5a623;
@@ -61,7 +65,7 @@
   --surface-3: #33306b;
   --ink: #fff3e0;
   --ink-soft: #cbc6f0;
-  --edge: #0b0b20;
+  --edge: #6b65b8;
   --line-soft: rgba(255, 243, 224, 0.16);
   --focus: #8fb1ff;
   --primary: #ff6b78;
@@ -72,6 +76,7 @@
   --accent-hi: #ffe08a;
   --violet: #9b85ff;
   --violet-ink: #c6b8ff;
+  --brand-accent: #ff98a1;
   --on-color: #1b1a3a;
   --ok-ink: #7be8cf;
   --ok-bg: #12403a;
@@ -96,7 +101,7 @@
     --surface-3: #33306b;
     --ink: #fff3e0;
     --ink-soft: #cbc6f0;
-    --edge: #0b0b20;
+    --edge: #6b65b8;
     --line-soft: rgba(255, 243, 224, 0.16);
     --focus: #8fb1ff;
     --primary: #ff6b78;
@@ -107,6 +112,7 @@
     --accent-hi: #ffe08a;
     --violet: #9b85ff;
     --violet-ink: #c6b8ff;
+    --brand-accent: #ff98a1;
     --on-color: #1b1a3a;
     --ok-ink: #7be8cf;
     --ok-bg: #12403a;

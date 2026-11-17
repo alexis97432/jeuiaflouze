@@ -778,7 +778,11 @@ export function createShell(options: ShellOptions): Shell {
 
     const help = uiButton(doc, { label: 'Comment jouer', icon: 'help', variant: 'ghost', block: true, testId: 'open-howto', onClick: () => openHowTo() });
     const note = el(doc, 'p', { class: 'hint small center' }, 'Tes réglages restent sur cet appareil.');
-    show('settings', [header, theme, sound, vibration, motion, effects, help, note], title);
+    // Licences de la police et des icônes, livrées avec le jeu (OFL 1.1, ISC, MIT).
+    const credits = el(doc, 'p', { class: 'hint small center' });
+    const creditsLink = el(doc, 'a', { href: 'licences-tiers.txt', class: 'credits', 'data-testid': 'credits', target: '_blank', rel: 'noopener' }, 'Crédits : police Fredoka, icônes Lucide');
+    credits.append(creditsLink);
+    show('settings', [header, theme, sound, vibration, motion, effects, help, note, credits], title);
   };
 
   /** Fenêtre « Comment jouer » : six étapes, des mots simples. */

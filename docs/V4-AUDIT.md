@@ -52,4 +52,13 @@ Aucune erreur console ni aucun débordement horizontal relevés en V3 sur les é
 
 ## Après V4
 
-La matrice des parcours après la V4 est dans `docs/V4.md`.
+Les éléments suivants sont dans [`docs/V4.md`](V4.md) :
+- la matrice des parcours avant et après, avec les hauteurs mesurées ;
+- les réglages ;
+- les vérifications exécutées ;
+- les défauts trouvés en cours de route, D12 à D17 :
+  - classement v2 affiché en étages ;
+  - offre de reprise sans délai de garde ;
+  - contrastes ;
+  - deux tests e2e fragiles ou devenus inopérants ;
+  - phrase en double.

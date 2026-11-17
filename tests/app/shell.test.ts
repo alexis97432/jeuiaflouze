@@ -470,8 +470,9 @@ describe('accueil V2 et collection', () => {
     button('Récompenses').click();
     expect(text('open-collection')).toBe('Ma collection 2/17');
     button('Ma collection 2/17').click();
-    expect(text('card-skin-marbre')).toContain('À débloquer : poser au moins 5 étages dans une partie');
-    expect(text('card-theme-jardin')).toContain('À débloquer : terminer un défi du jour avec au moins 8 étages');
+    // V4 : condition courte à l'écran, « À débloquer » lu par les lecteurs d'écran.
+    expect(text('card-skin-marbre')).toContain('À débloquer : Pose 5 étages en une partie');
+    expect(text('card-theme-jardin')).toContain('À débloquer : Fais 8 étages au Défi du jour');
     expect(text('card-skin-gomme')).toContain('Sélectionné');
     expect(root.querySelector('[data-testid="card-skin-marbre"] button')).toBeNull(); // verrouillé : pas de choix
     button('Retour').click(); // retour à l'écran Récompenses
