@@ -105,3 +105,11 @@ Comportement :
 - Après `continueRun()` : effets de chute effacés, compte à rebours 3-2-1 dessiné depuis le tick (grand chiffre contrasté, son court par chiffre, son coupé respecté), bloc réapparu immobile ; les appuis sont refusés par le driver (ni file, ni pose fantôme). Pause du shell ou onglet caché : le décompte s'arrête avec les ticks.
 - HUD v2 : points en grand, « N étages » en dessous, jauge « Super » de 10 cases avec le nom du prochain bonus (« Ralenti », « ×2 ») ; pendant un bonus, 5 cases à sa couleur qui se vident à chaque pose, bannière « RALENTI ! » / « ×2 POINTS ! », teinte légère de l'écran (statique) et « +N » au-dessus de chaque pose (fixe en reduced-motion). Sons propres au début et à la fin des bonus.
 - Démo : v2 par défaut avec une offre étiquetée « Démo » (pas de vidéo ni de vie) ; `?regles=1` pour la v1.
+
+## V3 — F9 : carte de résultat
+
+Exports : `summarizeRun(result)` → `RunSummary | null` ; `renderResultCard(canvas, { result, appearance?, mode, day? }, { scale? })` → `boolean` ; `CARD_WIDTH` × `CARD_HEIGHT` = 1080 × 1350.
+
+- Dérivée du **rejeu** (`replayRun`) puis d'une re-simulation : motif des poses, tour réelle, points/hauteur, reprise. Un résultat qui ne se rejoue pas, ou dont score/parfaits/durée déclarés diffèrent du rejeu, donne `null` / `false` : aucune carte inventée.
+- Contenu : nom du jeu, mode (Partie libre, Défi entre amis, Tour du jour + date UTC fournie), univers ; v2 : points **et** étages distincts ; v1 : étages seuls ; parfaits, meilleure série, nombre de bonus ; bandeau « avec reprise » ; les 16 derniers étages réels dessinés avec `drawBlock` (« … et N étages dessous ») ; frise des 75 dernières poses (dorée = parfait, cerclée = sous bonus).
+- Bornes : `MAX_TOWER = 16`, `MAX_PATTERN = 75` quelle que soit la longueur de la partie. Aucun nom, URL, identifiant, classement ni paiement ; pas d'événement, RAF, stockage ni réseau. Conversion en fichier et partage : shell (Alexis).

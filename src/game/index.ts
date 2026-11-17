@@ -16,3 +16,16 @@ export {
 export { THEME_IDS, DEFAULT_THEME, isThemeId, type ThemeId } from './render/themes';
 export { SKIN_IDS, DEFAULT_SKIN, isSkinId, type SkinId } from './render/blocks';
 export { renderAppearancePreview, type PreviewOptions } from './render/preview';
+export {
+  summarizeRun,
+  renderResultCard,
+  CARD_WIDTH,
+  CARD_HEIGHT,
+  MAX_PATTERN,
+  MAX_TOWER,
+  type RunSummary,
+  type PatternCell,
+  type ResultCard,
+  type CardMode,
+  type CardOptions,
+} from './render/card';
