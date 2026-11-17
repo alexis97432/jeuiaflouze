@@ -1,4 +1,4 @@
-import { FIELD_WIDTH, MILLI, START_WIDTH, type Block, type StepEvent } from '../core';
+import { FIELD_WIDTH, MILLI, START_WIDTH, type BonusId, type Block, type StepEvent, type StepEventV2 } from '../core';
 import {
   BLOCK_HEIGHT,
   createFaceGradient,
@@ -48,7 +48,35 @@ export interface ViewState {
   readonly score: number;
   readonly perfectStreak: number;
   readonly pause: 'none' | 'shell' | 'hidden';
+  /** Règles v2 (V3, F7) : HUD des points, de la hauteur, de la jauge et de la reprise. */
+  readonly v2?: HudV2;
 }
+
+/** État affiché par le HUD v2. Lu dans la simulation : aucune règle n'est recalculée ici. */
+export interface HudV2 {
+  /** Étages posés (le score affiché en grand est en points). */
+  readonly height: number;
+  readonly gauge: number;
+  readonly gaugeMax: number;
+  readonly next: BonusId;
+  readonly bonus: BonusId | null;
+  readonly bonusLeft: number;
+  readonly bonusFloors: number;
+  /** Chiffre du compte à rebours (3, 2, 1) ; 0 hors compte à rebours. */
+  readonly countdown: number;
+  /** Attente d'une décision de reprise (l'offre est un écran DOM du shell). */
+  readonly fallen: boolean;
+}
+
+/** Libellés et couleurs des bonus : un mot court et une teinte, lisibles sans explication. */
+export const BONUS_STYLE: Record<BonusId, { label: string; banner: string; color: Rgb }> = {
+  ralenti: { label: 'Ralenti', banner: 'RALENTI !', color: [86, 170, 255] },
+  double: { label: '×2', banner: '×2 POINTS !', color: [255, 190, 40] },
+};
+
+/** Texte flottant « +N » au-dessus d'un étage posé. */
+interface Float { text: string; floor: number; x: number; age: number; color: Rgb }
+export const MAX_FLOATS = 6;
 
 interface Debris { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; age: number; color: Rgb; floor: number }
 interface Spark { x: number; y: number; vx: number; vy: number; age: number; life: number; color: Rgb; rot: number }
@@ -84,6 +112,12 @@ export class Renderer {
   private streakValue = 0;
   private milestone = 0;
   private milestoneName = '';
+  /** Annonce d'un bonus (1 → 0) et son nom ; fin de bonus ; « C'est parti ! » après reprise. */
+  private bonusBanner = 0;
+  private bonusBannerId: BonusId = 'ralenti';
+  private bonusEndFlash = 0;
+  private goBanner = 0;
+  private readonly floats: Float[] = [];
   private landing = 0;
   private landingFloor = -1;
   private lastNow: number | null = null;
@@ -127,6 +161,16 @@ export class Renderer {
     return { width: this.canvas.width, height: this.canvas.height, dpr: this.dpr };
   }
 
+  /** Reprise acceptée : effets de la chute effacés, jauge et bonus repartent de zéro. */
+  onContinue(): void {
+    this.trauma = 0;
+    this.bonusBanner = 0;
+    this.bonusEndFlash = 0;
+    this.floats.length = 0;
+  }
+
+  get floatCount(): number { return this.floats.length; }
+
   setTheme(theme: Theme): void {
     this.theme = theme;
     this.gradients.clear();
@@ -152,7 +196,11 @@ export class Renderer {
   }
 
   /** Événement de simulation → effets visuels bornés. Renvoie le nom du palier atteint, s'il y en a un. */
-  onEvent(event: StepEvent): string | null {
+  onEvent(event: StepEvent | StepEventV2): string | null {
+    if (event.kind === 'resumed') {
+      this.goBanner = 1;
+      return null;
+    }
     if (event.kind === 'missed') {
       this.addDebris(event.moving, event.floor, 0);
       if (!this.reducedMotion) this.trauma = Math.min(1, this.trauma + 0.65);
@@ -168,6 +216,22 @@ export class Renderer {
       this.streakValue = event.perfectStreak;
       this.streakLabel = event.perfectStreak >= 2 ? 1 : 0;
       if (!this.reducedMotion) this.addSparks(event.placed, event.floor, 8 + Math.min(event.perfectStreak * 2, 16));
+    }
+    if ('points' in event) {
+      // Points de la pose, au-dessus du bloc ; teinte du ×2 quand il s'applique.
+      if (this.floats.length >= MAX_FLOATS) this.floats.shift();
+      this.floats.push({
+        text: `+${event.points}`,
+        floor: event.floor,
+        x: (event.placed.left + event.placed.width / 2) / MILLI,
+        age: 0,
+        color: event.bonus === 'double' ? BONUS_STYLE.double.color : [255, 255, 255],
+      });
+      if (event.bonusStarted) {
+        this.bonusBanner = 1;
+        this.bonusBannerId = event.bonusStarted;
+      }
+      if (event.bonusEnded) this.bonusEndFlash = 1;
     }
     const tier = (TIER_FLOORS as readonly number[]).indexOf(event.floor);
     if (tier > 0) {
@@ -284,6 +348,30 @@ export class Renderer {
       ctx.restore();
     }
 
+    // Points « +N » : montent et s'effacent (fixes en reduced-motion).
+    for (const f of this.floats) {
+      const rise = motion ? f.age * 40 : 0;
+      ctx.globalAlpha = Math.max(0, 1 - f.age / 0.9);
+      ctx.font = `800 20px ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.lineWidth = 4;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(32,33,61,0.85)';
+      const y = yScreen((f.floor + 1) * BLOCK_HEIGHT) - 6 - rise;
+      ctx.strokeText(f.text, f.x, y);
+      ctx.fillStyle = css(f.color);
+      ctx.fillText(f.text, f.x, y);
+      ctx.globalAlpha = 1;
+    }
+
+    // Bonus actif : teinte légère de tout l'écran (statique, compatible reduced-motion).
+    if (view.v2?.bonus) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = css(BONUS_STYLE[view.v2.bonus].color, 0.13);
+      ctx.fillRect(0, 0, this.cssW, this.cssH);
+    }
+
     this.drawHud(view, sky.ink);
   }
 
@@ -291,6 +379,7 @@ export class Renderer {
   get animating(): boolean {
     return this.debris.length > 0 || this.sparks.length > 0 || this.flash > 0 || this.trauma > 0 ||
       this.streakLabel > 0 || this.landing > 0 || this.milestone > 0 || this.ripple > 0 ||
+      this.floats.length > 0 || this.bonusBanner > 0 || this.bonusEndFlash > 0 || this.goBanner > 0 ||
       Math.abs(this.camera - this.cameraTarget) > 0.05;
   }
 
@@ -319,6 +408,14 @@ export class Renderer {
     this.landing = Math.max(0, this.landing - dt * 10);
     this.streakLabel = Math.max(0, this.streakLabel - dt * 0.8);
     this.milestone = Math.max(0, this.milestone - dt / 2.4);
+    this.bonusBanner = Math.max(0, this.bonusBanner - dt / 1.8);
+    this.bonusEndFlash = Math.max(0, this.bonusEndFlash - dt / 0.8);
+    this.goBanner = Math.max(0, this.goBanner - dt / 0.9);
+    for (let i = this.floats.length - 1; i >= 0; i--) {
+      const f = this.floats[i]!;
+      f.age += dt;
+      if (f.age > 0.9) this.floats.splice(i, 1);
+    }
 
     for (let i = this.debris.length - 1; i >= 0; i--) {
       const d = this.debris[i]!;
@@ -423,12 +520,48 @@ export class Renderer {
     const top = this.cssH * 0.055;
     text(String(view.score), top, big, css(ink));
     let line = top + big * 1.08;
+    const v2 = view.v2;
+    if (v2) {
+      // En v2 le grand nombre est en points : la hauteur est rappelée, en plus petit.
+      const small = Math.round(big * 0.28);
+      text(`${v2.height} étage${v2.height > 1 ? 's' : ''}`, line - big * 0.06, small, css(ink), 0.9);
+      line += small * 1.35;
+      line = this.drawGauge(v2, line, big, ink, halo, font);
+    }
     if (this.milestone > 0) {
       text(`Palier : ${this.milestoneName}`, line, Math.round(big * 0.3), css(ink), Math.min(1, this.milestone * 2.5));
       line += big * 0.42;
     }
     if (this.streakLabel > 0) {
       text(`PARFAIT ×${this.streakValue}`, line, Math.round(big * 0.32), css(ink), Math.min(1, this.streakLabel * 1.5));
+    }
+    if (this.bonusBanner > 0) {
+      const st = BONUS_STYLE[this.bonusBannerId];
+      text(st.banner, this.cssH * 0.42, Math.round(big * 0.55), css(st.color), Math.min(1, this.bonusBanner * 2));
+    } else if (this.goBanner > 0 && !v2?.countdown) {
+      text('C’est parti !', this.cssH * 0.42, Math.round(big * 0.5), css(ink), Math.min(1, this.goBanner * 2));
+    }
+    if (v2?.fallen && view.pause === 'none') {
+      // Attente de la décision : la scène est figée sous un voile, l'offre est un écran DOM.
+      ctx.fillStyle = 'rgba(20,20,40,0.45)';
+      ctx.fillRect(0, 0, this.cssW, this.cssH);
+    }
+    if (v2 && v2.countdown > 0 && view.pause === 'none') {
+      ctx.fillStyle = 'rgba(20,20,40,0.35)';
+      ctx.fillRect(0, 0, this.cssW, this.cssH);
+      ctx.textBaseline = 'middle';
+      const size = Math.round(Math.min(160, this.cssW * 0.4));
+      ctx.font = font(900, size);
+      ctx.lineWidth = Math.max(4, size * 0.08);
+      ctx.strokeStyle = '#20213D';
+      ctx.strokeText(String(v2.countdown), this.cssW / 2, this.cssH / 2);
+      ctx.fillStyle = '#FFF4DB';
+      ctx.fillText(String(v2.countdown), this.cssW / 2, this.cssH / 2);
+      ctx.font = font(800, Math.round(size * 0.18));
+      ctx.lineWidth = 4;
+      const hint = 'Prépare-toi…';
+      ctx.strokeText(hint, this.cssW / 2, this.cssH / 2 + size * 0.62);
+      ctx.fillText(hint, this.cssW / 2, this.cssH / 2 + size * 0.62);
     }
     if (view.pause !== 'none') {
       ctx.fillStyle = 'rgba(20,20,40,0.6)';
@@ -438,6 +571,67 @@ export class Renderer {
       ctx.fillStyle = '#FFF4DB';
       ctx.fillText(view.pause === 'hidden' ? 'Touchez pour reprendre' : 'Pause', this.cssW / 2, this.cssH / 2);
     }
+  }
+
+  /**
+   * Jauge « Super » sous le score : 10 cases qui se remplissent, avec le nom du prochain bonus.
+   * Pendant un bonus : 5 cases aux couleurs du bonus, qui se vident à chaque pose.
+   * Renvoie la ligne suivante libre.
+   */
+  private drawGauge(v2: HudV2, line: number, big: number, ink: Rgb, halo: string, font: (w: number, s: number) => string): number {
+    const { ctx } = this;
+    const active = v2.bonus;
+    const style = BONUS_STYLE[active ?? v2.next];
+    const cells = active ? v2.bonusFloors : v2.gaugeMax;
+    const filled = active ? v2.bonusLeft : Math.min(v2.gauge, v2.gaugeMax);
+    const label = active ? style.label : `${style.label}`;
+    const labelSize = Math.round(big * 0.26);
+    ctx.font = font(800, labelSize);
+    const labelW = ctx.measureText(label).width + 10;
+    const barW = Math.min(200, this.cssW * 0.5);
+    const barH = Math.max(12, Math.round(big * 0.2));
+    const total = barW + labelW;
+    const x0 = (this.cssW - total) / 2;
+    const gap = 3;
+    const cellW = (barW - gap * (cells - 1)) / cells;
+    // Fond de la jauge : contour lisible sur tout ciel (encre du thème + halo).
+    ctx.fillStyle = halo;
+    roundedRect(ctx, x0 - 3, line - 3, barW + 6, barH + 6, (barH + 6) / 2);
+    ctx.fill();
+    for (let i = 0; i < cells; i++) {
+      const x = x0 + i * (cellW + gap);
+      roundedRect(ctx, x, line, cellW, barH, Math.min(4, barH / 2));
+      if (i < filled) {
+        ctx.fillStyle = css(style.color);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = css(ink, 0.18);
+        ctx.fill();
+      }
+      ctx.strokeStyle = css(ink, 0.55);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    // Nom du bonus à venir (ou en cours), à droite de la barre.
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = Math.max(2, labelSize * 0.12);
+    ctx.strokeStyle = halo;
+    const lx = x0 + barW + 8;
+    const ly = line + barH / 2;
+    ctx.strokeText(label, lx, ly);
+    ctx.fillStyle = active ? css(style.color) : css(ink);
+    ctx.fillText(label, lx, ly);
+    if (this.bonusEndFlash > 0) {
+      ctx.globalAlpha = this.bonusEndFlash;
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      roundedRect(ctx, x0 - 3, line - 3, barW + 6, barH + 6, (barH + 6) / 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    return line + barH + big * 0.2;
   }
 
   /** Dégradé de face mis en cache par (couleur, apparence) ; borné à 64 entrées. */

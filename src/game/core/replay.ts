@@ -107,7 +107,7 @@ export function verifyRunResult(
   const c = claimed as Record<string, unknown>;
   const r = outcome.result;
   const keys = r.rulesVersion === RULES_VERSION_2
-    ? (['score', 'height', 'perfectCount', 'continues', 'durationTicks'] as const)
+    ? (['score', 'height', 'perfectCount', 'bestPerfectStreak', 'bonusCount', 'continues', 'durationTicks'] as const)
     : (['score', 'perfectCount', 'durationTicks'] as const);
   for (const key of keys) {
     const value = (r as Record<string, unknown>)[key];

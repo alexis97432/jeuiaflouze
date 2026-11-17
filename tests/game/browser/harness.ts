@@ -3,7 +3,8 @@
  * Compte les écouteurs ajoutés/retirés sur window, document et le canvas pour
  * détecter les fuites après destroy().
  */
-import { verifyRunResult, type RunResult } from '../../../src/game/core';
+import { verifyRunResult } from '../../../src/game/core';
+import type { RunResult } from '../../../src/game/render/mount';
 import { createGame } from '../../../src/game/render/mount';
 import { Renderer } from '../../../src/game/render/renderer';
 import { getTheme, THEME_IDS } from '../../../src/game/render/themes';
@@ -68,11 +69,13 @@ function snapshot() {
 }
 
 const api = {
-  mount(opts: { seed?: number; sound?: boolean; reducedMotion?: boolean; theme?: string; skin?: string; voyage?: boolean } = {}) {
+  mount(opts: { seed?: number; sound?: boolean; reducedMotion?: boolean; theme?: string; skin?: string; voyage?: boolean; v2?: boolean; allowContinue?: boolean } = {}) {
     game?.destroy();
     const options: Parameters<typeof createGame>[0] = {
-      canvas, config: { seed: opts.seed ?? 1, rulesVersion: 1 }, onEnd: (r) => ends.push(r), onEvent: (e) => gameEvents.push(e),
+      canvas, config: opts.v2 ? { seed: opts.seed ?? 1, rulesVersion: 2 } : { seed: opts.seed ?? 1, rulesVersion: 1 },
+      onEnd: (r) => ends.push(r), onEvent: (e) => gameEvents.push(e),
     };
+    if (opts.allowContinue) options.allowContinue = true;
     if (opts.sound !== undefined) options.sound = opts.sound;
     if (opts.reducedMotion !== undefined) options.reducedMotion = opts.reducedMotion;
     if (opts.theme !== undefined || opts.skin !== undefined) {
@@ -85,6 +88,49 @@ const api = {
     r.draw = (v, n) => { const t0 = performance.now(); draw(v, n); drawMs.push(performance.now() - t0); };
   },
   pause: () => game?.pause(),
+  continueRun: () => game?.continueRun() ?? false,
+  declineContinue: () => game?.declineContinue(),
+  /** État v2 lu dans la simulation (jauge, bonus, reprise). */
+  v2state() {
+    const sim = game?.inspect().sim as unknown as Record<string, unknown> | undefined;
+    if (!sim || !('gauge' in sim)) return null;
+    return {
+      status: sim.status, tick: sim.tick, score: sim.score, height: sim.height, gauge: sim.gauge,
+      bonus: sim.bonus, bonusLeft: sim.bonusFloorsLeft, countdownLeft: sim.countdownLeft, moving: sim.moving,
+      inputs: (sim.inputTicks as number[]).length,
+    };
+  },
+  /**
+   * Pilote automatique dans la page (pas de latence Playwright) : appuie quand le bloc,
+   * deux ticks plus loin, sera aligné à `tolerance` près ; s'arrête après `count` poses
+   * réussies. mode 'miss' : appuie dès qu'un raté est possible, sinon aux extrémités.
+   */
+  pilot(mode: 'align' | 'miss', count = 1, tolerance = 2500) {
+    return new Promise<number>((resolve) => {
+      let placed = 0;
+      const startEvents = gameEvents.length;
+      const loop = () => {
+        if (!game) return resolve(placed);
+        const { sim } = game.inspect();
+        placed = gameEvents.slice(startEvents).filter((e) => (e as { type: string }).type === 'placement').length;
+        const missed = gameEvents.slice(startEvents).some((e) => (e as { type: string }).type === 'miss');
+        if (missed || (mode === 'align' && placed >= count) || sim.status === 'ended' || sim.status === 'fallen') return resolve(placed);
+        if (sim.status === 'running') {
+          const w = sim.base.width;
+          const max = 360_000 - w;
+          let lead = sim.moving.left + sim.direction * sim.speed * 2;
+          if (lead > max) lead = 2 * max - lead; else if (lead < 0) lead = -lead;
+          const off = Math.abs(lead - sim.base.left);
+          const canMiss = Math.max(sim.base.left, max - sim.base.left) >= w;
+          const press = mode === 'align' ? off <= tolerance
+            : canMiss ? off >= w : (lead <= 2 * sim.speed || lead >= max - 2 * sim.speed) && off < w;
+          if (press) canvas.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
+        }
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    });
+  },
   resume: () => game?.resume(),
   destroy: () => game?.destroy(),
   state: snapshot,
