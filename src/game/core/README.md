@@ -73,3 +73,29 @@ Un rejeu valide prouve qu'une suite d'entrées produit ce score, pas qu'un humai
 - « départ alternant » formalisé : impair à gauche vers la droite, pair à droite vers la gauche ;
 - raté prioritaire sur parfait ; bords qui se touchent = raté ;
 - rejeu strict : doublons et désordre rejetés au lieu d'être normalisés.
+
+# Règles v2 (`rulesVersion: 2`, `v2.ts`) — V3, proposition F6 en attente de revue Codex
+
+La v1 ci-dessus reste **inchangée** : même classe `Simulation`, même golden `tests/game/golden-v1.json`. La v2 reprend la géométrie, le PRNG (un tirage par étage), la vitesse de base et l'ordre d'un tick de la v1, puis ajoute :
+
+## Jauge et bonus
+- Une pose réussie **hors bonus** ajoute à la jauge : +1 (non parfaite), +2 (parfaite), +3 (parfaite avec série ≥ 3 après la pose). Capacité `GAUGE_MAX = 10`.
+- Jauge ≥ 10 à une pose → bonus immédiat, jauge remise à 0 (excédent perdu). Alternance fixe : 1er `ralenti`, 2e `double`, 3e `ralenti`… (`nextBonus`).
+- Un bonus couvre `BONUS_FLOORS = 5` poses réussies ; il s'applique dès l'étage qui apparaît au tick du déclenchement. La 5e pose y met fin ; l'étage suivant est normal.
+- `ralenti` : vitesse d'un étage apparu pendant le bonus = `max(1, floor(v·3/5))`, `v` = vitesse v1. Le tirage est consommé comme d'habitude.
+- `double` : points de la pose × 2.
+- Pas de cumul : pendant un bonus la jauge ne se remplit pas. Comptage en poses : pause et cadence d'affichage sans effet.
+
+## Points et hauteur
+Points d'une pose : `(parfait ? 2 : 1) × (double ? 2 : 1)`. `score` = somme des points, `height` = étages posés. En v2, `score ≠ étages`.
+
+## Reprise
+- Premier raté (`continues = 0`) → état `fallen` : `step()` n'avance pas le tick, ignore les appuis ; le temps de décision n'existe pas pour les règles.
+- `continueRun()` (autorisation venant de l'application, jamais du moteur) : `continueTicks = [t]` (t = tick du raté), base/score/hauteur conservés, même étage réapparu à sa position de départ avec la largeur de la base et sa vitesse v1 (sans nouveau tirage), bonus et jauge remis à 0, alternance conservée. Renvoie `false` sans effet hors `fallen` (double appel).
+- Compte à rebours `COUNTDOWN_TICKS = 360` : ticks `]t, t+360[` immobiles, appuis ignorés ; au tick `t+360` événement `resumed` (encore immobile) ; le bloc bouge à `t+361`.
+- `finish()` : fin sans reprise. Un second raté termine toujours.
+
+## Rejeu v2
+`{ seed, rulesVersion: 2, inputTicks, continueTicks? }`. En plus des règles v1 : `continueTicks` absent ou tableau d'au plus 1 entier ≥ 1, égal au tick du premier raté (`bad_continue_ticks`) ; aucune entrée dans `]t, t+360]` (`input_during_countdown`) ; `continueTicks` refusé en v1. `verifyRunResult` compare score, hauteur, parfaits, meilleure série, nombre de bonus, reprises et durée (égalité intégrale, revue Codex F6). `durationTicks` exclut l'attente de décision et inclut le compte à rebours.
+
+Golden : `tests/game/golden-v2.json` (changer une valeur exige rulesVersion 3).

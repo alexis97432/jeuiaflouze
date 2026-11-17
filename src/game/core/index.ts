@@ -10,7 +10,9 @@ export {
   type RunStatus,
   type StepEvent,
 } from './simulation';
+export * from './v2';
 export {
+  type AnyRunResult,
   replayRun,
   verifyRunResult,
   type ReplayErrorCode,

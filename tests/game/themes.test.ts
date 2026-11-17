@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StepEvent } from '../../src/game/core';
 import { BLOCK_HEIGHT, MAX_DECOR, MAX_SPARKS, Renderer, reliefParts, type ViewState } from '../../src/game/render/renderer';
-import { edgeColors, isSkinId, SKIN_IDS } from '../../src/game/render/blocks';
+import { ALL_SKIN_IDS, edgeColors, isDrawSkinId, isSkinId, SKIN_IDS, SKIN_IDS_V3 } from '../../src/game/render/blocks';
 import { resolveAppearance } from '../../src/game/render/mount';
 import {
   contrast,
@@ -235,7 +235,7 @@ describe('V2 (F4) : apparences', () => {
     }
   });
 
-  it.each(SKIN_IDS)('%s : bord de chaque bloc ≥ 3 sur le ciel derrière lui, dans chaque univers et à toute hauteur', (skin) => {
+  it.each(ALL_SKIN_IDS)('%s : bord de chaque bloc ≥ 3 sur le ciel derrière lui, dans chaque univers et à toute hauteur', (skin) => {
     for (const theme of ALL) {
       for (const h of HEIGHTS) {
         const sky = skyAt(theme, h);
@@ -263,3 +263,17 @@ describe('V2 (F4) : apparences', () => {
     expect(r.gradientCacheSize).toBe(0);
   });
 });
+
+describe('apparences V3 (F8) : internes tant que le shell ne les a pas acceptées', () => {
+  it('huit nouvelles matières, distinctes des V2, non exposées par isSkinId', () => {
+    expect(SKIN_IDS_V3).toEqual(['graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave', 'or', 'cristal']);
+    expect(new Set(ALL_SKIN_IDS).size).toBe(SKIN_IDS.length + SKIN_IDS_V3.length);
+    for (const id of SKIN_IDS_V3) {
+      expect(isSkinId(id)).toBe(false);
+      expect(isDrawSkinId(id)).toBe(true);
+      expect(resolveAppearance({ theme: 'orbital', skin: id })).toEqual({ theme: 'orbital', skin: 'gomme' });
+    }
+    expect(isDrawSkinId('inconnu')).toBe(false);
+  });
+});
+

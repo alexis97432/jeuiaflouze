@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { verifyRunResult } from '../../src/game/core';
 import { END_DELAY_MS, mountGame, type GameEvent, type GameHandle, type MountOptions } from '../../src/game';
-import type { RunResult } from '../../src/game/core';
+import type { RunResult } from '../../src/game/render/mount';
 import { createGame } from '../../src/game/render/mount';
 import { THEME_IDS } from '../../src/game/render/themes';
 import { renderAppearancePreview, SKIN_IDS } from '../../src/game';
@@ -147,7 +147,7 @@ function playSeed1ToMiss(events: GameEvent[], start: number) {
     pointer({ at: now });
     run(TICK_MS);
   }
-  expect(events.map((e) => e.tick)).toEqual([177, 433, 434]);
+  expect(events.map((e) => ('tick' in e ? e.tick : -1))).toEqual([177, 433, 434]);
 }
 
 describe('F1 en DOM (exécuté par npm test)', () => {
@@ -214,7 +214,7 @@ describe('F1 en DOM (exécuté par npm test)', () => {
     run(20);
     // Sans rattrapage, l'appui tombe ~60 + 12 ticks après le départ, pas ~300.
     expect(events).toHaveLength(1);
-    expect(events[0]!.tick).toBeLessThan(100);
+    expect((events[0] as { tick: number }).tick).toBeLessThan(100);
   });
 
   it('onglet caché : pause automatique ; au retour, le premier toucher reprend sans poser', () => {
@@ -234,7 +234,7 @@ describe('F1 en DOM (exécuté par npm test)', () => {
     pointer();
     run(20);
     expect(events).toHaveLength(1);
-    expect(events[0]!.tick).toBeLessThan(40);
+    expect((events[0] as { tick: number }).tick).toBeLessThan(40);
   });
 
   it('destroy : aucun écouteur ni RAF restant, touch-action restauré, idempotent ; onEnd non appelé', () => {

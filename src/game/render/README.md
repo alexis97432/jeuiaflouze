@@ -89,3 +89,19 @@ Choix d'univers côté shell : pour l'instant seulement via l'option interne `cr
 - **Aperçu de collection** : `renderAppearancePreview(canvas, appearance, { width, height, dpr, tier })` dessine une petite tour de trois étages avec le **même code que le jeu**. C'est une image fixe : pas de RAF, d'écouteur, de son ni de stockage. Elle renvoie `false` sans Canvas 2D au lieu de lever. Les 18 aperçus sont tous différents (empreinte d'image).
 - **Règles inchangées** : même `RunResult` pour chaque apparence, et pour une apparence inconnue (test DOM via l'option publique).
 - **Démo** : `?skin=…` et `?apparences=1` (planche des 18 aperçus, chaque tuile ouvre le jeu correspondant).
+
+## V3 — F7 : montage des règles v2 (jauge, bonus, reprise)
+
+`config.rulesVersion: 2` monte `SimulationV2` ; `rulesVersion: 1` reste le moteur v1 inchangé (anciens défis `?v=1`).
+Interfaces convenues (plan FLK §6, accord Alexis #25, PASS Codex C7) :
+
+- `MountOptions.allowContinue?: boolean` (défaut false, ignoré en v1). Sans lui, le premier raté v2 termine normalement : Tour du jour, défis et parties classées ne bloquent jamais.
+- `GameEvent` (additif) : `placement` porte `points`, `score`, `height` (en v1 : 1 point, score = hauteur) ; `gauge {value, max, next}` ; `bonus-start {bonus, floors}` ; `bonus-end {bonus}` ; `continue-offer {tick}` ; `continue-start {countdownTicks}`.
+- `GameHandle.continueRun(): boolean` — à appeler seulement après une autorisation réelle (vie possédée, vidéo confirmée) ; false sans effet hors attente (double rappel, v1, destroy, `allowContinue` absent). `declineContinue()` — fin normale, `onEnd` une seule fois. Optionnels dans le type (doubles de test du shell), toujours présents sur `mountGame`.
+- `RunConfig` / `RunResult` exportés en unions v1 | v2 ; `RunResultV1`, `RunResultV2`, `BonusId`, `BONUS_IDS`, `GAUGE_MAX`, `BONUS_FLOORS`, `COUNTDOWN_TICKS` exportés.
+
+Comportement :
+- Attente de décision (`fallen`) : aucun tick, aucun `onEnd`, l'entrée est rendue au DOM (l'offre est un écran DOM du shell), la boucle d'affichage s'arrête une fois la chute dessinée ; un voile figé recouvre la scène. Onglet caché puis visible : rien à protéger, l'affichage reprend sans geste.
+- Après `continueRun()` : effets de chute effacés, compte à rebours 3-2-1 dessiné depuis le tick (grand chiffre contrasté, son court par chiffre, son coupé respecté), bloc réapparu immobile ; les appuis sont refusés par le driver (ni file, ni pose fantôme). Pause du shell ou onglet caché : le décompte s'arrête avec les ticks.
+- HUD v2 : points en grand, « N étages » en dessous, jauge « Super » de 10 cases avec le nom du prochain bonus (« Ralenti », « ×2 ») ; pendant un bonus, 5 cases à sa couleur qui se vident à chaque pose, bannière « RALENTI ! » / « ×2 POINTS ! », teinte légère de l'écran (statique) et « +N » au-dessus de chaque pose (fixe en reduced-motion). Sons propres au début et à la fin des bonus.
+- Démo : v2 par défaut avec une offre étiquetée « Démo » (pas de vidéo ni de vie) ; `?regles=1` pour la v1.

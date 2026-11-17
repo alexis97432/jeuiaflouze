@@ -2,15 +2,17 @@
  * Démonstration F1/F3 : pas un menu de production (l'accueil appartient à Alexis, A3).
  * - `?theme=confiserie|orbital|jardin` : univers ; `?voyage=1` : variante « la tour voyage ».
  * - `?seed=…` : rejouer la même séquence.
- * - `?skin=gomme|marbre|bonbon|verre|strie|ceramique` : apparence des blocs (F4).
+ * - `?skin=…` : apparence des blocs (F4), y compris les apparences V3 (F8, internes).
+ * - Règles v2 (V3 : jauge, bonus, points, reprise) par défaut ; `?regles=1` pour la v1.
+ *   L'offre de reprise de la démo est une simulation explicitement étiquetée « Démo ».
  * - `?compare=1` : les trois univers côte à côte, joués par un pilote automatique, même seed.
- * - `?apparences=1` : planche des 18 aperçus univers × apparence (`renderAppearancePreview`).
+ * - `?apparences=1` : planche des aperçus univers × apparence, V3 incluses (même dessin que le jeu).
  * Utilise `createGame` (interne) pour la variante voyage et le pilote ; le reste passe par
  * l'option publique `appearance`.
  */
 import { createGame } from '../render/mount';
-import { isSkinId, SKIN_IDS, type SkinId } from '../render/blocks';
-import { renderAppearancePreview } from '../render/preview';
+import { ALL_SKIN_IDS, isDrawSkinId, isSkinId, type DrawSkinId, type SkinId } from '../render/blocks';
+import { drawAppearancePreview } from '../render/preview';
 import { THEME_IDS, isThemeId, type ThemeId } from '../render/themes';
 
 type Game = ReturnType<typeof createGame>;
@@ -20,16 +22,19 @@ let seed = Number.isInteger(seedParam) && seedParam >= 1 && seedParam <= 0xfffff
 const themeParam = params.get('theme');
 const theme: ThemeId = isThemeId(themeParam) ? themeParam : 'confiserie';
 const skinParam = params.get('skin');
-const skin: SkinId = isSkinId(skinParam) ? skinParam : 'gomme';
+const drawSkin: DrawSkinId = isDrawSkinId(skinParam) ? skinParam : 'gomme';
+/** Apparence publique (V2) ; les apparences V3 passent par l'option interne `drawSkin`. */
+const skin: SkinId = isSkinId(drawSkin) ? drawSkin : 'gomme';
 const voyage = params.get('voyage') === '1';
 const compare = params.get('compare') === '1';
 const board = params.get('apparences') === '1';
+const rulesVersion = params.get('regles') === '1' ? 1 : 2;
 
 const nav = document.getElementById('nav')!;
 const label = (id: string) => ({ confiserie: 'Confiserie', orbital: 'Orbital', jardin: 'Jardin' } as Record<string, string>)[id] ?? id;
 const links: [string, string, boolean][] = [
-  ...THEME_IDS.map((id): [string, string, boolean] => [label(id), `?theme=${id}&skin=${skin}`, !compare && !board && !voyage && theme === id]),
-  ['Voyage', `?voyage=1&skin=${skin}`, voyage && !compare && !board],
+  ...THEME_IDS.map((id): [string, string, boolean] => [label(id), `?theme=${id}&skin=${drawSkin}`, !compare && !board && !voyage && theme === id]),
+  ['Voyage', `?voyage=1&skin=${drawSkin}`, voyage && !compare && !board],
   ['Comparer', '?compare=1', compare],
   ['Apparences', '?apparences=1', board],
 ];
@@ -63,7 +68,7 @@ if (board) {
   const grid = document.getElementById('grid')!;
   grid.classList.add('board');
   for (const id of THEME_IDS) {
-    for (const sk of SKIN_IDS) {
+    for (const sk of ALL_SKIN_IDS) {
       const link = document.createElement('a');
       link.href = `?theme=${id}&skin=${sk}`;
       link.className = 'tile';
@@ -73,7 +78,7 @@ if (board) {
       caption.textContent = `${label(id)} · ${sk}`;
       link.append(canvas, caption);
       grid.append(link);
-      renderAppearancePreview(canvas, { theme: id, skin: sk });
+      drawAppearancePreview(canvas, { theme: id, skin: sk });
     }
   }
 } else if (compare) {
@@ -87,7 +92,7 @@ if (board) {
     caption.textContent = label(id);
     cell.append(canvas, caption);
     grid.append(cell);
-    const game = createGame({ canvas, config: { seed, rulesVersion: 1 }, onEnd() {}, sound: false, appearance: { theme: id, skin } });
+    const game = createGame({ canvas, config: { seed, rulesVersion: 1 }, onEnd() {}, sound: false, appearance: { theme: id, skin }, drawSkin });
     autopilot(game, canvas, 2500);
   }
 } else {
@@ -95,22 +100,39 @@ if (board) {
   const end = document.getElementById('end')!;
   const msg = document.getElementById('msg')!;
   const again = document.getElementById('again') as HTMLButtonElement;
+  const offer = document.getElementById('offer')!;
+  const cont = document.getElementById('cont') as HTMLButtonElement;
+  const stop = document.getElementById('stop') as HTMLButtonElement;
   let game: Game | null = null;
   const start = () => {
     end.hidden = true;
+    offer.hidden = true;
     game?.destroy();
     game = createGame({
       canvas,
-      config: { seed, rulesVersion: 1 },
+      config: rulesVersion === 2 ? { seed, rulesVersion: 2 } : { seed, rulesVersion: 1 },
       appearance: { theme, skin },
+      drawSkin,
       voyage,
+      allowContinue: rulesVersion === 2,
+      onEvent(e) {
+        if (e.type === 'continue-offer') {
+          offer.hidden = false;
+          cont.focus();
+        }
+      },
       onEnd(result) {
-        msg.textContent = `Score ${result.score} · ${result.perfectCount} parfait(s) · seed ${result.seed}`;
+        offer.hidden = true;
+        msg.textContent = result.rulesVersion === 2
+          ? `${result.score} points · ${result.height} étages · ${result.perfectCount} parfait(s)${result.continues ? ' · avec reprise' : ''}`
+          : `Score ${result.score} · ${result.perfectCount} parfait(s) · seed ${result.seed}`;
         end.hidden = false;
         again.focus();
       },
     });
   };
+  cont.addEventListener('click', () => { offer.hidden = true; game?.continueRun(); canvas.focus(); });
+  stop.addEventListener('click', () => { offer.hidden = true; game?.declineContinue(); });
   again.addEventListener('click', () => { seed = (seed % 0xffffffff) + 1; start(); });
   start();
 }
