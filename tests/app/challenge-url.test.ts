@@ -19,7 +19,7 @@ describe('parseChallenge', () => {
   });
 
   it.each([
-    ['?v=2&seed=1&target=1', 'version'],
+    ['?v=3&seed=1&target=1', 'version'],
     ['?seed=1&target=1', 'malformed'],
     ['?v=1&target=1', 'malformed'],
     ['?v=1&seed=1', 'malformed'],
@@ -63,5 +63,13 @@ describe('buildChallengeUrl', () => {
         ok(seed, score),
       );
     }
+  });
+});
+
+describe('liens v2 (V3)', () => {
+  it('accepte ?v=2 et construit un lien dans la version de la partie', () => {
+    expect(parseChallenge('?v=2&seed=5&target=9')).toEqual({ kind: 'challenge', challenge: { seed: 5, target: 9, rulesVersion: 2 } });
+    expect(buildChallengeUrl('https://jeu.test/', 5, 9, 2)).toBe('https://jeu.test/?v=2&seed=5&target=9');
+    expect(buildChallengeUrl('https://jeu.test/', 5, 9)).toBe('https://jeu.test/?v=1&seed=5&target=9');
   });
 });

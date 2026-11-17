@@ -1189,7 +1189,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
   it('vie possédée : consommée une fois, reprise ; échec : rien retiré, message', async () => {
     const g = reviveGame();
     const consume = vi.fn<LivesProvider['consume']>().mockResolvedValueOnce('error').mockResolvedValueOnce('ok');
-    const { button, text } = setup({ startGame: g.startGame, revive: { lives: { count: () => 2, consume } } });
+    const { button, text } = setup({ startGame: g.startGame, revive: { lives: { count: () => 2, consume, refund: vi.fn(async () => undefined) } } });
     button('Jouer').click();
     const m = g.mounts[0]!;
     m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
@@ -1371,5 +1371,58 @@ describe('V3-A6b : secours du partage d’image, annonces, sauvegarde et récomp
     expect(svc.issueTicket).not.toHaveBeenCalled(); // identité invalide : aucun envoi au nom d'un autre
     third.button('Classement').click();
     expect(third.root.querySelector('[data-testid="pseudo-input"]')).not.toBeNull();
+  });
+});
+
+describe('défis v1 et v2 (A6b, revue FLK M1)', () => {
+  it('lien ?v=2 : partie en règles v2 ; lien partagé après une partie v2 : ?v=2 et cible en étages', async () => {
+    const { game, button } = setup({ url: 'https://jeu.test/?v=2&seed=4242&target=6' });
+    button('Relever le défi').click();
+    expect(game.mounts[0]!.options.config).toEqual({ seed: 4242, rulesVersion: 2 });
+    game.mounts[0]!.options.onEnd({ seed: 4242, rulesVersion: 2, score: 30, height: 8, perfectCount: 1, bestPerfectStreak: 1, bonusCount: 1, continues: 0, durationTicks: 900, inputTicks: [1, 2], continueTicks: [] });
+    await flush();
+    await new Promise((r) => setTimeout(r, 0));
+    const shell = document.getElementById('app')!;
+    expect(shell.textContent).toContain('Défi relevé : 8 contre 6');
+  });
+});
+
+describe('vie rendue si la reprise n’a pas lieu (revue FLK A6, m4)', () => {
+  it('vie consommée puis continueRun refusé : vie rendue une fois, message honnête', async () => {
+    const mounts: { options: StartOptions; handle: { continueRun: ReturnType<typeof vi.fn>; declineContinue: ReturnType<typeof vi.fn> } }[] = [];
+    const startGame: StartGame = (options) => {
+      const handle = { pause: vi.fn(), resume: vi.fn(), destroy: vi.fn(), continueRun: vi.fn(() => false), declineContinue: vi.fn() };
+      mounts.push({ options, handle });
+      return handle;
+    };
+    const consume = vi.fn<LivesProvider['consume']>(async () => 'ok');
+    const refund = vi.fn<LivesProvider['refund']>(async () => undefined);
+    const { button, text } = setup({ startGame, revive: { lives: { count: () => 1, consume, refund } } });
+    button('Jouer').click();
+    mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    button('Utiliser une vie (1)').click();
+    await flush();
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect(refund).toHaveBeenCalledWith('run1:revive');
+    expect(text('revive-status')).toBe('Reprise impossible. Ta vie t’a été rendue.');
+  });
+
+  it('partie quittée pendant la consommation : vie rendue', async () => {
+    let resolve: (v: 'ok') => void = () => undefined;
+    const consume = vi.fn<LivesProvider['consume']>(() => new Promise((r) => (resolve = r)));
+    const refund = vi.fn<LivesProvider['refund']>(async () => undefined);
+    const mounts: StartOptions[] = [];
+    const startGame: StartGame = (options) => {
+      mounts.push(options);
+      return { pause: vi.fn(), resume: vi.fn(), destroy: vi.fn(), continueRun: vi.fn(() => true), declineContinue: vi.fn() };
+    };
+    const { button } = setup({ startGame, revive: { lives: { count: () => 1, consume, refund } } });
+    button('Jouer').click();
+    mounts[0]!.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    button('Utiliser une vie (1)').click();
+    shell?.destroy();
+    resolve('ok');
+    await flush();
+    expect(refund).toHaveBeenCalledWith('run1:revive');
   });
 });

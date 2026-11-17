@@ -117,8 +117,10 @@ export type LivesProvider = {
   count(): number;
   /** Consomme une vie pour `requestId` (idempotent côté serveur). */
   consume(requestId: string): Promise<'ok' | 'none' | 'error'>;
+  /** Rend la vie consommée par `requestId` si la reprise n'a pas eu lieu (idempotent). */
+  refund(requestId: string): Promise<void>;
 };
-const NO_LIVES: LivesProvider = { count: () => 0, consume: () => Promise.resolve('none') };
+const NO_LIVES: LivesProvider = { count: () => 0, consume: () => Promise.resolve('none'), refund: () => Promise.resolve() };
 
 /** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
 export const PROGRESS_LOCK = 'poc:meta:v1:progress';
@@ -865,7 +867,7 @@ export function createShell(options: ShellOptions): Shell {
     try {
       current.handle = options.startGame({
         canvas,
-        config: mode === 'challenge' ? { seed, rulesVersion: RULES_VERSION } : { seed, rulesVersion: PLAY_RULES_VERSION },
+        config: mode === 'challenge' && runChallenge?.rulesVersion === RULES_VERSION ? { seed, rulesVersion: RULES_VERSION } : { seed, rulesVersion: PLAY_RULES_VERSION },
         prefs,
         appearance: progress.selected,
         ...(allowContinue ? { allowContinue } : {}),
@@ -924,17 +926,18 @@ export function createShell(options: ShellOptions): Shell {
     const buttons: HTMLButtonElement[] = [];
     const busy = (on: boolean) => buttons.forEach((b) => (b.disabled = on));
     const close = () => box.remove();
-    const resumeWith = (how: string) => {
-      if (run !== current) return;
+    const resumeWith = (how: string): boolean => {
+      if (run !== current) return false;
       const accepted = handle.continueRun!();
       if (!accepted) {
         msg.textContent = 'Reprise impossible.';
         busy(false);
-        return;
+        return false;
       }
       current.revivedWith = how;
       close();
       canvas.focus();
+      return true;
     };
     const finish = () => {
       close();
@@ -946,12 +949,16 @@ export function createShell(options: ShellOptions): Shell {
         busy(true);
         msg.textContent = '';
         void reviveLives.consume(requestId).then((r) => {
-          if (run !== current || !box.isConnected) return;
-          if (r === 'ok') resumeWith('vie');
-          else {
-            msg.textContent = r === 'none' ? 'Plus de vie.' : 'La vie n’a pas pu être utilisée. Rien n’a été retiré.';
-            busy(false);
+          // Vie retirée mais reprise refusée (partie quittée, moteur hors attente) : elle est rendue
+          // (revue FLK A6, m4). Le registre serveur rend une seule fois par requestId.
+          if (r === 'ok' && (run !== current || !box.isConnected || !resumeWith('vie'))) {
+            void reviveLives.refund(requestId);
+            if (box.isConnected) msg.textContent = 'Reprise impossible. Ta vie t’a été rendue.';
+            return;
           }
+          if (run !== current || !box.isConnected || r === 'ok') return;
+          msg.textContent = r === 'none' ? 'Plus de vie.' : 'La vie n’a pas pu être utilisée. Rien n’a été retiré.';
+          busy(false);
         });
       }, 'primary', 'revive-life');
       buttons.push(b);
@@ -1170,7 +1177,7 @@ export function createShell(options: ShellOptions): Shell {
       });
     }), 'ghost', 'save-image');
     const doShare = async () => {
-      const url = buildChallengeUrl(options.url, current.seed, height);
+      const url = buildChallengeUrl(options.url, current.seed, height, result.rulesVersion);
       shareButton.disabled = true;
       tracker.track('share_attempt', { mode: current.mode, runId: current.runId });
       let outcome: ShareOutcome;
