@@ -381,3 +381,37 @@ test('boutique : état réel tant que le moteur n’a pas les apparences de bout
   if (sellable === 0) await expect(page.getByTestId('shop-empty')).toBeVisible();
   await noHorizontalOverflow(page);
 });
+
+/** Polices larges (repli Android, runner CI) : la CI échouait à 320 px avec DejaVu Sans. */
+for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
+  test(`polices larges ${viewport.width}×${viewport.height} : aucun débordement, menu visible, aucun mot coupé`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    await page.addInitScript(() => {
+      document.addEventListener('DOMContentLoaded', () => {
+        const s = document.createElement('style');
+        s.textContent = '*{font-family:"DejaVu Sans",Verdana,sans-serif !important}';
+        document.head.append(s);
+      });
+    });
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Jouer', exact: true })).toBeInViewport({ ratio: 1 });
+    for (const tab of await page.locator('.tabbar .btn').all()) {
+      await expect(tab).toBeInViewport({ ratio: 1 });
+      // Un mot coupé ajoute une ligne : le texte de l'onglet tient sur une seule ligne.
+      const lines = await tab.evaluate((b) => {
+        const range = document.createRange();
+        range.selectNodeContents(b);
+        return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+      });
+      expect(lines).toBe(1);
+    }
+    await noHorizontalOverflow(page);
+    for (const nav of await page.locator('.tabbar .btn').evaluateAll((bs) => bs.map((b) => b.getAttribute('data-testid')))) {
+      await page.goto('/');
+      await page.getByTestId(nav!).tap();
+      await noHorizontalOverflow(page);
+    }
+    await context.close();
+  });
+}
