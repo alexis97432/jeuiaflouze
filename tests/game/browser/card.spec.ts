@@ -25,6 +25,12 @@ test('cartes de résultat : rendu réel, toutes différentes, faux résultat ref
     if (CAPTURES) await page.locator('#card').screenshot({ path: join(CAPTURES, `carte-${name}.png`) });
   }
   expect(prints.size).toBe(cases.length);
+  // F8b R1 : une apparence V3 passée par l'entrée publique change réellement la carte.
+  const gomme = await page.evaluate(() => (window as any).__flk.card('v2', { theme: 'orbital', skin: 'gomme' }));
+  const graphite = await page.evaluate(() => (window as any).__flk.card('v2', { theme: 'orbital', skin: 'graphite' }));
+  const inconnu = await page.evaluate(() => (window as any).__flk.card('v2', { theme: 'orbital', skin: 'inconnu' }));
+  expect(graphite.print).not.toBe(gomme.print);
+  expect(inconnu.print).toBe(gomme.print);
   const bad = await page.evaluate(() => (window as any).__flk.card('faux'));
   expect(bad.ok).toBe(false);
 });

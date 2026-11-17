@@ -111,10 +111,11 @@ const api = {
             : { ...strip(golden2.vectors[0]!), score: 999 };
     const ok = renderResultCard(c, {
       result: result as never,
-      appearance: { theme: (opts.theme ?? 'confiserie') as never, skin: 'gomme' },
+      // Chemin public uniquement (revue Codex C8, R1) : aucune option interne drawSkin.
+      appearance: { theme: (opts.theme ?? 'confiserie') as never, skin: (opts.skin ?? 'gomme') as never },
       mode: opts.mode ?? 'free',
       ...(opts.day ? { day: opts.day } : {}),
-    }, { scale: 1, ...(opts.skin ? { drawSkin: opts.skin as never } : {}) });
+    }, { scale: 1 });
     if (!ok) return { ok, print: 0, w: c.width, h: c.height };
     const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
     let h = 2166136261;
