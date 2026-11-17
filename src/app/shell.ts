@@ -12,7 +12,10 @@ import {
 } from './challenge-url';
 import { RULES_VERSION, type GameHandle, type RunResult } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
-import { renderCollection } from './collection-view';
+import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
+import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
+import type { SkinId } from './progression';
+import { isSkinId, renderAppearancePreview } from '../game';
 import {
   applyRunEconomy,
   calendarStatus,
@@ -74,6 +77,8 @@ export type ShellOptions = {
    * sans verrou (navigateur sans Web Locks). Injectable pour les tests.
    */
   locks?: Pick<LockManager, 'request'> | null;
+  /** Boutique en pièces : catalogue et test « le moteur sait dessiner ». Injectables (tests). */
+  shop?: { catalog: readonly ShopItem[]; isAvailable: (id: string) => boolean; preview?: PreviewFn };
 };
 
 /** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
@@ -293,14 +298,88 @@ export function createShell(options: ShellOptions): Shell {
     show('settings', [header, soundToggle(), el(doc, 'p', { class: 'hint small' }, 'Le son démarre après ton premier toucher.')], title);
   };
 
-  /** Boutique : contenu livré par le lot V3-A2 (achats en pièces). */
-  const renderShop = () => {
+  const shopConfig = options.shop ?? { catalog: COIN_SHOP, isAvailable: (id: string) => isSkinId(id) };
+  const shopPreview = shopConfig.preview ?? renderAppearancePreview;
+
+  type ShopNotice = { text: string; testId: string };
+
+  /** Boutique en pièces (V3-A2) : aperçu, prix, confirmation, achat atomique sous verrou. */
+  const renderShop = (state: { confirm?: string; notice?: ShopNotice; focus?: string } = {}) => {
     const { header, title } = screenHeader('Boutique', () => {
       renderHome();
       view.querySelector<HTMLElement>('[data-testid="nav-shop"]')?.focus();
     });
-    show('shop', [header, statusChips(), el(doc, 'p', { 'data-testid': 'shop-empty' }, 'La boutique ouvre bientôt.')], title);
+    const items = sellableItems(shopConfig.catalog, shopConfig.isAvailable);
+    const parts: HTMLElement[] = [header, statusChips()];
+
+    if (state.notice) {
+      parts.push(el(doc, 'p', { class: 'notice', role: 'status', 'data-testid': state.notice.testId, tabindex: '-1' }, state.notice.text));
+    }
+
+    if (items.length === 0) {
+      parts.push(el(doc, 'p', { 'data-testid': 'shop-empty' }, 'Rien à vendre pour l’instant. Reviens bientôt !'));
+    } else {
+      const list = el(doc, 'ul', { class: 'cards shop' });
+      for (const item of items) {
+        const st = itemState(progress, item);
+        const li = el(doc, 'li', { class: `card ${st}`, 'data-testid': `shop-${item.id}`, tabindex: '-1' });
+        li.append(
+          previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: item.id as SkinId }, shopPreview),
+          el(doc, 'p', { class: 'card-name' }, item.name),
+        );
+        if (st === 'owned') {
+          const chosen = progress.selected.skin === item.id;
+          li.append(chosen
+            ? el(doc, 'p', { class: 'card-state' }, 'Choisi')
+            : domButton(doc, 'Mettre', () => wear(item), 'ghost'));
+        } else if (state.confirm === item.id) {
+          li.append(
+            el(doc, 'p', { 'data-testid': 'confirm-text' }, `Acheter ${item.name} pour ${item.price} pièces ?`),
+            domButton(doc, 'Oui, acheter', () => buy(item), 'primary', 'confirm-buy'),
+            domButton(doc, 'Non', () => renderShop({ focus: `shop-${item.id}` }), 'ghost', 'cancel-buy'),
+          );
+        } else {
+          li.append(el(doc, 'p', { class: 'price', 'data-icon': '🪙' }, `${item.price} pièces`));
+          if (st === 'affordable') {
+            const b = domButton(doc, 'Acheter', () => renderShop({ confirm: item.id, focus: 'confirm-buy' }), 'secondary');
+            b.setAttribute('aria-label', `Acheter ${item.name} pour ${item.price} pièces`);
+            li.append(b);
+          } else {
+            li.append(el(doc, 'p', { class: 'card-lock' }, `Il te manque ${item.price - progress.coins} pièces.`));
+          }
+        }
+        list.append(li);
+      }
+      parts.push(list);
+    }
+    parts.push(el(doc, 'p', { class: 'hint small' }, 'Les pièces se gagnent en jouant. Elles ne s’achètent pas.'));
+    show('shop', parts, title);
+    if (state.focus) view.querySelector<HTMLElement>(`[data-testid="${state.focus}"]`)?.focus();
   };
+
+  const buy = (item: ShopItem) => withProgressLock(() => {
+    const result = updateDoc((current) => {
+      const r = purchaseWithCoins(current, item.id, shopConfig.catalog);
+      return { doc: r.doc, result: r };
+    });
+    const notice: ShopNotice = result.ok
+      ? { text: `C’est à toi ! ${item.name} est dans ta collection.`, testId: 'shop-success' }
+      : result.reason === 'owned'
+        ? { text: `Tu as déjà ${item.name}.`, testId: 'shop-owned' }
+        : result.reason === 'insufficient'
+          ? { text: `Il te manque ${result.missing ?? 0} pièces pour ${item.name}.`, testId: 'shop-insufficient' }
+          : { text: 'Cet objet n’est plus en vente.', testId: 'shop-unknown' };
+    announce(notice.text);
+    if (screen === 'shop') renderShop({ notice, focus: notice.testId });
+  });
+
+  const wear = (item: ShopItem) => withProgressLock(() => {
+    updateDoc((current) => {
+      const updated = selectAppearance(current, { skin: item.id as SkinId });
+      return { doc: updated, result: null };
+    });
+    if (screen === 'shop') renderShop({ notice: { text: `${item.name} est mis pour ta prochaine partie.`, testId: 'shop-worn' }, focus: 'shop-worn' });
+  });
 
   const collectionButton = () => {
     const owned = unlockedThemes(progress).length + unlockedSkins(progress).length + earnedBadges(progress).length;

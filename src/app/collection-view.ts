@@ -44,7 +44,7 @@ function cssSwatch(doc: Document, id: string): HTMLElement {
   return swatch;
 }
 
-function previewOrSwatch(doc: Document, id: string, appearance: Appearance | null, preview: PreviewFn): HTMLElement {
+export function previewOrSwatch(doc: Document, id: string, appearance: Appearance | null, preview: PreviewFn): HTMLElement {
   if (!appearance) return cssSwatch(doc, id);
   const canvas = el(doc, 'canvas', { class: 'swatch preview', 'aria-hidden': 'true', 'data-preview': id });
   let drawn = false;

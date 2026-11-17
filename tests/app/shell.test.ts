@@ -810,3 +810,90 @@ describe('menu V3 (lisible par un enfant de 8 ans)', () => {
     }
   });
 });
+
+describe('boutique en pièces (V3-A2)', () => {
+  const shop = {
+    catalog: [{ id: 'ceramique', kind: 'skin' as const, price: 50, name: 'Céramique' }],
+    isAvailable: () => true,
+    preview: () => true,
+  };
+
+  it('aperçu, prix, confirmation, achat, puis « Mettre » appliqué à la partie suivante et au rechargement', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 70, grants: ['v2-objectives-backfill'] }));
+    const { button, text, root, game } = setup({ meta: createMetaStore(storage), shop });
+    button('Boutique').click();
+    expect(root.querySelector('[data-testid="shop-ceramique"] canvas.swatch.preview')).not.toBeNull();
+    expect(text('shop-ceramique')).toContain('50 pièces');
+    button('Acheter').click();
+    expect(text('confirm-text')).toBe('Acheter Céramique pour 50 pièces ?');
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('confirm-buy');
+    button('Oui, acheter').click();
+    expect(text('shop-success')).toContain('C’est à toi');
+    expect(text('coins')).toBe('20 pièces');
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 20, inventory: ['ceramique'] });
+    button('Mettre').click();
+    expect(text('shop-ceramique')).toContain('Choisi');
+    button('Retour').click();
+    button('Jouer').click();
+    expect(game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'ceramique' });
+
+    document.body.innerHTML = '<main id="app"></main>';
+    const again = setup({ meta: createMetaStore(storage), shop });
+    again.button('Jouer').click();
+    expect(again.game.mounts[0]!.options.appearance?.skin).toBe('ceramique');
+  });
+
+  it('« Non » annule sans rien débiter ; solde insuffisant affiché sans bouton d’achat', () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 50, grants: ['v2-objectives-backfill'] }));
+    const first = setup({ meta: createMetaStore(storage), shop });
+    first.button('Boutique').click();
+    first.button('Acheter').click();
+    first.button('Non').click();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 50 });
+    first.shell.destroy();
+
+    document.body.innerHTML = '<main id="app"></main>';
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 30, grants: ['v2-objectives-backfill'] }));
+    const poor = setup({ meta: createMetaStore(storage), shop });
+    poor.button('Boutique').click();
+    expect(poor.text('shop-ceramique')).toContain('Il te manque 20 pièces.');
+    expect(poor.root.querySelector('[data-testid="shop-ceramique"] button')).toBeNull();
+  });
+
+  it('deux onglets : un achat confirmé dans un onglet périmé ne débite pas deux fois', () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 120, grants: ['v2-objectives-backfill'] }));
+    document.body.innerHTML = '<main id="a"></main><main id="b"></main>';
+    const make = (id: string) => {
+      const root = document.getElementById(id)!;
+      const sh = createShell({
+        root, startGame: fakeGame().startGame,
+        tracker: createTracker({ buildId: 'b', rulesVersion: 1, sessionId: id, sink: memorySink() }),
+        store: createLocalStore(storage), meta: createMetaStore(storage), today: () => new Date('2026-11-16T22:30:00Z'),
+        url: 'https://jeu.test/', replaceUrl: () => {}, share: async () => 'shared', newSeed: () => 1, newRunId: () => `${id}-r`, shop,
+      });
+      const btn = (label: string) => [...root.querySelectorAll('button')].find((b) => b.textContent === label)!;
+      return { sh, btn, root };
+    };
+    const a = make('a');
+    const b = make('b');
+    for (const t of [a, b]) {
+      t.btn('Boutique').click();
+      t.btn('Acheter').click();
+    }
+    a.btn('Oui, acheter').click();
+    b.btn('Oui, acheter').click(); // écran de B périmé : relu sous verrou, déjà possédé
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 70, inventory: ['ceramique'] });
+    expect(b.root.querySelector('[data-testid="shop-owned"]')?.textContent).toBe('Tu as déjà Céramique.');
+    a.sh.destroy();
+    b.sh.destroy();
+  });
+
+  it('catalogue réel : rien n’est vendu tant que le moteur ne sait pas dessiner les objets', () => {
+    const { button, text } = setup({ shop: { catalog: [{ id: 'graphite', kind: 'skin', price: 60, name: 'Graphite' }], isAvailable: () => false } });
+    button('Boutique').click();
+    expect(text('shop-empty')).toBe('Rien à vendre pour l’instant. Reviens bientôt !');
+  });
+});
