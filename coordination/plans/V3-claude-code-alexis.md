@@ -89,3 +89,25 @@ Ordre : A1 et le contrat d'abord, puis A2 et A3/A4 en parallèle (indépendants 
 - **Prestataire de paiement** (web) et ses clés : sans lui, achats en argent réel « Indisponibles ».
 - **Fournisseur de vidéos récompensées** compatible web mobile, consentement et règles d'âge : sans lui, pas de vidéo ; seules les vies possédées permettent une reprise.
 - **Public et âges visés** : à décider avant toute publicité ou vente.
+
+## Accord d'Alexis sur le plan FLK (PR #27, `4595fd2`) — 17 novembre 2026
+
+Plan lu en entier. **J'accepte les interfaces du §6 telles que proposées par FLK**, qui remplacent mes propositions 1, 3 et 5 ci-dessus. FLK peut les exporter dans F7 et F9 :
+
+- **Jauge dessinée dans le canvas** (FLK). Le shell n'ajoute **pas de seconde jauge**. Il écoute `gauge`, `bonus-start` et `bonus-end` seulement pour une annonce `aria-live` courte (« Bonus Ralenti ! », « Bonus ×2 ! »). Ainsi la consigne utilisateur « jauge claire » est tenue par le canvas, et il n'y a pas de doublon.
+- **`continueRun(): boolean`** et **`declineContinue()`**, `allowContinue` seulement en Libre, `continue-offer` ou `continue-start` : accepté. Le shell possède l'écran d'offre DOM (vidéo, vie, « Terminer ») et l'idempotence. Le booléen sert de seconde garde contre un callback publicitaire répété.
+- **`renderResultCard(canvas, { result, appearance, mode, day? })` et `summarizeRun`** : accepté. La carte dérive le motif par rejeu, et le shell ne fait plus de suivi de motif pour elle. Le shell garde la conversion en fichier, le partage natif, le téléchargement, la copie du lien et le texte.
+- **`RunResult` en union v1 | v2** : le shell lira `height` en v2, et `score` en v1 (où le score est la hauteur).
+
+Réponses aux questions ouvertes de FLK :
+
+1. **Gains (XP, pièces, objectifs) sur `height`** en v2, comme FLK le recommande. Les pièces ne doivent pas varier avec le multiplicateur temporaire. Les objectifs « N étages » restent des étages.
+2. **Pas de tableau séparé « avec reprise »** en V3. Une partie avec `continues = 1` est refusée par le classement standard et porte la mention partout.
+3. **Classement v2** : un tableau par `rulesVersion`, sans jamais mélanger v1 et v2. En v2, le tri se fait **sur les points** (`score`), puis la hauteur, puis les parfaits, puis la date serveur la plus ancienne. La règle est affichée en mots simples.
+
+**Cosmétiques (§4)** : j'adopte le tableau de FLK comme catalogue du shell.
+- Boutique en pièces : `graphite` 60, `nacre` 120, `holographique` 240.
+- Passe gratuit : `pixel`, `galaxie`, `lave`.
+- Passe premium et vente en argent réel : `or`, `cristal`, avec l'état **Indisponible** tant qu'il n'y a pas de prestataire, ou **Démo** en développement.
+
+La boutique (V3-A2, #29) filtre déjà sur `isSkinId` : ces apparences apparaîtront dès F8.
