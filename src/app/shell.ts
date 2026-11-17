@@ -10,7 +10,7 @@ import {
   type Challenge,
   type InvalidReason,
 } from './challenge-url';
-import { PLAY_RULES_VERSION, RULES_VERSION, type GameEvent, type GameHandle } from './game-contract';
+import { PLAY_RULES_VERSION, RULES_VERSION, type Appearance, type GameEvent, type GameHandle } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
 import { BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult } from './run-result';
@@ -107,7 +107,7 @@ export type ShellOptions = {
    * Image de résultat (F9, `renderResultCard`, convertie en PNG par main.ts). Absente ou null :
    * partage du lien seul, sans bouton d'image.
    */
-  resultImage?: (result: AnyRunResult, mode: Mode, day: string | null) => Promise<File | null>;
+  resultImage?: (result: AnyRunResult, mode: Mode, day: string | null, appearance?: Appearance) => Promise<File | null>;
   /** Enregistre un fichier (téléchargement) ; injectable pour les tests. */
   saveFile?: (file: File) => boolean;
 };
@@ -1143,7 +1143,7 @@ export function createShell(options: ShellOptions): Shell {
     let imagePromise: Promise<File | null> | null = null;
     const resultImage = () => {
       if (!options.resultImage) return Promise.resolve(null);
-      imagePromise ??= options.resultImage(result, current.mode, current.day).catch(() => null);
+      imagePromise ??= options.resultImage(result, current.mode, current.day, progress.selected).catch(() => null);
       return imagePromise;
     };
     const saveImage = domButton(doc, 'Enregistrer l’image', guarded(() => {

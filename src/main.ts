@@ -5,6 +5,8 @@ import { createShell } from './app/shell';
 import { combineSinks, consoleSink, createTracker, memorySink } from './platform/metrics';
 import { randomId, randomSeed } from './platform/random';
 import { createLeaderboardService } from './platform/services/leaderboard';
+import { createResultImage } from './app/result-image';
+import { renderResultCard } from './game';
 import { createDemoAds, noAds } from './platform/ads/rewarded';
 import { shareLink } from './platform/share';
 import { createLocalStore, createMetaStore, getBrowserStorage } from './platform/storage';
@@ -36,6 +38,8 @@ createShell({
   newSeed: () => randomSeed(),
   newRunId: () => randomId(),
   newPlayerId: () => randomId() + randomId(),
+  // Carte de résultat F9 : image jointe au partage et « Enregistrer l'image ».
+  resultImage: createResultImage(renderResultCard),
   // Adresse du serveur de classement au build (server/README.md). Vide (GitHub Pages actuel) :
   // l'écran Classement affiche « Indisponible » et le jeu reste entier.
   leaderboard: createLeaderboardService(import.meta.env.VITE_LEADERBOARD_URL as string | undefined),
