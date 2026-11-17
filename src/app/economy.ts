@@ -10,6 +10,7 @@
  * Rien ici n'a de valeur commerciale : progression locale, modifiable par l'utilisateur.
  */
 import { isDateKey } from '../platform/daily';
+import { sanitizeSeason, type SeasonState } from './season';
 import {
   applyRun,
   INITIAL_PROGRESS,
@@ -22,7 +23,11 @@ import {
 
 // --- Document v2 et migration (E1a) -------------------------------------------------------
 
-export const PROGRESS_VERSION = 2;
+/**
+ * 3 : inventaire (boutique) et passe de saison. Un onglet resté sur une version plus ancienne
+ * voit une version future et cesse d'écrire (readProgressDoc) : il ne peut pas effacer ces champs.
+ */
+export const PROGRESS_VERSION = 3;
 /** Prime unique : 10 pièces par objectif déjà accompli avant E1. */
 export const BACKFILL_GRANT = 'v2-objectives-backfill';
 export const MAX_XP = 10_000_000;
@@ -46,6 +51,8 @@ export type ProgressDoc = ProgressState & {
   inventory: string[];
   calendar: CalendarState;
   grants: string[];
+  /** Passe de saison (V3-A5) ; absent tant qu'aucune étoile de saison n'a été gagnée. */
+  season?: SeasonState;
 };
 
 const INITIAL_CALENDAR: CalendarState = { lastClaimDate: null, cycle: 0, index: 0 };
@@ -83,7 +90,7 @@ export function migrateProgress(raw: unknown): ProgressDoc {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   // Version future (onglet ancien, retour arrière de publication) : lue comme une v2, en
   // conservant XP, pièces et calendrier, au lieu d'être réinitialisée (revue E1 FLK, m3).
-  const isV2OrLater = typeof r.version === 'number' && Number.isInteger(r.version) && r.version >= PROGRESS_VERSION;
+  const isV2OrLater = typeof r.version === 'number' && Number.isInteger(r.version) && r.version >= 2;
 
   if (!isV2OrLater) {
     // v1 (A3a) ou rien : on part de l'état A3 nettoyé, puis prime unique par objectif accompli.
@@ -108,6 +115,7 @@ export function migrateProgress(raw: unknown): ProgressDoc {
       ? [...new Set(r.inventory.filter((i): i is string => typeof i === 'string' && /^[a-z0-9-]{1,32}$/.test(i)))]
       : [],
     calendar: sanitizeCalendar(r.calendar),
+    ...(sanitizeSeason(r.season) ? { season: sanitizeSeason(r.season)! } : {}),
     // Un document v2 a déjà reçu (ou n'avait pas à recevoir) la prime : on ne la rejoue jamais.
     grants: [...new Set([BACKFILL_GRANT, ...grants])].slice(0, MAX_GRANTS),
   };

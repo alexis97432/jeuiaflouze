@@ -13,6 +13,7 @@ import {
 import { RULES_VERSION, type GameHandle, type RunResult } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
+import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
 import { isSkinId, renderAppearancePreview } from '../game';
 import {
@@ -55,7 +56,7 @@ import {
   type ServiceError,
 } from '../platform/services/leaderboard';
 
-export type Screen = 'home' | 'game' | 'result' | 'collection' | 'rewards' | 'settings' | 'shop' | 'leaderboard';
+export type Screen = 'home' | 'game' | 'result' | 'collection' | 'rewards' | 'settings' | 'shop' | 'leaderboard' | 'season';
 
 /**
  * Délai pendant lequel les boutons du résultat ignorent les activations : un joueur qui tape
@@ -93,6 +94,8 @@ export type ShellOptions = {
   leaderboard?: LeaderboardService;
   /** Identifiant pseudonyme de l'appareil pour le classement (32 hex). */
   newPlayerId?: () => string;
+  /** Saison en cours (V3-A5) ; injectable pour les tests. */
+  season?: Season;
 };
 
 /** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
@@ -355,7 +358,101 @@ export function createShell(options: ShellOptions): Shell {
     const note = el(doc, 'p', { class: 'hint small' }, writable
       ? 'Ta progression est gardée sur cet appareil.'
       : 'Sauvegarde d’une version plus récente du jeu : progression de cette session non enregistrée.');
-    show('rewards', [header, statusChips(), gift, level, goalsPanel, collectionButton(), note], title);
+    show('rewards', [header, statusChips(), gift, seasonPanel(), level, goalsPanel, collectionButton(), note], title);
+    if (focusTestId) view.querySelector<HTMLElement>(`[data-testid="${focusTestId}"]`)?.focus();
+  };
+
+  // --- Passe de saison (V3-A5) ---------------------------------------------------------------
+  const season = options.season ?? SEASON_1;
+  const canDraw = (id: string) => isSkinId(id);
+  const formatSeasonDay = (key: string) =>
+    new Date(`${key}T12:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const seasonClaimable = () => {
+    const day = utcDateKey(today());
+    return season.tiers.some((t) => tierStatus(progress, season, t, 'free', day, canDraw) === 'claimable');
+  };
+  const rewardText = (r: SeasonReward) => (r.kind === 'coins' ? `+${r.amount} pièces` : `Apparence ${r.name}`);
+
+  const seasonPanel = () => {
+    const day = utcDateKey(today());
+    const phase = seasonPhase(season, day);
+    const panel = el(doc, 'section', { class: 'panel', 'aria-labelledby': 'season-title' });
+    panel.append(el(doc, 'h2', { id: 'season-title', 'data-icon': '🏅' }, season.name));
+    const stars = seasonState(progress, season).stars;
+    const next = nextTier(progress, season);
+    if (phase === 'upcoming') {
+      panel.append(el(doc, 'p', { 'data-testid': 'season-summary' }, `Commence le ${formatSeasonDay(season.start)}.`));
+    } else if (phase === 'ended') {
+      panel.append(el(doc, 'p', { 'data-testid': 'season-summary' }, 'Saison finie. Tes apparences restent à toi.'));
+    } else if (next) {
+      const prev = season.tiers.filter((t) => t.stars <= stars).at(-1)?.stars ?? 0;
+      panel.append(
+        el(doc, 'progress', { max: String(next.stars - prev), value: String(stars - prev), 'aria-label': `Vers le palier ${next.tier}` }),
+        el(doc, 'p', { class: 'hint', 'data-testid': 'season-summary' },
+          `Palier ${next.tier} dans ${next.stars - stars} étoile${next.stars - stars > 1 ? 's' : ''} · jusqu’au ${formatSeasonDay(season.end)}`),
+      );
+    } else {
+      panel.append(el(doc, 'p', { 'data-testid': 'season-summary' }, 'Tous les paliers sont atteints. Bravo !'));
+    }
+    const open = iconButton(doc, '🏅', seasonClaimable() ? 'Voir le passe · cadeau à prendre' : 'Voir le passe', () => renderSeason(), 'secondary', 'open-season');
+    panel.append(open);
+    return panel;
+  };
+
+  const claimTier = (tier: number, track: Track) => withProgressLock(() => {
+    const r = updateDoc((current) => {
+      const c = claimSeasonTier(current, season, tier, track, utcDateKey(today()), canDraw);
+      return { doc: c.doc, result: c };
+    });
+    const text = r.ok ? `Pris : ${rewardText(r.reward)}.` : r.reason === 'claimed' ? 'Déjà pris.' : 'Pas encore disponible.';
+    announce(text);
+    if (screen === 'season') renderSeason(`tier-${tier}`, text);
+  });
+
+  /** Écran du passe : paliers, piste gratuite réclamable, piste premium en aperçu (indisponible). */
+  const renderSeason = (focusTestId?: string, notice?: string) => {
+    const { header, title } = screenHeader(season.name, () => renderRewards('open-season'));
+    const day = utcDateKey(today());
+    const stars = seasonState(progress, season).stars;
+    const parts: HTMLElement[] = [header];
+    if (notice) parts.push(el(doc, 'p', { class: 'notice', role: 'status', 'data-testid': 'season-notice' }, notice));
+    parts.push(
+      el(doc, 'p', { 'data-testid': 'season-stars', 'data-icon': '⭐' }, `${stars} étoile${stars > 1 ? 's' : ''} de saison`),
+      el(doc, 'p', { class: 'hint small' }, `Du ${formatSeasonDay(season.start)} au ${formatSeasonDay(season.end)}. Les étoiles se gagnent en jouant.`),
+      el(doc, 'p', { class: 'hint small', 'data-testid': 'premium-note' }, 'Piste ✨ Premium : indisponible pour l’instant. Rien n’est en vente.'),
+    );
+    const list = el(doc, 'ol', { class: 'tiers', 'aria-label': 'Paliers' });
+    for (const t of season.tiers) {
+      const li = el(doc, 'li', { class: 'tier', 'data-testid': `tier-${t.tier}`, tabindex: '-1' });
+      li.append(el(doc, 'p', { class: 'tier-head' }, `Palier ${t.tier} · ${t.stars} ⭐`));
+      for (const track of ['free', 'premium'] as const) {
+        const reward = track === 'free' ? t.free : t.premium;
+        const st = tierStatus(progress, season, t, track, day, canDraw);
+        const cell = el(doc, 'div', { class: `tier-cell ${track} ${st}`, 'data-testid': `tier-${t.tier}-${track}` });
+        if (reward.kind === 'skin') {
+          // Pas encore dessinée par le moteur : pastille « ? », jamais l'aperçu d'une autre apparence.
+          cell.append(isSkinId(reward.id)
+            ? previewOrSwatch(doc, reward.id, { theme: progress.selected.theme, skin: reward.id }, renderAppearancePreview)
+            : el(doc, 'div', { class: 'swatch soon', 'aria-hidden': 'true' }, '?'));
+        }
+        cell.append(el(doc, 'p', { class: 'tier-reward' }, `${track === 'premium' ? '✨ ' : ''}${rewardText(reward)}`));
+        const label: Record<typeof st, string> = {
+          claimed: 'Pris ✓',
+          claimable: '',
+          locked: `🔒 ${t.stars - stars} étoile${t.stars - stars > 1 ? 's' : ''}`,
+          soon: 'Bientôt',
+          'premium-unavailable': 'Indisponible',
+          ended: 'Saison finie',
+        };
+        cell.append(st === 'claimable'
+          ? domButton(doc, 'Prendre', () => claimTier(t.tier, track), 'primary', `claim-tier-${t.tier}`)
+          : el(doc, 'p', { class: 'tier-state' }, label[st]));
+        li.append(cell);
+      }
+      list.append(li);
+    }
+    parts.push(list);
+    show('season', parts, title);
     if (focusTestId) view.querySelector<HTMLElement>(`[data-testid="${focusTestId}"]`)?.focus();
   };
 
@@ -534,7 +631,7 @@ export function createShell(options: ShellOptions): Shell {
     const dailyHint = el(doc, 'p', { class: 'hint small', 'data-testid': 'daily-hint', 'data-day': day },
       `Le même pour tous · nouveau à ${formatLocalTime(nextDailyChange(now))}`);
 
-    const giftReady = calendarStatus(progress, day).canClaim;
+    const giftReady = calendarStatus(progress, day).canClaim || seasonClaimable();
     const rewardsTab = iconButton(doc, '🎁', 'Récompenses', () => renderRewards(), 'tab', 'nav-rewards');
     if (giftReady) {
       rewardsTab.classList.add('has-dot');
@@ -800,7 +897,8 @@ export function createShell(options: ShellOptions): Shell {
           perfectCount: result.perfectCount,
           longestStreak: current.events.longestStreak,
         });
-        return { doc: e.doc, result: e };
+        // Étoiles de saison : mêmes étoiles, même écriture ; 0 si la partie était déjà comptée.
+        return { doc: addSeasonStars(e.doc, season, utcDateKey(today()), e.gained.xp), result: e };
       });
       const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
       renderResult(current, result, {
