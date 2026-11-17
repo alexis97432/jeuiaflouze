@@ -4,7 +4,7 @@
  * Fonction pure de dessin : aucun RAF, écouteur, stockage ni son. Image fixe, donc sans
  * mouvement (compatible reduced-motion).
  */
-import { BLOCK_HEIGHT, drawBlock } from './blocks';
+import { BLOCK_HEIGHT, drawBlock, type DrawSkinId } from './blocks';
 import { resolveAppearance, type Appearance } from './mount';
 import { css, getTheme, mix, skyAt, TIER_FLOORS, type DecorItem } from './themes';
 
@@ -27,9 +27,20 @@ export function renderAppearancePreview(
   appearance: Partial<Appearance> | undefined,
   options: PreviewOptions = {},
 ): boolean {
+  return drawAppearancePreview(canvas, resolveAppearance(appearance), options);
+}
+
+/**
+ * Interne : même dessin pour toute apparence que `drawBlock` connaît, y compris les
+ * apparences V3 pas encore exposées au shell (démo, harnais, futures boutique et passe).
+ */
+export function drawAppearancePreview(
+  canvas: HTMLCanvasElement,
+  { theme: themeId, skin }: { theme: Appearance['theme']; skin: DrawSkinId },
+  options: PreviewOptions = {},
+): boolean {
   const ctx = canvas.getContext('2d');
   if (!ctx) return false;
-  const { theme: themeId, skin } = resolveAppearance(appearance);
   const theme = getTheme(themeId);
   const rect = options.width && options.height ? null : canvas.getBoundingClientRect();
   const w = Math.max(1, options.width ?? rect?.width ?? 120);

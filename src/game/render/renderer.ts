@@ -5,7 +5,7 @@ import {
   DEFAULT_SKIN,
   drawBlock,
   RADIUS,
-  type SkinId,
+  type DrawSkinId,
 } from './blocks';
 import {
   css,
@@ -99,13 +99,13 @@ export class Renderer {
   private decorDrawn = 0;
   private seed = 0x9e3779b9;
 
-  private skin: SkinId;
+  private skin: DrawSkinId;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
     public reducedMotion: boolean,
     theme: Theme = getTheme(undefined),
-    skin: SkinId = DEFAULT_SKIN,
+    skin: DrawSkinId = DEFAULT_SKIN,
   ) {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D indisponible');
@@ -114,7 +114,7 @@ export class Renderer {
     this.skin = skin;
   }
 
-  get skinId(): SkinId { return this.skin; }
+  get skinId(): DrawSkinId { return this.skin; }
 
   get debrisCount(): number { return this.debris.length; }
   get sparkCount(): number { return this.sparks.length; }
@@ -132,7 +132,7 @@ export class Renderer {
     this.gradients.clear();
   }
 
-  setSkin(skin: SkinId): void {
+  setSkin(skin: DrawSkinId): void {
     this.skin = skin;
     this.gradients.clear();
   }
