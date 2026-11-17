@@ -71,3 +71,34 @@ describe('F9 : renderResultCard', () => {
     expect(renderResultCard(none, { result: v2[0]!, mode: 'free' })).toBe(false);
   });
 });
+
+describe('F8b R1 (revue Codex C8) : apparence V3 par l’entrée publique de la carte', () => {
+  /** Contexte qui enregistre chaque affectation et appel : deux dessins identiques ⇔ mêmes journaux. */
+  const recording = () => {
+    const log: string[] = [];
+    const ctx = new Proxy({}, {
+      get: (_t, p) => (...args: unknown[]) => {
+        log.push(`${String(p)}(${args.map(String).join(',')})`);
+        if (p === 'createLinearGradient') return { addColorStop: (o: number, c: string) => log.push(`stop ${o} ${c}`) };
+        if (p === 'measureText') return { width: 10 };
+        return undefined;
+      },
+      set: (_t, p, v) => { log.push(`${String(p)}=${String(v)}`); return true; },
+    }) as unknown as CanvasRenderingContext2D;
+    return { ctx, log };
+  };
+  const draw = (skin: string) => {
+    const { ctx, log } = recording();
+    const c = document.createElement('canvas');
+    c.getContext = (() => ctx) as unknown as typeof c.getContext;
+    expect(renderResultCard(c, { result: v2[0]!, mode: 'free', appearance: { theme: 'orbital', skin: skin as never } })).toBe(true);
+    return log.join('\n');
+  };
+
+  it('graphite, lave et cristal changent réellement le dessin ; un identifiant inconnu retombe sur Gomme', () => {
+    const gomme = draw('gomme');
+    for (const skin of ['graphite', 'lave', 'cristal']) expect(draw(skin), skin).not.toBe(gomme);
+    expect(draw('inconnu')).toBe(gomme);
+  });
+});
+
