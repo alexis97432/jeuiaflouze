@@ -1467,11 +1467,25 @@ describe('apparences V3 branchées (F8b, revue FLK A5 m1/m2, A6 m5)', () => {
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 40, inventory: ['graphite', 'pixel'], selected: { skin: 'pixel' } });
   });
 
-  it('Or et Cristal (premium) : jamais sélectionnables même injectés dans une sauvegarde', () => {
+  it('Or et Cristal (premium) : jamais sélectionnables même injectés dans une sauvegarde (y compris l’inventaire)', () => {
     const storage = memoryStorage();
-    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, grants: ['v2-objectives-backfill'], selected: { theme: 'confiserie', skin: 'or' } }));
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, grants: ['v2-objectives-backfill'], inventory: ['or', 'cristal'], selected: { theme: 'confiserie', skin: 'or' } }));
     const { button, game } = setup({ meta: createMetaStore(storage) });
     button('Jouer').click();
     expect(game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'gomme' });
+  });
+});
+
+describe('carte : apparence choisie transmise (revue FLK A6b R1)', () => {
+  it('la carte reçoit l’apparence V3 sélectionnée, pas Gomme', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, grants: ['v2-objectives-backfill'], inventory: ['graphite'], selected: { theme: 'confiserie', skin: 'graphite' } }));
+    const resultImage = vi.fn(async () => null);
+    const { button, end } = setup({ meta: createMetaStore(storage), resultImage });
+    button('Jouer').click();
+    await end(4);
+    button('Enregistrer l’image').click();
+    await flush();
+    expect(resultImage).toHaveBeenCalledWith(expect.anything(), 'free', null, { theme: 'confiserie', skin: 'graphite' });
   });
 });

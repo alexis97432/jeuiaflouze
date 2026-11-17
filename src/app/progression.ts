@@ -148,7 +148,12 @@ export function unlockedThemes(state: ProgressState): ThemeId[] {
 
 export function unlockedSkins(state: ProgressState): AnySkinId[] {
   const won = new Set<string>(rewardsOf(state).flatMap((r) => (r.kind === 'skin' ? [r.id] : [])));
-  for (const item of state.inventory ?? []) won.add(item); // achats en pièces, passe de saison
+  // Inventaire local : seulement ce qui s'obtient en local (pièces, piste gratuite du passe).
+  // Or et Cristal (premium) exigeront un droit vérifié par le serveur : une sauvegarde modifiée
+  // ne peut pas les débloquer (revue FLK A6b, m1).
+  for (const item of state.inventory ?? []) {
+    if ((OBTAINABLE_V3_SKINS as readonly string[]).includes(item) || (SKIN_IDS as readonly string[]).includes(item)) won.add(item);
+  }
   return ALL_SKIN_IDS.filter((id) => id === DEFAULT_APPEARANCE.skin || won.has(id));
 }
 
