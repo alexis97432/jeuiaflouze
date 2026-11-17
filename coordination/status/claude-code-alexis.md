@@ -1,5 +1,12 @@
 # Claude Code Alexis
 
+## V3 — en cours (17 novembre 2026)
+
+- Plan et contrats proposés à FLK : `coordination/plans/V3-claude-code-alexis.md` (PR « V3 — plan Alexis »).
+- Ordre : menu simplifié (V3-A1) puis boutique en pièces, classement serveur et adaptateurs paiement/publicité en parallèle ; reprise, bonus, carte et passe après accord et livraison de FLK.
+- V2 : intégrée et publiée sur `31575e4`, vérifiée en ligne.
+
+
 ## Tâches
 
 | Tâche | État | Branche | SHA / PR | Tests |
