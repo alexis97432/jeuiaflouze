@@ -62,9 +62,10 @@ export function buildChallengeUrl(base: string, seed: number, score: number, rul
   return url.toString();
 }
 
+/** Messages pour un enfant (V4) : ce qui ne va pas, et quoi faire, sans mot technique. */
 export const INVALID_MESSAGES: Record<InvalidReason, string> = {
-  version: 'Ce lien de défi vient d’une autre version du jeu.',
-  seed: 'Ce lien de défi est incomplet ou abîmé (séquence invalide).',
-  target: 'Ce lien de défi est incomplet ou abîmé (score invalide).',
-  malformed: 'Ce lien de défi est mal formé.',
+  version: 'Ce lien de défi vient d’une autre version du jeu. Lance une nouvelle partie !',
+  seed: 'Ce lien de défi est abîmé : la partie à rejouer manque. Demande à ton ami de te le renvoyer.',
+  target: 'Ce lien de défi est abîmé : le score à battre manque. Demande à ton ami de te le renvoyer.',
+  malformed: 'Ce lien de défi est abîmé. Demande à ton ami de te le renvoyer.',
 };
