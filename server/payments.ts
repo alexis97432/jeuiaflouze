@@ -39,7 +39,7 @@ type Account = {
 export function createLedger(catalog: Catalog = SERVER_CATALOG) {
   const accounts = new Map<string, Account>();
   const receipts = new Map<string, { accountId: string; productId: string; demo: boolean; refunded: boolean; livesLeft: number }>();
-  const consumed = new Map<string, { accountId: string; ok: boolean }>();
+  const consumed = new Map<string, { accountId: string; ok: boolean; demo: boolean }>();
 
   const account = (id: string): Account => {
     let a = accounts.get(id);
@@ -84,7 +84,11 @@ export function createLedger(catalog: Catalog = SERVER_CATALOG) {
      */
     consumeLife(accountId: string, requestId: string): { ok: boolean; demo: boolean; wallet: Wallet } {
       const seen = consumed.get(requestId);
-      if (seen) return { ok: seen.ok && seen.accountId === accountId, demo: false, wallet: wallet(accountId) };
+      // Rejeu : même réponse, y compris l'origine démo de la vie (revue FLK A4, m1).
+      if (seen) {
+        const same = seen.accountId === accountId;
+        return { ok: seen.ok && same, demo: same && seen.demo, wallet: wallet(accountId) };
+      }
       const a = account(accountId);
       let ok = false;
       let demo = false;
@@ -105,7 +109,7 @@ export function createLedger(catalog: Catalog = SERVER_CATALOG) {
           }
         }
       }
-      consumed.set(requestId, { accountId, ok });
+      consumed.set(requestId, { accountId, ok, demo });
       return { ok, demo, wallet: wallet(accountId) };
     },
     /** Remboursement notifié par le fournisseur : retire le droit ou les vies restantes du reçu. */

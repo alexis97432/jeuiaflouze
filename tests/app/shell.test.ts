@@ -2,11 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { RunResult } from '../../src/app/game-contract';
 import type { StartGame, StartOptions } from '../../src/app/game-loader';
-import { createShell, PROGRESS_LOCK, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
+import { createShell, type LivesProvider, PROGRESS_LOCK, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
 import { createTracker, memorySink } from '../../src/platform/metrics';
 import type { ShareOutcome } from '../../src/platform/share';
 import { createLocalStore, createMetaStore } from '../../src/platform/storage';
 import { dailySeed } from '../../src/platform/daily';
+import { AD_MESSAGES, type AdOutcome, type RewardedAdProvider } from '../../src/platform/ads/rewarded';
 import type { BoardPage, LeaderboardService, RankTicket, ServiceResult } from '../../src/platform/services/leaderboard';
 
 type Mount = { options: StartOptions; pause: number; resume: number; destroyed: boolean };
@@ -1113,5 +1114,154 @@ describe('passe de saison (V3-A5)', () => {
     await flush();
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, season: { claimed: ['free:1'] } });
     expect(a.text('tier-1-free')).toContain('Pris ✓');
+  });
+});
+
+describe('reprise, bonus et résultats v2 (V3-A6)', () => {
+  type Handle = { continueRun: ReturnType<typeof vi.fn>; declineContinue: ReturnType<typeof vi.fn> };
+  function reviveGame() {
+    const mounts: { options: StartOptions; handle: Handle }[] = [];
+    const startGame: StartGame = (options) => {
+      const handle = { pause: vi.fn(), resume: vi.fn(), destroy: vi.fn(), continueRun: vi.fn(() => true), declineContinue: vi.fn() };
+      mounts.push({ options, handle });
+      return handle;
+    };
+    return { startGame, mounts };
+  }
+  const v2 = (height: number, score: number, continues: 0 | 1 = 0) => ({
+    seed: 7, rulesVersion: 2 as const, score, height, perfectCount: 1, bestPerfectStreak: 1, bonusCount: 1,
+    continues, durationTicks: 900, inputTicks: [1, 2, 3], continueTicks: continues ? [2] : [],
+  });
+  const manualAds = () => {
+    const calls: ((o: AdOutcome) => void)[] = [];
+    const ads: RewardedAdProvider = { kind: 'demo', label: 'Mode démo : pas de vraie vidéo', show: () => new Promise((r) => calls.push(r)) };
+    return { ads, calls };
+  };
+
+  it('sans régie ni vie : pas d’allowContinue ; une offre éventuelle se termine aussitôt', () => {
+    const g = reviveGame();
+    const { button, root } = setup({ startGame: g.startGame });
+    button('Jouer').click();
+    expect(g.mounts[0]!.options.allowContinue).toBeUndefined();
+    g.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    expect(root.querySelector('[data-testid="revive"]')).toBeNull();
+    expect(g.mounts[0]!.handle.declineContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('vidéo (démo libellée) : double appui et rappel répété → une seule reprise', async () => {
+    const g = reviveGame();
+    const { ads, calls } = manualAds();
+    const { button, root, text } = setup({ startGame: g.startGame, revive: { ads } });
+    button('Jouer').click();
+    const m = g.mounts[0]!;
+    expect(m.options.allowContinue).toBe(true);
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    expect(text('revive-demo')).toContain('Mode démo');
+    expect(document.activeElement?.textContent).toBe('Regarder une vidéo');
+    const video = root.querySelector<HTMLButtonElement>('[data-testid="revive-ad"]')!;
+    video.click();
+    video.click();
+    expect(calls).toHaveLength(1);
+    calls[0]!('rewarded');
+    await flush();
+    expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
+    expect(root.querySelector('[data-testid="revive"]')).toBeNull();
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 90 } as never); // second raté : déjà récompensé
+    expect(root.querySelector('[data-testid="revive"]')).not.toBeNull();
+  });
+
+  it.each(['dismissed', 'no-fill', 'error'] as const)('vidéo « %s » : pas de reprise, message, Terminer finit la partie', async (outcome) => {
+    const g = reviveGame();
+    const { ads, calls } = manualAds();
+    const { button, text } = setup({ startGame: g.startGame, revive: { ads } });
+    button('Jouer').click();
+    const m = g.mounts[0]!;
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    button('Regarder une vidéo').click();
+    calls[0]!(outcome);
+    await flush();
+    expect(m.handle.continueRun).not.toHaveBeenCalled();
+    expect(text('revive-status')).toBe(AD_MESSAGES[outcome]);
+    button('Terminer').click();
+    expect(m.handle.declineContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('vie possédée : consommée une fois, reprise ; échec : rien retiré, message', async () => {
+    const g = reviveGame();
+    const consume = vi.fn<LivesProvider['consume']>().mockResolvedValueOnce('error').mockResolvedValueOnce('ok');
+    const { button, text } = setup({ startGame: g.startGame, revive: { lives: { count: () => 2, consume } } });
+    button('Jouer').click();
+    const m = g.mounts[0]!;
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    button('Utiliser une vie (2)').click();
+    await flush();
+    expect(text('revive-status')).toContain('Rien n’a été retiré');
+    expect(m.handle.continueRun).not.toHaveBeenCalled();
+    button('Utiliser une vie (2)').click();
+    await flush();
+    expect(consume).toHaveBeenLastCalledWith('run1:revive');
+    expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('Tour du jour et défi : jamais de reprise', () => {
+    const g = reviveGame();
+    const { ads } = manualAds();
+    const { button } = setup({ startGame: g.startGame, revive: { ads } });
+    button('Défi du jour').click();
+    expect(g.mounts[0]!.options.allowContinue).toBeUndefined();
+  });
+
+  it('bonus annoncés pour les lecteurs d’écran', () => {
+    const g = reviveGame();
+    const { button, text } = setup({ startGame: g.startGame });
+    button('Jouer').click();
+    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-start', bonus: 'double', floors: 5 } as never);
+    expect(text('live')).toBe('Bonus ×2 pour 5 étages !');
+    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-end', bonus: 'double' } as never);
+    expect(text('live')).toBe('Fin du bonus ×2.');
+  });
+
+  it('résultat v2 : points affichés, gains et record sur la hauteur ; reprise hors classement', async () => {
+    const g = reviveGame();
+    const storage = memoryStorage();
+    const svc = { available: true, issueTicket: vi.fn(async (mode: 'free' | 'daily') => ({ ok: true as const, value: { ticket: '1'.padStart(32, '0'), seed: 5, rulesVersion: 1, mode, expiresAt: Date.parse('2026-11-17T02:00:00Z'), ...(mode === 'daily' ? { day: '2026-11-16' } : {}) } })), submit: vi.fn(), read: vi.fn() };
+    const meta = createMetaStore(storage);
+    meta.writePlayer({ id: 'c'.repeat(32), pseudo: 'Alex' });
+    const { button, text, store } = setup({ startGame: g.startGame, meta, leaderboard: svc as unknown as LeaderboardService });
+    await flush();
+    button('Jouer').click();
+    g.mounts[0]!.options.onEnd(v2(6, 40, 1) as never);
+    await flush();
+    expect(text('score')).toBe('6 étages');
+    expect(text('points')).toBe('40 points');
+    expect(text('revived')).toContain('hors classement');
+    expect(store.readBest()).toBe(6);
+    expect((storage.dump('poc:meta:v1:progress') as { xp: number }).xp).toBe(6 + 2); // hauteur + 2×parfait, pas les points
+    expect(svc.submit).not.toHaveBeenCalled();
+    expect(text('rank-status')).toContain('reprise');
+  });
+});
+
+describe('carte de résultat (V3-A6, F9 injectée)', () => {
+  it('image partagée avec le lien et enregistrable ; sans F9 : aucun bouton d’image', async () => {
+    const file = new File(['png'], 'pile-ou-crash.png', { type: 'image/png' });
+    const resultImage = vi.fn(async () => file);
+    const saveFile = vi.fn(() => true);
+    const { button, end, share, text } = setup({ resultImage, saveFile });
+    button('Jouer').click();
+    await end(4);
+    button('Défier un ami').click();
+    await flush();
+    expect(share).toHaveBeenCalledWith(expect.objectContaining({ files: [file] }));
+    button('Enregistrer l’image').click();
+    await flush();
+    expect(saveFile).toHaveBeenCalledWith(file);
+    expect(text('share-status')).toBe('Image enregistrée.');
+    expect(resultImage).toHaveBeenCalledTimes(1); // image calculée une seule fois
+    shell?.destroy();
+    const plain = setup();
+    plain.button('Jouer').click();
+    await plain.end(4);
+    expect([...plain.root.querySelectorAll('button')].some((b) => b.textContent === 'Enregistrer l’image')).toBe(false);
   });
 });

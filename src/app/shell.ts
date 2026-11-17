@@ -10,9 +10,11 @@ import {
   type Challenge,
   type InvalidReason,
 } from './challenge-url';
-import { RULES_VERSION, type GameHandle, type RunResult } from './game-contract';
+import { RULES_VERSION, type GameHandle } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
+import { asShellEvent, BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult, type ContinueControls } from './run-result';
+import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
 import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
 import { isSkinId, renderAppearancePreview } from '../game';
@@ -42,7 +44,7 @@ import {
 import { createRunTracker, type RunTracker } from './run-tracker';
 import { dailySeed, nextDailyChange, utcDateKey } from '../platform/daily';
 import type { Mode, Tracker } from '../platform/metrics';
-import type { ShareData, ShareOutcome } from '../platform/share';
+import { downloadFile, type ShareData, type ShareOutcome } from '../platform/share';
 import type { LocalStore, MetaStore } from '../platform/storage';
 import {
   cleanPseudo,
@@ -96,7 +98,27 @@ export type ShellOptions = {
   newPlayerId?: () => string;
   /** Saison en cours (V3-A5) ; injectable pour les tests. */
   season?: Season;
+  /**
+   * Reprise après une chute (V3-A6, F7) : vidéo récompensée et vies. Sans régie ni vie,
+   * aucune offre n'est faite (la partie se termine comme avant). Jamais en Tour du jour ni défi.
+   */
+  revive?: { ads?: RewardedAdProvider; lives?: LivesProvider };
+  /**
+   * Image de résultat (F9, `renderResultCard`, convertie en PNG par main.ts). Absente ou null :
+   * partage du lien seul, sans bouton d'image.
+   */
+  resultImage?: (result: AnyRunResult, mode: Mode, day: string | null) => Promise<File | null>;
+  /** Enregistre un fichier (téléchargement) ; injectable pour les tests. */
+  saveFile?: (file: File) => boolean;
 };
+
+/** Vies de reprise possédées (achats vérifiés par le serveur). Par défaut : aucune. */
+export type LivesProvider = {
+  count(): number;
+  /** Consomme une vie pour `requestId` (idempotent côté serveur). */
+  consume(requestId: string): Promise<'ok' | 'none' | 'error'>;
+};
+const NO_LIVES: LivesProvider = { count: () => 0, consume: () => Promise.resolve('none') };
 
 /** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
 export const PROGRESS_LOCK = 'poc:meta:v1:progress';
@@ -119,6 +141,8 @@ type RunState = {
   handle: GameHandle | null;
   /** Ticket du serveur de classement : seule une partie lancée avec un ticket peut être classée. */
   ticket: RankTicket | null;
+  /** Moyen de la reprise acceptée (« vie », « vidéo »), sinon null. */
+  revivedWith: string | null;
 };
 
 const BOARD_LABELS: Record<BoardKind, string> = { global: 'Monde', weekly: 'Semaine', daily: 'Aujourd’hui' };
@@ -797,6 +821,7 @@ export function createShell(options: ShellOptions): Shell {
       events: createRunTracker(),
       handle: null,
       ticket,
+      revivedWith: null,
     };
 
     const runChallenge = run.challenge;
@@ -835,14 +860,24 @@ export function createShell(options: ShellOptions): Shell {
     const current = run;
     let ended = false;
     let placed = false;
+    // Reprise proposée seulement en partie libre, et seulement si un moyen réel existe.
+    const allowContinue = mode === 'free' && (reviveAds.kind !== 'none' || reviveLives.count() > 0);
     try {
       current.handle = options.startGame({
         canvas,
         config: { seed, rulesVersion: RULES_VERSION },
         prefs,
         appearance: progress.selected,
+        ...(allowContinue ? { allowContinue } : {}),
         onGameEvent: (event) => {
-          if (run === current) current.events.onEvent(event);
+          if (run !== current) return;
+          current.events.onEvent(event);
+          const e = asShellEvent(event);
+          if (!e) return;
+          if (e.type === 'continue-offer') showReviveOffer(current, stage, canvas);
+          else if (e.type === 'continue-start') announce('C’est reparti ! Prêt dans 3 secondes.');
+          else if (e.type === 'bonus-start') announce(`Bonus ${BONUS_NAMES[e.bonus]} pour ${e.floors} étages !`);
+          else announce(`Fin du bonus ${BONUS_NAMES[e.bonus]}.`);
         },
         onFirstPlacement: () => {
           if (placed || destroyed || run !== current) return;
@@ -871,7 +906,85 @@ export function createShell(options: ShellOptions): Shell {
     }
   };
 
-  const finishRun = (current: RunState, result: RunResult) => {
+  // --- Reprise (V3-A6) -----------------------------------------------------------------------
+  const reviveAds = options.revive?.ads ?? noAds;
+  const reviveLives = options.revive?.lives ?? NO_LIVES;
+  const rewardGate = createRewardGate(reviveAds);
+
+  /**
+   * Offre DOM après la chute (le moteur attend, aucun onEnd avant la décision) :
+   * vie possédée, vidéo récompensée (démo libellée en dev), ou Terminer, toujours disponible.
+   * Un refus, une vidéo absente ou une erreur ne donnent jamais de reprise.
+   */
+  const showReviveOffer = (current: RunState, stage: HTMLElement, canvas: HTMLCanvasElement) => {
+    const handle = current.handle as (GameHandle & ContinueControls) | null;
+    if (!handle?.continueRun || !handle.declineContinue || stage.querySelector('[data-testid="revive"]')) return;
+    if (reviveLives.count() === 0 && reviveAds.kind === 'none') {
+      handle.declineContinue(); // aucun moyen réel : fin normale, aucune offre vide
+      return;
+    }
+    const requestId = `${current.runId}:revive`;
+    const box = el(doc, 'div', { class: 'pause revive', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'revive-title', 'data-testid': 'revive' });
+    const msg = el(doc, 'p', { role: 'status', 'data-testid': 'revive-status' });
+    const buttons: HTMLButtonElement[] = [];
+    const busy = (on: boolean) => buttons.forEach((b) => (b.disabled = on));
+    const close = () => box.remove();
+    const resumeWith = (how: string) => {
+      if (run !== current) return;
+      const accepted = handle.continueRun!();
+      if (!accepted) {
+        msg.textContent = 'Reprise impossible.';
+        busy(false);
+        return;
+      }
+      current.revivedWith = how;
+      close();
+      canvas.focus();
+    };
+    const finish = () => {
+      close();
+      handle.declineContinue!();
+    };
+    const lives = reviveLives.count();
+    if (lives > 0) {
+      const b = iconButton(doc, '❤️', `Utiliser une vie (${lives})`, () => {
+        busy(true);
+        msg.textContent = '';
+        void reviveLives.consume(requestId).then((r) => {
+          if (run !== current || !box.isConnected) return;
+          if (r === 'ok') resumeWith('vie');
+          else {
+            msg.textContent = r === 'none' ? 'Plus de vie.' : 'La vie n’a pas pu être utilisée. Rien n’a été retiré.';
+            busy(false);
+          }
+        });
+      }, 'primary', 'revive-life');
+      buttons.push(b);
+    }
+    if (reviveAds.kind !== 'none') {
+      const b = iconButton(doc, '▶', 'Regarder une vidéo', () => {
+        busy(true);
+        msg.textContent = 'Vidéo en cours…';
+        void rewardGate.reward(requestId, 'revive', () => resumeWith('vidéo')).then((outcome) => {
+          if (run !== current || !box.isConnected) return;
+          if (outcome === 'rewarded' || outcome === 'already-rewarded') return;
+          msg.textContent = AD_MESSAGES[outcome];
+          busy(false);
+        });
+      }, lives > 0 ? 'secondary' : 'primary', 'revive-ad');
+      buttons.push(b);
+    }
+    const end = domButton(doc, 'Terminer', finish, 'ghost', 'revive-end');
+    buttons.push(end);
+    box.append(el(doc, 'p', { id: 'revive-title', class: 'revive-title' }, 'Oups ! Encore une chance ?'));
+    if (reviveAds.kind === 'demo') box.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'revive-demo' }, reviveAds.label));
+    box.append(...buttons, msg);
+    stage.append(box);
+    buttons[0]!.focus();
+    announce('Oups ! Encore une chance ? Choisis, ou Terminer.');
+  };
+
+  const finishRun = (current: RunState, result: AnyRunResult) => {
     if (destroyed || run !== current) return;
     tracker.track('run_end', {
       mode: current.mode,
@@ -884,8 +997,9 @@ export function createShell(options: ShellOptions): Shell {
     prefetchTickets();
     // Record, progression et record du jour : une seule section exclusive entre onglets.
     withProgressLock(() => {
+      const height = heightOf(result);
       const isRecord = store.submitScore({
-        score: result.score,
+        score: height,
         perfectCount: result.perfectCount,
         mode: current.mode,
       });
@@ -893,14 +1007,14 @@ export function createShell(options: ShellOptions): Shell {
         const e = applyRunEconomy(doc, current.activeAtStart, {
           runId: current.runId,
           mode: current.mode,
-          score: result.score,
+          score: height, // gains sur la hauteur, jamais sur les points ×2 (accord #27, C7)
           perfectCount: result.perfectCount,
           longestStreak: current.events.longestStreak,
         });
         // Étoiles de saison : mêmes étoiles, même écriture ; 0 si la partie était déjà comptée.
         return { doc: addSeasonStars(e.doc, season, utcDateKey(today()), e.gained.xp), result: e };
       });
-      const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
+      const isDailyRecord = current.day ? meta.submitDaily(current.day, height) : false;
       renderResult(current, result, {
         isRecord,
         isDailyRecord,
@@ -917,12 +1031,23 @@ export function createShell(options: ShellOptions): Shell {
     gained: { xp: number; coins: number; levelUp: { from: number; to: number } | null };
   };
 
-  const renderResult = (current: RunState, result: RunResult, outcome: Outcome) => {
+  const renderResult = (current: RunState, result: AnyRunResult, outcome: Outcome) => {
     const { isRecord } = outcome;
+    const height = heightOf(result);
+    const points = pointsOf(result);
+    const revived = continuesOf(result) > 0;
     const title = el(doc, 'h2', { tabindex: '-1' }, 'Partie terminée');
-    const score = el(doc, 'p', { class: 'score', 'data-testid': 'score' }, floors(result.score));
+    const score = el(doc, 'p', { class: 'score', 'data-testid': 'score' }, floors(height));
     const parts: (HTMLElement | null)[] = [title, el(doc, 'p', { class: 'score-label', 'aria-hidden': 'true' }, 'Hauteur'), score];
-    let summary = `Partie terminée. Score : ${result.score}.`;
+    let summary = `Partie terminée. Hauteur : ${height}.`;
+    if (points !== null) {
+      parts.push(el(doc, 'p', { class: 'points', 'data-testid': 'points' }, `${points} point${points > 1 ? 's' : ''}`));
+      summary += ` ${points} points.`;
+    }
+    if (revived) {
+      parts.push(el(doc, 'p', { class: 'hint', 'data-testid': 'revived' }, 'Partie avec une reprise : hors classement.'));
+      summary += ' Partie avec une reprise.';
+    }
 
     if (isRecord) {
       parts.push(el(doc, 'p', { class: 'record', 'data-testid': 'new-record' }, 'Nouveau record !'));
@@ -931,11 +1056,11 @@ export function createShell(options: ShellOptions): Shell {
     if (current.challenge) {
       const t = current.challenge.target;
       const text =
-        result.score > t
-          ? `Défi relevé : ${result.score} contre ${t} annoncés.`
-          : result.score === t
+        height > t
+          ? `Défi relevé : ${height} contre ${t} annoncés.`
+          : height === t
             ? `Égalité avec les ${t} annoncés. Encore un étage !`
-            : `Pas encore : ${result.score} sur ${t} annoncés.`;
+            : `Pas encore : ${height} sur ${t} annoncés.`;
       parts.push(el(doc, 'p', { 'data-testid': 'challenge-outcome' }, text));
       summary += ` ${text}`;
     }
@@ -971,7 +1096,9 @@ export function createShell(options: ShellOptions): Shell {
     const rankStatus = el(doc, 'p', { class: 'hint', role: 'status', 'data-testid': 'rank-status' });
     const rankRetry = domButton(doc, 'Envoyer encore', () => void sendRank(current, result, rankStatus, rankRetry), 'ghost', 'rank-retry');
     rankRetry.hidden = true;
-    if (current.ticket && player?.pseudo) {
+    if (revived) {
+      rankStatus.textContent = 'Score local. Une partie avec reprise n’entre pas au classement.';
+    } else if (current.ticket && player?.pseudo) {
       rankStatus.textContent = 'Envoi au classement…';
     } else {
       rankStatus.textContent = 'Score local, non vérifié.';
@@ -994,16 +1121,31 @@ export function createShell(options: ShellOptions): Shell {
     const shareButton = button('Défier un ami', guarded(() => void doShare()), false, 'share');
     const home = domButton(doc, 'Accueil', guarded(renderHome), 'ghost');
 
+    let imagePromise: Promise<File | null> | null = null;
+    const resultImage = () => {
+      if (!options.resultImage) return Promise.resolve(null);
+      imagePromise ??= options.resultImage(result, current.mode, current.day).catch(() => null);
+      return imagePromise;
+    };
+    const saveImage = domButton(doc, 'Enregistrer l’image', guarded(() => {
+      void resultImage().then((file) => {
+        if (destroyed || screen !== 'result') return;
+        const ok = file ? (options.saveFile ?? ((f: File) => downloadFile(f, doc)))(file) : false;
+        status.textContent = ok ? 'Image enregistrée.' : 'Image indisponible sur cet appareil.';
+      });
+    }), 'ghost', 'save-image');
     const doShare = async () => {
-      const url = buildChallengeUrl(options.url, current.seed, result.score);
+      const url = buildChallengeUrl(options.url, current.seed, height);
       shareButton.disabled = true;
       tracker.track('share_attempt', { mode: current.mode, runId: current.runId });
       let outcome: ShareOutcome;
       try {
+        const image = await resultImage();
         outcome = await options.share({
           title: 'Pile ou Crash',
-          text: `J’ai empilé ${floors(result.score)}. Tu fais mieux sur la même séquence ?`,
+          text: `J’ai empilé ${floors(height)}${revived ? ' (avec une reprise)' : ''}. Tu fais mieux sur la même séquence ?`,
           url,
+          ...(image ? { files: [image] } : {}),
         });
       } catch {
         outcome = 'unavailable';
@@ -1037,12 +1179,13 @@ export function createShell(options: ShellOptions): Shell {
 
     const actions = el(doc, 'div', { class: 'actions' });
     actions.append(retry, shareButton);
+    if (options.resultImage) actions.append(saveImage);
     if (rewardShortcut) actions.append(domButton(doc, 'Voir la collection', guarded(() => renderCollectionScreen()), 'ghost', 'result-collection'));
     actions.append(home);
     const info = el(doc, 'div', { class: 'result-info' });
     info.append(...parts.filter((p): p is HTMLElement => p !== null));
     show('result', [info, actions, status, fallback], retry);
-    if (current.ticket && player?.pseudo) void sendRank(current, result, rankStatus, rankRetry);
+    if (current.ticket && player?.pseudo && !revived) void sendRank(current, result, rankStatus, rankRetry);
     // Marqueur observable (tests, styles) de la fin du délai de garde.
     guardTimer = setTimeout(() => {
       if (screen === 'result') view.dataset.inputReady = 'true';
@@ -1054,7 +1197,7 @@ export function createShell(options: ShellOptions): Shell {
    * Envoie la partie (ticket + entrées) : le serveur rejoue et calcule lui-même le score.
    * Idempotent côté serveur : « Envoyer encore » après une coupure ne compte jamais deux fois.
    */
-  const sendRank = async (current: RunState, result: RunResult, status: HTMLElement, retry: HTMLButtonElement) => {
+  const sendRank = async (current: RunState, result: AnyRunResult, status: HTMLElement, retry: HTMLButtonElement) => {
     if (!current.ticket || !player?.pseudo) return;
     retry.hidden = true;
     status.textContent = 'Envoi au classement…';
@@ -1063,6 +1206,7 @@ export function createShell(options: ShellOptions): Shell {
       playerId: player.id,
       pseudo: player.pseudo,
       inputTicks: result.inputTicks,
+      ...(result.rulesVersion === 2 ? { continueTicks: continueTicksOf(result) } : {}),
     });
     if (destroyed || !status.isConnected) return;
     let text: string;

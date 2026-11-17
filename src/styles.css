@@ -277,6 +277,11 @@ canvas.swatch.preview { display: block; width: 100%; height: auto; aspect-ratio:
 .tier-reward, .tier-state { margin: 0; font-weight: 800; }
 .tier-state { font-size: 0.9rem; }
 .swatch.soon { width: 72px; height: 54px; display: grid; place-items: center; border-radius: 10px; border: 2px dashed var(--ink); font-size: 1.6rem; font-weight: 900; }
+/* Offre de reprise (V3-A6) : même voile que la pause, actions empilées */
+.pause.revive { display: grid; gap: 10px; align-content: center; justify-items: stretch; padding: 16px; }
+.revive-title { margin: 0; font-size: 1.4rem; font-weight: 900; text-align: center; }
+.points { margin: 0; font-weight: 900; font-size: 1.2rem; }
+
 
 /*
  * Robustesse aux polices larges (repli DejaVu/Roboto sur Android et runner CI) : aucun mot ne
