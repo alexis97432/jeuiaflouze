@@ -577,3 +577,97 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     expect(storage.dump('poc:meta:v1:progress')).toEqual(future);
   });
 });
+
+describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () => {
+  function tab(storage: Storage, id: string) {
+    const root = document.createElement('main');
+    root.id = id;
+    document.body.append(root);
+    const game = fakeGame();
+    const tracker = createTracker({ buildId: 'b', rulesVersion: 1, sessionId: id, sink: memorySink() });
+    let run = 0;
+    const shellTab = createShell({
+      root,
+      startGame: game.startGame,
+      tracker,
+      store: createLocalStore(storage),
+      meta: createMetaStore(storage),
+      today: () => new Date('2026-11-16T22:30:00Z'),
+      url: 'https://jeu.test/',
+      replaceUrl: () => {},
+      share: async () => 'shared',
+      newSeed: () => 7,
+      newRunId: () => `${id}-run${++run}`,
+      now: (() => {
+        let t = 0;
+        return () => (t += 1000); // chaque lecture avance d'1 s : le délai de garde s'écoule
+      })(),
+    });
+    const button = (label: string) => [...root.querySelectorAll('button')].find((b) => b.textContent === label)!;
+    const text = (t: string) => root.querySelector(`[data-testid="${t}"]`)?.textContent ?? null;
+    return { root, game, shell: shellTab, button, text };
+  }
+
+  it('une réclamation dans A et une partie dans B se cumulent ; pas de seconde réclamation le même jour', async () => {
+    document.body.innerHTML = '';
+    const storage = memoryStorage();
+    const a = tab(storage, 'a');
+    const b = tab(storage, 'b'); // ouvert avant la réclamation : son écran propose encore « Récupérer »
+    a.button('Récupérer +5').click();
+    expect(a.text('coins')).toBe('5 pièces');
+
+    b.button('Jouer').click();
+    b.game.mounts[0]!.options.onEnd(result(3)); // 3 étages, 1 parfait → 2 pièces, 5 XP
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 7, xp: 5, calendar: { lastClaimDate: '2026-11-16' } });
+
+    b.button('Accueil').click();
+    expect(b.text('coins')).toBe('7 pièces');
+    expect(b.text('calendar')).toContain('déjà récupérée');
+
+    // A affiche encore un état ancien : sa partie relit d'abord le stockage.
+    a.button('Jouer').click();
+    a.game.mounts[0]!.options.onEnd(result(6)); // 2 + 1 = 3 pièces + 10 (objectif 5 étages), 6 + 2 = 8 XP
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 20, xp: 13, completed: ['floors-5'] });
+    a.shell.destroy();
+    b.shell.destroy();
+  });
+
+  it('un bouton « Récupérer » resté affiché dans un onglet ne permet pas de réclamer deux fois', () => {
+    document.body.innerHTML = '';
+    const storage = memoryStorage();
+    const a = tab(storage, 'a');
+    const b = tab(storage, 'b');
+    a.button('Récupérer +5').click();
+    b.button('Récupérer +5').click(); // écran de B périmé
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 5, calendar: { index: 1 } });
+    expect(b.text('calendar')).toContain('déjà récupérée');
+    a.shell.destroy();
+    b.shell.destroy();
+  });
+
+  it("l'événement storage d'un autre onglet rafraîchit l'accueil", () => {
+    document.body.innerHTML = '';
+    const storage = memoryStorage();
+    const a = tab(storage, 'a');
+    const b = tab(storage, 'b');
+    a.button('Récupérer +5').click();
+    expect(b.text('coins')).toBe('0 pièce');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'poc:meta:v1:progress' }));
+    expect(b.text('coins')).toBe('5 pièces');
+    a.shell.destroy();
+    b.shell.destroy();
+  });
+});
+
+describe('passage de niveau (revue FLK, m1)', () => {
+  it("n'annonce un titre que s'il est nouveau", async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, xp: 100, grants: ['v2-objectives-backfill'] })); // niveau 2
+    const { button, end, text } = setup({ meta: createMetaStore(storage) });
+    button('Jouer').click();
+    await end(30); // +32 XP → 132 : niveau 3, sans titre propre
+    expect(text('level-up')).toBe('Niveau 3 atteint !');
+  });
+});

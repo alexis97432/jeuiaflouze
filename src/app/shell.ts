@@ -17,6 +17,7 @@ import {
   applyRunEconomy,
   calendarStatus,
   claimCalendar,
+  LEVEL_TITLES,
   levelInfo,
   readProgressDoc,
   type ProgressDoc,
@@ -107,9 +108,27 @@ export function createShell(options: ShellOptions): Shell {
   // (revue E1 FLK, M1).
   const loaded = readProgressDoc(meta.readProgress());
   let progress: ProgressDoc = loaded.doc;
-  const saveDoc = (next: ProgressDoc) => {
-    progress = next;
-    if (loaded.writable) meta.writeProgress(progress);
+  let writable = loaded.writable;
+  /** Relit le document stocké (un autre onglet a pu écrire depuis) et met l'état à jour. */
+  const refreshDoc = () => {
+    const fresh = readProgressDoc(meta.readProgress());
+    progress = fresh.doc;
+    writable = writable && fresh.writable;
+  };
+  /**
+   * Toute modification relit d'abord le document stocké, applique `change`, puis écrit le
+   * document complet : avec deux onglets, aucun ne peut effacer les gains de l'autre ni
+   * permettre une seconde réclamation du même jour (revue E1 branché FLK, M2). Synchrone :
+   * rien ne peut s'intercaler entre la relecture et l'écriture dans un même onglet.
+   */
+  const updateDoc = <R>(change: (current: ProgressDoc) => { doc: ProgressDoc; result: R }): R => {
+    refreshDoc();
+    const { doc: next, result } = change(progress);
+    if (next !== progress) {
+      progress = next;
+      if (writable) meta.writeProgress(progress);
+    }
+    return result;
   };
   let screen: Screen = 'home';
   let run: RunState | null = null;
@@ -192,11 +211,12 @@ export function createShell(options: ShellOptions): Shell {
     panel.append(calendarLine);
     if (status.canClaim) {
       const claim = domButton(doc, `Récupérer +${status.reward}`, () => {
-        const result = claimCalendar(progress, utcDateKey(today()));
-        if (result.claimed) {
-          saveDoc(result.doc);
-          announce(`+${result.reward} pièces récupérées.`);
-        }
+        const result = updateDoc((current) => {
+          const r = claimCalendar(current, utcDateKey(today()));
+          return { doc: r.doc, result: r };
+        });
+        if (result.claimed) announce(`+${result.reward} pièces récupérées.`);
+        else announce('Récompense du jour déjà récupérée.');
         renderHome();
         view.querySelector<HTMLElement>('[data-testid="calendar"]')?.setAttribute('tabindex', '-1');
         view.querySelector<HTMLElement>('[data-testid="calendar"]')?.focus();
@@ -204,7 +224,7 @@ export function createShell(options: ShellOptions): Shell {
       panel.append(claim);
     }
     panel.append(el(doc, 'p', { class: 'hint small' },
-      loaded.writable
+      writable
         ? 'Progression locale, sur cet appareil.'
         : 'Sauvegarde d’une version plus récente du jeu : progression de cette session non enregistrée.'));
     return panel;
@@ -220,9 +240,12 @@ export function createShell(options: ShellOptions): Shell {
   const renderCollectionScreen = (focusCard?: string) => {
     const { nodes, focus } = renderCollection(doc, progress, {
       onSelect: (next) => {
-        const updated = selectAppearance(progress, next);
-        if (updated.selected.theme === progress.selected.theme && updated.selected.skin === progress.selected.skin) return;
-        saveDoc(updated);
+        const changed = updateDoc((current) => {
+          const updated = selectAppearance(current, next);
+          const same = updated.selected.theme === current.selected.theme && updated.selected.skin === current.selected.skin;
+          return { doc: same ? current : updated, result: !same };
+        });
+        if (!changed) return;
         // Le focus reste sur la carte choisie, pas sur le titre.
         renderCollectionScreen(next.theme ? `card-theme-${next.theme}` : `card-skin-${next.skin}`);
         announce('Sélection enregistrée.');
@@ -425,14 +448,16 @@ export function createShell(options: ShellOptions): Shell {
       perfectCount: result.perfectCount,
       mode: current.mode,
     });
-    const economy = applyRunEconomy(progress, current.activeAtStart, {
-      runId: current.runId,
-      mode: current.mode,
-      score: result.score,
-      perfectCount: result.perfectCount,
-      longestStreak: current.events.longestStreak,
+    const economy = updateDoc((doc) => {
+      const e = applyRunEconomy(doc, current.activeAtStart, {
+        runId: current.runId,
+        mode: current.mode,
+        score: result.score,
+        perfectCount: result.perfectCount,
+        longestStreak: current.events.longestStreak,
+      });
+      return { doc: e.doc, result: e };
     });
-    if (economy.doc !== progress) saveDoc(economy.doc);
     const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
     renderResult(current, result, {
       isRecord,
@@ -485,8 +510,9 @@ export function createShell(options: ShellOptions): Shell {
       summary += ` ${gains}.`;
     }
     if (outcome.gained.levelUp) {
-      const info = levelInfo(progress.xp);
-      const text = `Niveau ${outcome.gained.levelUp.to} atteint${info.title ? ` : ${info.title}` : ''} !`;
+      const newTitle = LEVEL_TITLES[outcome.gained.levelUp.to];
+      // Le titre n'est annoncé que s'il est nouveau (niveaux 2, 5, 10) — revue FLK, m1.
+      const text = `Niveau ${outcome.gained.levelUp.to} atteint${newTitle ? ` : ${newTitle}` : ''} !`;
       parts.push(el(doc, 'p', { class: 'record', 'data-testid': 'level-up' }, text));
       summary += ` ${text}`;
     }
@@ -579,6 +605,13 @@ export function createShell(options: ShellOptions): Shell {
       root.dataset.input = 'keyboard';
     }
   };
+  const win = doc.defaultView;
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== null && !event.key.startsWith('poc:')) return;
+    refreshDoc();
+    if (screen === 'home') renderHome();
+  };
+  win?.addEventListener('storage', onStorage);
   doc.addEventListener('pointerdown', onPointer, true);
   doc.addEventListener('keydown', onKey, true);
 
@@ -608,6 +641,7 @@ export function createShell(options: ShellOptions): Shell {
       stopRun();
       doc.removeEventListener('visibilitychange', onVisibility);
       doc.removeEventListener('pointerdown', onPointer, true);
+      win?.removeEventListener('storage', onStorage);
       doc.removeEventListener('keydown', onKey, true);
       delete root.dataset.screen;
       delete root.dataset.input;

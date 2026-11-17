@@ -270,3 +270,22 @@ test('E1 : XP, pièces et récompense de connexion conservées après rechargeme
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
   expect(saved).toMatchObject({ version: 2, grants: ['v2-objectives-backfill'] });
 });
+
+test('E1 : deux onglets du même navigateur ne perdent ni gains ni réclamation', async ({ page, context }) => {
+  await page.goto('/');
+  const other = await context.newPage();
+  await other.goto('/');
+  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap();
+  await expect(page.getByTestId('coins')).toHaveText('5 pièces');
+  // Vrai événement storage : l'autre onglet se met à jour sans rechargement.
+  await expect(other.getByTestId('coins')).toHaveText('5 pièces');
+  await expect(other.getByTestId('calendar')).toContainText('déjà récupérée');
+  // Partie dans l'autre onglet : la réclamation du premier est conservée.
+  await other.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  await tapUntilResult(other);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
+  expect(saved.calendar.lastClaimDate).not.toBeNull(); // réclamation de l'onglet 1 conservée
+  expect(saved.coins).toBeGreaterThanOrEqual(5); // une partie courte peut rapporter 0 pièce
+  expect(saved.xp).toBeGreaterThan(0); // mais toujours de l'XP (le 1er étage ne se rate pas)
+  await other.close();
+});

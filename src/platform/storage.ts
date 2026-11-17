@@ -55,18 +55,23 @@ export type JsonStore = {
 
 export function createJsonStore(storage: Storage | null, prefix: string): JsonStore {
   const memory = new Map<string, string>();
+  /** Clés dont la dernière écriture n'a pas atteint le stockage : la mémoire fait foi. */
+  const memoryOnly = new Set<string>();
   let persistent = storage !== null;
 
+  // Le stockage est relu à chaque lecture (un autre onglet a pu écrire, revue E1 FLK M2) ;
+  // la mémoire ne sert que si le stockage est absent, illisible ou n'a pas reçu notre écriture.
   const read = (key: string): string | null => {
     const full = prefix + key;
-    if (memory.has(full)) return memory.get(full) ?? null;
-    if (!storage) return null;
-    try {
-      return storage.getItem(full);
-    } catch {
-      persistent = false;
-      return null;
+    if (storage && !memoryOnly.has(full)) {
+      try {
+        const value = storage.getItem(full);
+        if (value !== null || !memory.has(full)) return value;
+      } catch {
+        persistent = false;
+      }
     }
+    return memory.get(full) ?? null;
   };
 
   const readRaw = (key: string): unknown => {
@@ -97,8 +102,10 @@ export function createJsonStore(storage: Storage | null, prefix: string): JsonSt
       if (!storage) return;
       try {
         storage.setItem(full, text);
+        memoryOnly.delete(full);
       } catch {
         persistent = false; // quota dépassé ou stockage bloqué
+        memoryOnly.add(full);
       }
     },
   };
