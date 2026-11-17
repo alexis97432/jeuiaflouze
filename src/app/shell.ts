@@ -15,6 +15,7 @@ import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
 import { BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult } from './run-result';
 import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
+import { buyLife, LIFE_PRICE, livesOf, MAX_LIVES, returnLife, useLife } from './lives';
 import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
 import { isAnySkinId, renderAppearancePreview, type AnyAppearance } from '../game';
@@ -121,7 +122,6 @@ export type LivesProvider = {
   /** Rend la vie consommée par `requestId` si la reprise n'a pas eu lieu (idempotent). */
   refund(requestId: string): Promise<void>;
 };
-const NO_LIVES: LivesProvider = { count: () => 0, consume: () => Promise.resolve('none'), refund: () => Promise.resolve() };
 
 /** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
 export const PROGRESS_LOCK = 'poc:meta:v1:progress';
@@ -314,6 +314,10 @@ export function createShell(options: ShellOptions): Shell {
     return b;
   };
 
+  const livesText = () => {
+    const n = livesOf(progress);
+    return `${n} vie${n > 1 ? 's' : ''}`;
+  };
   const coinsText = () => `${progress.coins} pièce${progress.coins > 1 ? 's' : ''}`;
 
   /** Pastilles du haut de l'accueil : niveau et pièces, sans détail. */
@@ -323,6 +327,7 @@ export function createShell(options: ShellOptions): Shell {
     bar.append(
       el(doc, 'p', { class: 'chip', 'data-icon': '⭐', 'data-testid': 'level' }, `Niveau ${info.level}`),
       el(doc, 'p', { class: 'chip', 'data-icon': '🪙', 'data-testid': 'coins' }, coinsText()),
+      el(doc, 'p', { class: 'chip', 'data-icon': '❤️', 'data-testid': 'lives', 'aria-label': livesText() }, String(livesOf(progress))),
     );
     return bar;
   };
@@ -546,10 +551,55 @@ export function createShell(options: ShellOptions): Shell {
       }
       parts.push(list);
     }
+    parts.push(livesShopSection(state));
     parts.push(el(doc, 'p', { class: 'hint small' }, 'Les pièces se gagnent en jouant. Elles ne s’achètent pas.'));
     show('shop', parts, title);
     if (state.focus) view.querySelector<HTMLElement>(`[data-testid="${state.focus}"]`)?.focus();
   };
+
+  /** Vies de reprise en pièces : stock, prix, confirmation, maximum. */
+  const livesShopSection = (state: { confirm?: string }) => {
+    const box = el(doc, 'section', { class: 'panel', 'aria-labelledby': 'lives-title', 'data-testid': 'shop-lives' });
+    const n = livesOf(progress);
+    box.append(
+      el(doc, 'h2', { id: 'lives-title', 'data-icon': '❤️' }, 'Vies'),
+      el(doc, 'p', {}, 'Une vie te laisse continuer une partie libre après la première chute.'),
+      el(doc, 'p', { 'data-testid': 'lives-count' }, `Tu as ${livesText()} (maximum ${MAX_LIVES}).`),
+    );
+    if (n >= MAX_LIVES) {
+      box.append(el(doc, 'p', { class: 'card-state' }, 'Maximum atteint.'));
+    } else if (state.confirm === 'life') {
+      box.append(
+        el(doc, 'p', { 'data-testid': 'confirm-text' }, `Acheter 1 vie pour ${LIFE_PRICE} pièces ?`),
+        domButton(doc, 'Oui, acheter', () => buyLifeNow(), 'primary', 'confirm-life'),
+        domButton(doc, 'Non', () => renderShop({ focus: 'buy-life' }), 'ghost', 'cancel-life'),
+      );
+    } else {
+      box.append(el(doc, 'p', { class: 'price', 'data-icon': '🪙' }, `${LIFE_PRICE} pièces`));
+      if (progress.coins >= LIFE_PRICE) {
+        const b = domButton(doc, 'Acheter 1 vie', () => renderShop({ confirm: 'life', focus: 'confirm-life' }), 'secondary', 'buy-life');
+        b.setAttribute('aria-label', `Acheter 1 vie pour ${LIFE_PRICE} pièces`);
+        box.append(b);
+      } else {
+        box.append(el(doc, 'p', { class: 'card-lock' }, `Il te manque ${LIFE_PRICE - progress.coins} pièces.`));
+      }
+    }
+    return box;
+  };
+
+  const buyLifeNow = () => withProgressLock(() => {
+    const r = updateDoc((current) => {
+      const b = buyLife(current);
+      return { doc: b.doc, result: b };
+    });
+    const notice: ShopNotice = r.ok
+      ? { text: `C’est à toi ! Tu as maintenant ${livesText()}.`, testId: 'life-success' }
+      : r.reason === 'full'
+        ? { text: `Tu as déjà le maximum de ${MAX_LIVES} vies.`, testId: 'life-full' }
+        : { text: `Il te manque ${r.missing ?? 0} pièces pour une vie.`, testId: 'shop-insufficient' };
+    announce(notice.text);
+    if (screen === 'shop') renderShop({ notice, focus: notice.testId });
+  });
 
   const buy = (item: ShopItem) => withProgressLock(() => {
     const result = updateDoc((current) => {
@@ -907,7 +957,31 @@ export function createShell(options: ShellOptions): Shell {
 
   // --- Reprise (V3-A6) -----------------------------------------------------------------------
   const reviveAds = options.revive?.ads ?? noAds;
-  const reviveLives = options.revive?.lives ?? NO_LIVES;
+  /**
+   * Vies par défaut : celles gagnées en jeu (achetées en pièces, boutique), dans la progression
+   * locale, retirées et rendues sous le verrou entre onglets. Un fournisseur serveur peut remplacer.
+   */
+  const localLives: LivesProvider = {
+    count: () => livesOf(progress),
+    consume: (requestId) =>
+      new Promise((resolve) => {
+        withProgressLock(() => {
+          const r = updateDoc((current) => {
+            const u = useLife(current, requestId);
+            return { doc: u.doc, result: u };
+          });
+          resolve(r.ok ? 'ok' : 'none');
+        });
+      }),
+    refund: (requestId) =>
+      new Promise((resolve) => {
+        withProgressLock(() => {
+          updateDoc((current) => ({ doc: returnLife(current, requestId), result: null }));
+          resolve();
+        });
+      }),
+  };
+  const reviveLives = options.revive?.lives ?? localLives;
   const rewardGate = createRewardGate(reviveAds);
 
   /**
@@ -978,11 +1052,20 @@ export function createShell(options: ShellOptions): Shell {
       }, lives > 0 ? 'secondary' : 'primary', 'revive-ad');
       buttons.push(b);
     }
+    // Sans régie : la vidéo est montrée comme indisponible, jamais simulée.
+    const adUnavailable = reviveAds.kind === 'none'
+      ? (() => {
+          const b = iconButton(doc, '▶', 'Vidéo indisponible', () => undefined, 'ghost', 'revive-ad-unavailable');
+          b.disabled = true;
+          b.setAttribute('aria-disabled', 'true');
+          return b;
+        })()
+      : null;
     const end = domButton(doc, 'Terminer', finish, 'ghost', 'revive-end');
     buttons.push(end);
     box.append(el(doc, 'p', { id: 'revive-title', class: 'revive-title' }, 'Oups ! Encore une chance ?'));
     if (reviveAds.kind === 'demo') box.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'revive-demo' }, reviveAds.label));
-    box.append(...buttons, msg);
+    box.append(...buttons.slice(0, -1), ...(adUnavailable ? [adUnavailable] : []), end, msg);
     stage.append(box);
     buttons[0]!.focus();
     announce('Oups ! Encore une chance ? Choisis, ou Terminer.');
@@ -1137,6 +1220,10 @@ export function createShell(options: ShellOptions): Shell {
       }
     }
     parts.push(rankStatus, rankRetry, recordLine());
+    if (current.mode === 'free' && !revived && livesOf(progress) === 0) {
+      parts.push(el(doc, 'p', { class: 'hint small', 'data-testid': 'lives-tip', 'data-icon': '❤️' },
+        `Astuce : avec une vie (Boutique, ${LIFE_PRICE} pièces), tu peux continuer après une chute.`));
+    }
 
     const status = el(doc, 'p', { class: 'hint', role: 'status', 'data-testid': 'share-status' });
     const fallback = el(doc, 'div', { class: 'fallback', hidden: '' });

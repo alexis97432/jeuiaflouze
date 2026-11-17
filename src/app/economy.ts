@@ -11,6 +11,7 @@
  */
 import { isDateKey } from '../platform/daily';
 import { sanitizeSeason, type SeasonState } from './season';
+import { sanitizeLives } from './lives';
 import {
   applyRun,
   INITIAL_PROGRESS,
@@ -53,6 +54,9 @@ export type ProgressDoc = ProgressState & {
   grants: string[];
   /** Passe de saison (V3-A5) ; absent tant qu'aucune étoile de saison n'a été gagnée. */
   season?: SeasonState;
+  /** Vies de reprise gagnées en jeu (achetées en pièces), et reprises déjà payées (idempotence). */
+  lives?: number;
+  livesSpent?: string[];
 };
 
 const INITIAL_CALENDAR: CalendarState = { lastClaimDate: null, cycle: 0, index: 0 };
@@ -116,6 +120,7 @@ export function migrateProgress(raw: unknown): ProgressDoc {
       : [],
     calendar: sanitizeCalendar(r.calendar),
     ...(sanitizeSeason(r.season) ? { season: sanitizeSeason(r.season)! } : {}),
+    ...sanitizeLives(r),
     // Un document v2 a déjà reçu (ou n'avait pas à recevoir) la prime : on ne la rejoue jamais.
     grants: [...new Set([BACKFILL_GRANT, ...grants])].slice(0, MAX_GRANTS),
   };
