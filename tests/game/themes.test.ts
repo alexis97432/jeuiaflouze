@@ -264,7 +264,7 @@ describe('V2 (F4) : apparences', () => {
   });
 });
 
-describe('apparences V3 (F8) : internes tant que le shell ne les a pas acceptées', () => {
+describe('apparences V3 (F8/F8b) : exposées sans élargir SkinId (V2)', () => {
   it('huit nouvelles matières, distinctes des V2, non exposées par isSkinId', () => {
     expect(SKIN_IDS_V3).toEqual(['graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave', 'or', 'cristal']);
     expect(new Set(ALL_SKIN_IDS).size).toBe(SKIN_IDS.length + SKIN_IDS_V3.length);
@@ -274,6 +274,20 @@ describe('apparences V3 (F8) : internes tant que le shell ne les a pas acceptée
       expect(resolveAppearance({ theme: 'orbital', skin: id })).toEqual({ theme: 'orbital', skin: 'gomme' });
     }
     expect(isDrawSkinId('inconnu')).toBe(false);
+  });
+});
+
+describe('F8b : exposition publique des apparences V3', () => {
+  it('API publique : ALL_SKIN_IDS, isAnySkinId, resolveAnyAppearance ; resolveAppearance reste V2', async () => {
+    const game = await import('../../src/game');
+    expect(game.ALL_SKIN_IDS).toEqual([...game.SKIN_IDS, ...game.SKIN_IDS_V3]);
+    for (const id of game.SKIN_IDS_V3) {
+      expect(game.isAnySkinId(id)).toBe(true);
+      expect(game.isSkinId(id)).toBe(false);
+      expect(game.resolveAnyAppearance({ theme: 'jardin', skin: id })).toEqual({ theme: 'jardin', skin: id });
+      expect(game.resolveAppearance({ theme: 'jardin', skin: id })).toEqual({ theme: 'jardin', skin: 'gomme' });
+    }
+    expect(game.resolveAnyAppearance({ theme: 'lune', skin: 'inconnu' })).toEqual({ theme: 'confiserie', skin: 'gomme' });
   });
 });
 
