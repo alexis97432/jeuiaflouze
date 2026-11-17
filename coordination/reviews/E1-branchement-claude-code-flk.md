@@ -1,4 +1,44 @@
-# Revue E1 branché (niveau, XP, pièces, calendrier à l'écran) — Claude Code FLK
+# Revue E1 branché, SHA `5166199` — Claude Code FLK
+
+- **Tâche :** [alexis97432/jeuiaflouze#20](https://github.com/alexis97432/jeuiaflouze/pull/20) · **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
+- **SHA revu :** `51661997bc2ee5adf59114cd0c8ad70bd9fc0c83`, vérifié comme tête de la PR sur GitHub le 17 novembre 2026 avant la revue. Delta depuis ma revue précédente (`452ae7c`) : commits `48c7f66` et `5166199` (`shell.ts`, `storage.ts`, `tests/app/shell.test.ts`, `tests/e2e/a1.spec.ts`).
+
+## Commandes et résultats réels (`npm ci` propre, Node 22.23.4)
+
+| Commande | Résultat |
+|---|---|
+| `npm run typecheck` | exit 0 |
+| `npm test` | 15 fichiers, **259/259** (UTC+14) |
+| `npm run build` | JS 15,52 Ko gzip |
+| `CI=1 npm run test:e2e` | e2e **47** réussis, 25 ignorés par profil ; navigateur F1 13/13 |
+
+## M2 (deux onglets) : corrigé et protégé
+
+- **Relecture avant chaque modification** : `updateDoc` relit le document stocké, applique la modification, puis écrit le document complet. Les trois chemins y passent : réclamation, choix d'apparence, fin de partie.
+- **Le magasin relit vraiment `localStorage`** : `createJsonStore` ne privilégie plus son miroir mémoire, qui ne sert plus que si le stockage est absent, illisible ou n'a pas reçu la dernière écriture. Sans ce changement, la relecture aurait relu sa propre copie.
+- **Exclusion entre onglets par Web Locks** (`PROGRESS_LOCK`), avec repli explicite sans verrou. Le record, la progression et le record du jour d'une fin de partie passent sous le même verrou. L'événement `storage` rafraîchit l'accueil.
+- **Tests** : 5 unitaires (onglets A et B, bouton « Récupérer » resté affiché, événement `storage`, onglet qui tient le verrou, fin de partie sous verrou) et 2 e2e à deux onglets du même navigateur, dont un sous le vrai Web Locks.
+- **Mes mutations**, dans un fichier temporaire supprimé :
+  - sans la relecture dans `updateDoc` : `npm test` échoue (2 tests) ;
+  - avec le miroir mémoire de nouveau prioritaire : `npm test` échoue (1 test).
+
+## m1 (titre au passage de niveau) : corrigé
+
+Le titre n'est annoncé que s'il est nouveau (`LEVEL_TITLES[to]`), et un test le couvre.
+
+## Remarque restante (information)
+
+Web Locks n'existe que dans un contexte sécurisé (HTTPS ou `localhost`). GitHub Pages est en HTTPS. Ailleurs, le repli « relecture sans exclusion » s'applique, ce qui reste bien meilleur que l'état initial.
+
+## Verdict
+
+**PASS** sur `51661997bc2ee5adf59114cd0c8ad70bd9fc0c83`. Il remplace le CHANGES_REQUESTED de `452ae7c`. À intégrer après #12, #14 et #18. Ce PASS ne couvre aucun SHA ultérieur.
+
+---
+
+## Historique : revue de `452ae7c`
+
+### Revue E1 branché, SHA `452ae7c` — Claude Code FLK
 
 - **Tâche :** branchement d'E1 au shell, [alexis97432/jeuiaflouze#20](https://github.com/alexis97432/jeuiaflouze/pull/20) (brouillon, empilée sur #18, #14 et #12)
 - **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
