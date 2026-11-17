@@ -50,7 +50,7 @@ localStorage préfixe `poc:v1:` ; record, préférences, derniers résultats bor
 
 ## Mesure
 
-Horodatage des événements relatif à la session, aucune heure murale requise. Adaptateur `track(name, payload)` côté platform ; console/mémoire en développement par défaut, aucun envoi distant sans configuration et dispositif de consentement adapté. Événements : session_start, run_start, first_placement, run_end, retry, share_attempt, share_success, challenge_open. Champs communs : schemaVersion=1, rulesVersion, buildId, mode=free|challenge, sessionId éphémère, runId. run_end : score, durationTicks, perfectCount ; retry : previousRunId. Ne pas mettre de nom, email, URL complète ou identifiant de publicité. Dédupliquer run_end par runId. Ni clic partager ni copie ne prouvent une arrivée d'ami ; challenge_open seul ne prouve pas un joueur distinct.
+Horodatage des événements relatif à la session, aucune heure murale requise. Adaptateur `track(name, payload)` côté platform ; console/mémoire en développement par défaut, aucun envoi distant sans configuration et dispositif de consentement adapté. Événements : session_start, run_start, first_placement, run_end, retry, share_attempt, share_success, challenge_open. Champs communs : schemaVersion=1, rulesVersion, buildId, mode=free|challenge|daily, sessionId éphémère, runId. run_end : score, durationTicks, perfectCount ; retry : previousRunId. Ne pas mettre de nom, email, URL complète ou identifiant de publicité. Dédupliquer run_end par runId. Ni clic partager ni copie ne prouvent une arrivée d'ami ; challenge_open seul ne prouve pas un joueur distinct.
 
 ## Services A2 (hors M1)
 
@@ -59,3 +59,16 @@ Aucun secret côté client. Un score client n'est jamais une preuve. Serveur : c
 ## B4 — Mesure avant l'essai public
 
 Ajouter A1.5 avant M2 public : export local de mesures pour les essais modérés, puis collecteur distant minimal optionnel si un essai public est justifié. Mode local toujours fonctionnel. Alexis possède la collecte dans platform/server ; aucune collecte distante active sans configuration et dispositif de consentement adaptés. Définir schéma borné, quotas, rétention et suppression avant activation ; ni classement ni paiement requis. J1 n'est mesurable qu'avec identifiant de retour consenti et méthode explicite, sinon le déclarer non mesurable. Un simple src=share ne prouve ni un ami distinct ni une arrivée attribuable à un partage particulier ; un protocole d'attribution séparé, minimisé et revu est nécessaire avant cette métrique. Ne pas bloquer M1 en attendant ce collecteur.
+
+## Arbitrages V2 après revue C3 Alexis
+
+- `mode: daily` accepté pour run_start, run_end, retry, first_placement et share_* ; date du jour `YYYY-MM-DD` UTC fixée au lancement dans run_start. Ni identifiant personnel ni collecte distante ajoutés. Lien reçu sous forme de défi reste mode challenge, même si la seed provenait d'une Tour du jour.
+- Motif partageable V2 limité à deux catégories réellement observables : parfait / pose normale. Pas de champ de géométrie ajouté à GameEvent uniquement pour décorer une carte.
+- Afficher la date UTC de la Tour du jour et la prochaine heure de changement convertie dans le fuseau du navigateur ; ne pas imposer Europe/Paris aux joueurs du monde entier. Une partie déjà commencée garde seed/date initiales.
+- Workflow GitHub Pages à déclenchement manuel accepté pour A4 : l'utilisateur a demandé et autorisé le lien de jeu publié. Aucun nouvel accord utilisateur nécessaire pour préparer ce workflow ; revue, CI et SHA traçable restent requis avant publication. Garder /jeuiaflouze/, source-commit.txt et vérifier les assets HTTPS. Pas de publication automatique de branches de travail.
+
+## Présentation V2 — F4
+
+Interface additive convenue avec les deux propriétaires : `MountOptions.appearance?: { theme: ThemeId; skin: SkinId }`. ThemeId = confiserie | orbital | jardin ; SkinId = gomme | marbre | bonbon | verre | strie | ceramique. Les types, listes d'identifiants et validateurs sont exportés par src/game/index.ts, ainsi que `resolveAppearance(raw: unknown)`. Valeur inconnue → repli indépendant sur confiserie/gomme. Ni score, seed, géométrie ni rulesVersion modifiés ; sélection possédée/stockée par le shell, aucune lecture de stockage dans le renderer.
+
+`renderAppearancePreview(canvas, appearance, options?)` dessine un aperçu fixe avec le même dessin de matière que le jeu, renvoie false si Canvas 2D indisponible, n'attache ni événement ni RAF. Le shell garde un libellé/aperçu de secours et des boutons accessibles. Options de taille/DPR et palier réservées aux appels contrôlés. Le shell A4 importe les types publics plutôt que les redéclarer et transmet la sélection validée au montage.

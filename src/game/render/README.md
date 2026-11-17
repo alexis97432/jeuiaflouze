@@ -59,3 +59,33 @@ Bornes : 16 débris et 48 étincelles au plus, les plus anciens étant remplacé
 ## Démo
 
 `src/game/demo/index.html` + `demo.ts` : page minimale (canvas plein écran, bouton Rejouer, `?seed=`). C'est une démonstration, pas les menus A1. Elle demande un bundler (Vite d'A0). En attendant : `esbuild src/game/demo/demo.ts --bundle`.
+
+## V2 — F3 : univers, relief, paliers
+
+Brief : [coordination/V2.md](../../../coordination/V2.md). **Aucun changement de règles** : `src/game/core` et les golden v1 sont inchangés, et un test DOM vérifie que la même séquence d'appuis donne le même `RunResult` dans chaque univers.
+
+- **Univers** (`themes.ts`) : `confiserie` (défaut), `orbital`, `jardin`. Pour chacun : 4 paliers de ciel à 0, 10, 25 et 50 étages, interpolés en continu ; un décor propre à chaque palier ; un sol ; 6 couleurs de blocs ; des étincelles ; un son (timbre, note de départ, gamme).
+- **Variante « la tour voyage »** (`VOYAGE`, avis FLK) : Confiserie, puis Jardin au palier 2, puis Orbital au palier 3. Option interne `voyage: true`.
+- **Relief** : blocs arrondis avec face supérieure claire, lèvre sombre, reflet, contour intérieur adaptatif et ombre de contact limitée à l'intersection. Tout est dessiné **dans [x, x + largeur]**, vérifié au pixel dans Chromium.
+- **Caméra** : le bloc actif reste vers 36 % de la hauteur. L'étage visuel passe à 30 unités (purement graphique).
+- **Décor** : parallaxe 0,55, au plus `MAX_DECOR` = 28 éléments par image, mémoire de palier bornée. Au franchissement d'un palier, le décor au-dessus du bloc actif prend le nouveau style (fondu de 0,4 s, ou bascule nette en reduced-motion). Aucun décor dans la zone du score.
+- **Palier atteint** : libellé « Palier : <nom> », arpège dans la gamme de l'univers.
+- **Lisibilité mesurée (tests)** :
+  - score ≥ 3 sur le ciel et ≥ 4,5 contre son liseré, sur toute hauteur de 0 à 60 étages ;
+  - bord de chaque bloc ≥ 3 sur le ciel derrière lui.
+- **reduced-motion** : ni étincelle, ni onde, ni tremblement ; caméra et ciel suivent sans animation.
+- **Coût mesuré** (headless, CPU ×4, 50 étages, conteneur cloud) : `draw()` médiane 1,9 à 2,7 ms, p95 3,4 à 4,6 ms selon l'univers. Ce ne sont pas des FPS d'appareil.
+
+Choix d'univers côté shell : pour l'instant seulement via l'option interne `createGame({ theme })` (démo et tests). L'option publique `appearance?: { theme: ThemeId; skin: SkinId }` arrive en F4, après accord sur les identifiants avec Alexis (A3).
+
+## V2 — F4 : apparences, option `appearance`, aperçu
+
+- **Six apparences** (`blocks.ts`) : `gomme` (défaut), `marbre`, `bonbon`, `verre`, `strie`, `ceramique`. Ce sont des **matières appliquées sur la couleur de chaque étage**, donc orthogonales aux univers : 3 + 6 définitions, 18 combinaisons cohérentes. Aperçus de référence : la collection d'A3b.
+- **Invariant de lisibilité** : chaque matière est découpée par la forme arrondie du bloc et le contour reste intérieur. Vérifié au pixel pour 6 apparences × 3 univers ; la mutation « sans découpe » fait échouer `bonbon`. Bord ≥ 3 de contraste pour chaque apparence, univers et hauteur, translucidité de `verre` comprise (`edgeColors`).
+- **API publique** (`src/game/index.ts`, additive, convenue avec A3) :
+  - `MountOptions.appearance?: { theme: ThemeId; skin: SkinId }` : validée à la création, un identifiant inconnu retombe sur Confiserie / Gomme sans erreur ;
+  - `resolveAppearance(raw)` : la même validation, utilisable par le shell ;
+  - exports `ThemeId`, `SkinId`, `THEME_IDS`, `SKIN_IDS`, `DEFAULT_THEME`, `DEFAULT_SKIN`, `isThemeId`, `isSkinId`.
+- **Aperçu de collection** : `renderAppearancePreview(canvas, appearance, { width, height, dpr, tier })` dessine une petite tour de trois étages avec le **même code que le jeu**. C'est une image fixe : pas de RAF, d'écouteur, de son ni de stockage. Elle renvoie `false` sans Canvas 2D au lieu de lever. Les 18 aperçus sont tous différents (empreinte d'image).
+- **Règles inchangées** : même `RunResult` pour chaque apparence, et pour une apparence inconnue (test DOM via l'option publique).
+- **Démo** : `?skin=…` et `?apparences=1` (planche des 18 aperçus, chaque tuile ouvre le jeu correspondant).

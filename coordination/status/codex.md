@@ -43,3 +43,28 @@
 - Propriétaires : FLK F3/F4 rendu/sensations ; Alexis A3/A4 menus/objectifs/quotidien/progression/publication ; Codex arbitre et revoit FLK.
 - La publication Pages autorisée par l’utilisateur est un instantané de 0add695 sur gh-pages, pas un déploiement automatique. V2 doit y être republiée seulement après revues, avec SHA de source traçable.
 - Vérification : lecture UI/rendu A1 existants et skill game-ui-ux ; diff et liens documentaires. Pas de code de gameplay ni de mesure humaine inventée.
+
+## C4 — étude des idées de progression et monétisation
+
+- Demande utilisateur : niveaux, passe cosmétique, effets de paliers, pubs de reprise, classement, vies et skins payants, monnaie, exploits, calendrier. Étudiés dans coordination/ECONOMIE.md, pas implémentés.
+- REVIEW_PENDING Alexis ; avis FLK demandé sur présentation et reprise déterministe. Pas de consensus revendiqué.
+- A3a Alexis a déjà du code de progression : lecture de sa liste de changements et de son avis V2 ; E1 proposé après ses lots actuels, sans reprise à zéro ni édition de ses chemins.
+- Arbitrage proposé : un niveau/XP purement cosmétique, une monnaie gagnable, E1 local, puis services vérifiés ; scores avec reprise distincts et hors classement sans reprise ; nouveau contrat/rulesVersion requis pour revive.
+- Vérification documentaire : cohérence des récompenses/déblocages V2, transaction idempotente, migrations, disponibilité réelle des prestataires ; aucune facturation ou collecte distante ajoutée.
+
+## Arbitrages C3/C4 après retour Alexis (C5)
+
+- Revue Alexis C3 et C4 sur PR #11 lue ; M1 économie accepté et corrigé dans ECONOMIE : partie de référence =5 pièces, calendrier =50/sept connexions, objectifs =10 ; cible objet le plus cher =48 parties de référence hors primes.
+- XP : niveaux 1..10, seuil 20*(L−1)*L et titres 2/5/10. Accepte document unique version2 et grant de migration idempotent proposés par Alexis.
+- Contrat : daily accepté, date UTC au lancement, motif de partage deux catégories, heure du prochain changement locale, workflow Pages manuel autorisé par la demande de lien utilisateur antérieure.
+- Découpage E1a–e accepté ; préparer les fonctions indépendantes sur branche distincte si A4 bloqué par le rendu. Pas de modification des fichiers de code des autres.
+- REVIEW_PENDING Alexis pour ce lot documentaire C5. FLK conserve revues A3 et rendu F3 ; Codex a maintenant aussi la PR F3 #15 à revoir, non encore validée.
+
+## C6 — revues F3/F4 terminées
+
+- F3 #15 SHA `9e14f899f07609787dd1f0e287436562ecdf5bbb` : **PASS**. 209 unitaires, typecheck/build, 25 e2e +18 navigateur exécutés.
+- F4 #19 SHA `22d0e6e491bb784c3f66c0c629aa8286512cd922` : **PASS après F3**. 220 unitaires, typecheck/build, 25 e2e et 25 navigateur ciblés exécutés ; le profilage coûteux de F3 non répété. Première tentative F4 partageant involontairement le serveur F3 invalidée, puis vérifiée avec serveur propre CI=1.
+- Rapports : coordination/reviews/F3-codex.md et F4-codex.md. Contrat appearance et preview accepté et documenté. Livraison C6 **REVIEW_PENDING Alexis**.
+- Prochain pas Alexis : relire C6, intégrer F3 puis F4 sur les SHA approuvés, brancher les apparences et faire revoir le nouveau SHA A4 par FLK. Ne pas confondre code fusionné et build Pages publié.
+- E1 branché #20 garde **CHANGES_REQUESTED FLK sur 452ae7c**, défaut multi-onglets M2 ; pas de PASS Codex implicite. Attention : relire puis réécrire le localStorage ne garantit pas une transaction entre deux onglets concurrents ; convenir d'une sérialisation adéquate ou stratégie de fusion et tester le cas réellement concurrent, pas seulement des actions séquentielles.
+- Aucun téléphone physique testé, pas de validation humaine de la nouvelle esthétique.

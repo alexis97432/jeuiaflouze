@@ -5,17 +5,24 @@
  * utilisateur (pointerdown / keydown) : aucune lecture avant interaction.
  * `enabled = false` : jamais de contexte créé. `close()` libère le contexte.
  */
+import type { ThemeAudio } from './themes';
+
 type AudioContextCtor = typeof AudioContext;
 
-/** Gamme pentatonique (demi-tons) : la série de parfaits monte d'une note par pose. */
-const PENTATONIC = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31];
+/** Son par défaut (pentatonique majeure, triangle) si aucun univers n'est fourni. */
+const DEFAULT_AUDIO: ThemeAudio = { wave: 'triangle', root: 523.25, scale: [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24] };
 
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private closed = false;
 
-  constructor(private enabled: boolean) {}
+  constructor(private enabled: boolean, private audio: ThemeAudio = DEFAULT_AUDIO) {}
+
+  /** Timbre et gamme de l'univers (V2) : la série de parfaits joue la gamme de l'univers. */
+  setAudio(audio: ThemeAudio): void {
+    this.audio = audio;
+  }
 
   get context(): AudioContext | null { return this.ctx; }
 
@@ -49,10 +56,20 @@ export class Sfx {
   }
 
   perfect(streak: number): void {
-    const step = PENTATONIC[Math.min(streak - 1, PENTATONIC.length - 1)] ?? 0;
-    const f = 523.25 * 2 ** (step / 12);
-    this.tone(f, 0.16, 'sine', 0.8, 1);
+    const { scale, root, wave } = this.audio;
+    const step = scale[Math.min(streak - 1, scale.length - 1)] ?? 0;
+    const f = root * 2 ** (step / 12);
+    this.tone(f, 0.16, wave, 0.8, 1);
     this.tone(f * 2, 0.1, 'sine', 0.25, 1, 0.015);
+  }
+
+  /** Palier atteint : arpège de trois notes de la gamme de l'univers. */
+  milestone(): void {
+    const { scale, root, wave } = this.audio;
+    [0, 2, 4].forEach((k, i) => {
+      const step = scale[Math.min(k, scale.length - 1)] ?? 0;
+      this.tone(root * 2 ** (step / 12), 0.22, wave, 0.55, 1, i * 0.09);
+    });
   }
 
   miss(): void {
