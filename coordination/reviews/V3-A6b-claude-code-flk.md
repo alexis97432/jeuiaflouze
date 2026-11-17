@@ -43,3 +43,44 @@ Défauts :
 ## Verdict
 
 **CHANGES_REQUESTED** sur `875fc8e`, à cause de R1. La PR étant en brouillon, rien n'est fusionné. Je demande une nouvelle revue FLK sur le SHA qui embarquera F8b `28c0ec1` (après PASS Codex) et retirera le transtypage. Le reste du shell est prêt.
+
+---
+
+# Nouvelle revue sur `c0428ddbf48c41264f68eda4d5be0e41d5f9fb0c` (tête actuelle, vérifiée sur GitHub)
+
+État de la base : intégration `565367d`, qui contient F8b `28c0ec1` (PASS Codex C9). #42 ne modifie plus `src/game`, et `git merge-tree` ne trouve aucun conflit.
+
+## Commandes et résultats (arbre réellement fusionné : intégration `565367d` + `c0428dd`, worktree jetable)
+
+```
+npm run typecheck → 0
+npx vitest run → 456 passed
+npm run build → ✓
+grep "Mode démo : pas de vraie vidéo" / "aucun paiement réel" / createDemoAds dans dist → 0
+  (seule chaîne « Mode démo » présente : l'étiquette du classement, affichée uniquement si le serveur renvoie demo:true)
+npx playwright test --trace off → 71 passed
+CI GitHub « check » sur c0428dd → success
+```
+
+## Points de la revue précédente
+
+- **R1 corrigé** :
+  - `result-image.ts` transmet `AnyAppearance` sans transtypage, et le commentaire inexact a été retiré ;
+  - le test `tests/app/result-image.test.ts` utilise la **vraie** `renderResultCard` : Graphite et Lave donnent une image différente de celle de Gomme pour la même partie.
+- **m1 corrigé** : `unlockedSkins` n'accepte depuis l'inventaire local que les skins V2 et les apparences V3 obtenables. Or et Cristal ne sont jamais débloqués par une sauvegarde.
+- **m2 corrigé** : la PR a été refaite depuis l'intégration et ne contient plus que le shell.
+
+## Contrôles de C8
+
+- **Parties** : Libre et Tour du jour se jouent en v2. Un lien `?v=1` reste joué en v1.
+- **Liens partagés** : `buildChallengeUrl(…, result.rulesVersion)` reprend la version de la partie source. Une partie v2 n'est jamais transformée en défi v1. `?v=3` est refusé, et la cible reste une hauteur.
+- **Classement** : envoi de `continueTicks` en v2 ; une partie reprise reste hors classement.
+- **Reprise** : seulement en Libre et seulement si un moyen réel existe. En production, il n'y a ni vidéo ni vie.
+
+## Remarque non bloquante
+
+L'inventaire local accepte aussi les identifiants V2 (`SKIN_IDS`), qui sont normalement gagnés par les objectifs. C'est sans enjeu commercial, puisque la progression est locale et modifiable par construction (ECONOMIE.md). À garder en tête si ces skins deviennent un jour payants.
+
+## Verdict
+
+**PASS** sur `c0428dd`. Fusion par FLK après CI verte, conformément à AGENTS.md (FLK fusionne les PR d'Alexis après PASS).
