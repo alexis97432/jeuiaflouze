@@ -7,7 +7,9 @@
  * ils seront alignés sur le rendu FLK (F3/F4) au branchement A4.
  */
 import { renderAppearancePreview } from '../game';
-import { button, el } from './dom';
+import { el } from './dom';
+import { iconOnlyButton, progressBar, uiButton } from './ui/components';
+import { icon, type IconName } from './ui/icons';
 import {
   BADGE_IDS,
   earnedBadges,
@@ -20,9 +22,26 @@ import {
   unlockedSkins,
   unlockedThemes,
   type Appearance,
+  type ObjectiveId,
   type ProgressState,
   type Reward,
 } from './progression';
+
+/**
+ * Condition de déblocage courte, au tutoiement, pour les cartes de la collection (V4) : tient sur
+ * deux lignes dans une carte de 120 px. La liste complète des missions garde les phrases longues.
+ */
+const SHORT_GOALS: Record<ObjectiveId, string> = {
+  'floors-5': 'Pose 5 étages en une partie',
+  'streak-2': 'Fais 2 parfaits d’affilée',
+  'floors-12': 'Pose 12 étages en une partie',
+  'perfects-5': 'Fais 5 parfaits en une partie',
+  'floors-18': 'Pose 18 étages en une partie',
+  'daily-8': 'Fais 8 étages au Défi du jour',
+  'streak-4': 'Fais 4 parfaits d’affilée',
+  'floors-25': 'Pose 25 étages en une partie',
+  'perfects-10': 'Fais 10 parfaits en une partie',
+};
 
 /** Dessine un aperçu ; false si Canvas indisponible (contrat C6). Injectable pour les tests. */
 export type PreviewFn = (
@@ -62,30 +81,42 @@ function card(
   doc: Document,
   reward: Reward,
   state: 'selected' | 'available' | 'locked' | 'earned',
-  visual: HTMLElement,
+  visual: HTMLElement | SVGElement,
   onChoose?: () => void,
 ): HTMLElement {
   const item = el(doc, 'li', {
-    class: `card ${state}`,
     'data-testid': `card-${reward.kind}-${reward.id}`,
     tabindex: '-1', // cible du focus après un choix (revue A3b FLK, m2)
   });
-  const name = el(doc, 'p', { class: 'card-name' }, NAMES(reward));
-  item.append(visual, name);
+  const box = el(doc, 'div', { class: `item ${state}` });
+  const visualBox = el(doc, 'div', { class: 'item-visual' });
+  visualBox.append(visual);
+  box.append(visualBox, el(doc, 'p', { class: 'item-name' }, NAMES(reward)));
   if (state === 'selected') {
-    item.append(el(doc, 'p', { class: 'card-state' }, 'Sélectionné'));
+    const badge = el(doc, 'span', { class: 'badge', 'aria-hidden': 'true' });
+    badge.append(icon(doc, 'check'));
+    box.append(badge, el(doc, 'p', { class: 'item-meta' }, 'Sélectionné'));
   } else if (state === 'available' && onChoose) {
-    const choose = button(doc, 'Choisir', onChoose, 'ghost');
-    choose.setAttribute('aria-label', `Choisir ${rewardLabel(reward)}`);
-    item.append(choose);
+    box.append(uiButton(doc, { label: 'Choisir', variant: 'secondary', size: 'sm', block: true, ariaLabel: `Choisir ${rewardLabel(reward)}`, onClick: onChoose }));
   } else if (state === 'earned') {
-    item.append(el(doc, 'p', { class: 'card-state' }, 'Obtenu'));
+    box.append(el(doc, 'p', { class: 'item-meta' }, 'Obtenu'));
   } else {
     const goal = objectiveFor(reward);
     const source = reward.kind === 'skin' ? V3_SKIN_SOURCE[reward.id] : undefined;
-    item.append(el(doc, 'p', { class: 'card-lock' }, goal ? `À débloquer : ${goal.label.toLowerCase()}` : source ?? 'Verrouillé'));
+    const lock = el(doc, 'p', { class: 'item-meta lock' });
+    // « À débloquer » est lu par les lecteurs d'écran ; à l'écran, le cadenas suffit.
+    lock.append(icon(doc, 'lock'), el(doc, 'span', { class: 'sr-only' }, 'À débloquer : '), el(doc, 'span', {}, goal ? SHORT_GOALS[goal.id] : source ?? 'Verrouillé'));
+    box.append(lock);
   }
+  item.append(box);
   return item;
+}
+
+/** Pictogramme d'un badge (pas d'aperçu de jeu pour un badge). */
+function badgeArt(doc: Document, id: string): HTMLElement {
+  const art = el(doc, 'div', { class: `swatch badge-art swatch-${id}`, 'aria-hidden': 'true' });
+  art.append(icon(doc, id === 'precision' ? 'target' : 'award'));
+  return art;
 }
 
 export function renderCollection(
@@ -95,7 +126,7 @@ export function renderCollection(
   focusCard?: string,
   preview: PreviewFn = renderAppearancePreview,
 ): { nodes: HTMLElement[]; focus: HTMLElement } {
-  const back = button(doc, '← Retour', callbacks.onBack, 'ghost', 'collection-back');
+  const back = iconOnlyButton(doc, { icon: 'back', label: 'Retour', onClick: callbacks.onBack, testId: 'collection-back' });
   const title = el(doc, 'h1', { tabindex: '-1', class: 'screen-title' }, 'Collection');
   const themes = unlockedThemes(progress);
   const skins = unlockedSkins(progress);
@@ -104,13 +135,19 @@ export function renderCollection(
   // piste gratuite du passe ; le premium indisponible n'est pas compté.
   const total = THEME_IDS.length + SKIN_IDS.length + OBTAINABLE_V3_SKINS.length + BADGE_IDS.length;
   const owned = themes.length + skins.filter((id) => (SKIN_IDS as readonly string[]).includes(id) || (OBTAINABLE_V3_SKINS as readonly string[]).includes(id)).length + badges.length;
-  const count = el(doc, 'p', { class: 'hint', 'data-testid': 'collection-count' }, `${owned} / ${total} obtenus`);
+  const count = el(doc, 'section', { class: 'card' });
+  count.append(
+    el(doc, 'p', { class: 'card-title', 'data-testid': 'collection-count' }, `${owned} / ${total} obtenus`),
+    progressBar(doc, owned / total, 'Collection complétée'),
+  );
 
-  const section = (label: string, cards: HTMLElement[]) => {
+  const section = (iconName: IconName, label: string, cards: HTMLElement[]) => {
     const s = el(doc, 'section', { class: 'collection-section', 'aria-label': label });
-    const list = el(doc, 'ul', { class: 'cards' });
+    const list = el(doc, 'ul', { class: 'items' });
     list.append(...cards);
-    s.append(el(doc, 'h2', {}, label), list);
+    const h = el(doc, 'h2', {});
+    h.append(icon(doc, iconName), el(doc, 'span', {}, label));
+    s.append(h, list);
     return s;
   };
 
@@ -133,20 +170,20 @@ export function renderCollection(
     ),
   );
   const badgeCards = BADGE_IDS.map((id) =>
-    card(doc, { kind: 'badge', id }, badges.includes(id) ? 'earned' : 'locked', previewOrSwatch(doc, id, null, preview)),
+    card(doc, { kind: 'badge', id }, badges.includes(id) ? 'earned' : 'locked', badgeArt(doc, id)),
   );
 
   const note = el(
     doc,
     'p',
-    { class: 'hint', 'data-testid': 'collection-note' },
-    'L’univers et l’apparence choisis s’appliquent à la prochaine partie. Purement visuels : les règles ne changent pas.',
+    { class: 'hint small center', 'data-testid': 'collection-note' },
+    'L’univers et l’apparence choisis s’appliquent à ta prochaine partie. Ils changent le look, pas les règles.',
   );
   const header = el(doc, 'div', { class: 'screen-header' });
   header.append(back, title);
   const chosen = focusCard ? [...themeCards, ...skinCards].find((c) => c.dataset.testid === focusCard) : undefined;
   return {
-    nodes: [header, count, section('Univers', themeCards), section('Apparences', skinCards), section('Badges', badgeCards), note],
+    nodes: [header, count, section('orbit', 'Univers', themeCards), section('palette', 'Apparences', skinCards), section('award', 'Badges', badgeCards), note],
     focus: chosen ?? title,
   };
 }

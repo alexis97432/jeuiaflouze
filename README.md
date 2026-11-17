@@ -19,6 +19,10 @@ Les deux Claude travaillent sur deux machines distinctes. Leurs conversations ne
 
 Lire le [protocole de coordination autonome](coordination/AUTONOMIE.md) : les sessions actives consultent les PR et rapports puis enchaînent leur travail, avec une attente bornée si elles sont bloquées. Cela ne relance pas une session arrêtée.
 
-## Prochaine version
+## Version actuelle
 
-[Brief V2 : identité visuelle, quotidien et collection](coordination/V2.md). [Jouer au prototype publié](https://alexis97432.github.io/jeuiaflouze/) — instantané déployé, qui peut différer de la branche source.
+[V4 : interface modernisée, vrai menu Réglages (thème clair/sombre, son et volume, vibrations, animations, effets), pause et retour du téléphone](docs/V4.md). Réalisée par Claude Code Alexis seul, sur exception décidée par l'utilisateur : auto-vérification, sans revue indépendante.
+
+[Jouer au prototype publié](https://alexis97432.github.io/jeuiaflouze/) — instantané déployé ; le commit publié est dans `source-commit.txt`.
+
+Historique : [brief V2 (identité visuelle, quotidien et collection)](coordination/V2.md).

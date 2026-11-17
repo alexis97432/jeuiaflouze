@@ -77,7 +77,7 @@ export const OBJECTIVES: readonly Objective[] = [
   { id: 'floors-12', label: 'Poser au moins 12 étages dans une partie', reward: { kind: 'theme', id: 'orbital' }, met: (r) => r.score >= 12 },
   { id: 'perfects-5', label: 'Faire 5 parfaits dans une partie', reward: { kind: 'skin', id: 'verre' }, met: (r) => r.perfectCount >= 5 },
   { id: 'floors-18', label: 'Poser au moins 18 étages dans une partie', reward: { kind: 'skin', id: 'strie' }, met: (r) => r.score >= 18 },
-  { id: 'daily-8', label: 'Terminer une Tour du jour avec au moins 8 étages', reward: { kind: 'theme', id: 'jardin' }, met: (r) => r.mode === 'daily' && r.score >= 8 },
+  { id: 'daily-8', label: 'Terminer un Défi du jour avec au moins 8 étages', reward: { kind: 'theme', id: 'jardin' }, met: (r) => r.mode === 'daily' && r.score >= 8 },
   { id: 'streak-4', label: 'Faire 4 parfaits consécutifs dans une partie', reward: { kind: 'skin', id: 'ceramique' }, met: (r) => r.longestStreak >= 4 },
   { id: 'floors-25', label: 'Poser au moins 25 étages dans une partie', reward: { kind: 'badge', id: 'touriste-des-nuages' }, met: (r) => r.score >= 25 },
   { id: 'perfects-10', label: 'Faire 10 parfaits dans une partie', reward: { kind: 'badge', id: 'precision' }, met: (r) => r.perfectCount >= 10 },

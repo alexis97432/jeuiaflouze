@@ -64,6 +64,11 @@ export type GameHandle = {
    * `allowContinue` absent). Optionnel dans le type pour les doubles de test du shell.
    */
   continueRun?(): boolean;
+  /**
+   * V4 : son activé ou coupé et volume (0 à 1), appliqués en cours de partie (menu Pause).
+   * Optionnel dans le type pour les doubles de test du shell.
+   */
+  setAudio?(sound: boolean, volume: number): void;
   /** V3 (F7) : refuse la reprise ; fin normale, `onEnd` une seule fois. Sans effet sinon. */
   declineContinue?(): void;
 };
@@ -94,6 +99,13 @@ export type MountOptions = {
   sound?: boolean;
   /** Proposition additive : force reduced-motion ; défaut = préférence système. */
   reducedMotion?: boolean;
+  /** V4 : volume des sons, de 0 à 1 (défaut 1). */
+  volume?: number;
+  /**
+   * V4 : effets visuels. `light` (mode Fluide) plafonne la résolution interne et réduit
+   * particules et décor pour les téléphones modestes. Aucun effet sur les règles ni le rejeu.
+   */
+  effects?: 'full' | 'light';
   /**
    * V2 (F4) : univers et apparence des blocs. Validés à la création : un identifiant inconnu
    * retombe sur Confiserie / Gomme. Aucun effet sur les règles, le rejeu ou le score.
@@ -146,7 +158,8 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
   const appearance = resolveAnyAppearance(options.appearance ?? { theme: options.theme });
   const theme = options.voyage ? VOYAGE : getTheme(appearance.theme);
   const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme, isDrawSkinId(options.drawSkin) ? options.drawSkin : appearance.skin);
-  const sfx = new Sfx(options.sound ?? true, theme.audio);
+  const sfx = new Sfx(options.sound ?? true, theme.audio, options.volume ?? 1);
+  renderer.quality = options.effects === 'light' ? 'light' : 'full';
 
   let destroyed = false;
   let pauseReason: 'none' | 'shell' | 'hidden' = 'none';
@@ -369,6 +382,11 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
       }
       return true;
     },
+    setAudio(sound: boolean, volume: number) {
+      if (destroyed) return;
+      sfx.setEnabled(sound);
+      sfx.setVolume(volume);
+    },
     declineContinue() {
       if (destroyed || !(sim instanceof SimulationV2) || !sim.finish()) return;
       // Partie finie : rien à protéger, l'animation de fin reprend pour que onEnd arrive.
@@ -396,5 +414,6 @@ export function mountGame(options: MountOptions): GameHandle {
     destroy: game.destroy,
     continueRun: game.continueRun,
     declineContinue: game.declineContinue,
+    setAudio: game.setAudio,
   };
 }

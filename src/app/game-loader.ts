@@ -8,7 +8,11 @@ import { mountGame } from '../game';
 import type { Appearance, GameEvent, GameHandle, MountOptions } from './game-contract';
 import type { AnyAppearance } from '../game';
 
-export type ShellPrefs = { muted: boolean };
+/**
+ * Préférences utiles au moteur (V4). `reducedMotion` absent : le moteur suit l'appareil en direct.
+ * `volume` de 0 à 1 ; `effects: 'light'` = mode Fluide.
+ */
+export type ShellPrefs = { muted: boolean; volume?: number; reducedMotion?: boolean; effects?: 'full' | 'light' };
 export type StartOptions = Pick<MountOptions, 'canvas' | 'config' | 'onEnd'> & {
   prefs: ShellPrefs;
   /** Apparence possédée et choisie par le joueur (validée par le shell) — cosmétique seule. */
@@ -35,6 +39,9 @@ export function createStartGame(mount: (options: MountOptions) => GameHandle): S
       config,
       onEnd,
       sound: !prefs.muted,
+      ...(prefs.volume !== undefined ? { volume: prefs.volume } : {}),
+      ...(prefs.reducedMotion !== undefined ? { reducedMotion: prefs.reducedMotion } : {}),
+      ...(prefs.effects ? { effects: prefs.effects } : {}),
       // F8b : `mountGame` accepte toute matière dessinable (resolveAnyAppearance) mais le type public
       // `MountOptions.appearance` reste V2 ; élargissement demandé à FLK (remarque A6b).
       ...(appearance ? { appearance: appearance as Appearance } : {}),

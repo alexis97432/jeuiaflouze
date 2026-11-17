@@ -6,6 +6,7 @@
  * dessin : aucun RAF, écouteur, stockage, réseau, son, nom, URL ni identifiant.
  * Le shell (Alexis) convertit en fichier, partage, télécharge et écrit le texte.
  */
+import { GAME_FONT } from './renderer';
 import {
   MILLI,
   replayRun,
@@ -114,7 +115,7 @@ export type ResultCard = {
   /** Univers et matière, V2 ou V3 (F8b) ; valeur inconnue → Confiserie / Gomme. */
   appearance?: Partial<AnyAppearance>;
   mode: CardMode;
-  /** Tour du jour : date UTC `AAAA-MM-JJ` (affichée telle quelle, sans heure locale). */
+  /** Défi du jour : date UTC `AAAA-MM-JJ`, affichée en mots (« 17 novembre »), sans heure locale. */
   day?: string;
 };
 
@@ -128,8 +129,18 @@ export type CardOptions = {
 export const CARD_WIDTH = 1080;
 export const CARD_HEIGHT = 1350;
 
-const MODE_LABEL: Record<CardMode, string> = { free: 'Partie libre', challenge: 'Défi entre amis', daily: 'Tour du jour' };
-const FONT = (w: number, size: number) => `${w} ${size}px ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif`;
+const MODE_LABEL: Record<CardMode, string> = { free: 'Partie libre', challenge: 'Défi entre amis', daily: 'Défi du jour' };
+const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+/** « 2026-11-17 » → « 17 novembre » (« 1er » le premier du mois), indépendant de la langue de l'appareil. */
+export function dayInWords(day: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return null;
+  const month = MONTHS[Number(m[2]) - 1];
+  const date = Number(m[3]);
+  if (!month || date < 1 || date > 31) return null;
+  return `${date === 1 ? '1er' : date} ${month}`;
+}
+const FONT = (w: number, size: number) => `${w} ${size}px ${GAME_FONT}`;
 const GOLD: Rgb = [255, 196, 46];
 
 /**
@@ -180,7 +191,8 @@ export function renderResultCard(canvas: HTMLCanvasElement, card: ResultCard, op
 
   // En-tête : nom du jeu, mode, univers.
   text('Pile ou Crash', W / 2, 92, 64, css(ink), 900);
-  const day = card.mode === 'daily' && card.day && /^\d{4}-\d{2}-\d{2}$/.test(card.day) ? ` · ${card.day}` : '';
+  const words = card.mode === 'daily' && card.day ? dayInWords(card.day) : null;
+  const day = words ? ` · ${words}` : '';
   text(`${MODE_LABEL[card.mode]}${day} · ${theme.name}`, W / 2, 148, 34, css(ink), 700);
 
   // Résultat : points et hauteur distincts (v2) ; hauteur seule (v1).

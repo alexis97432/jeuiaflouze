@@ -1,0 +1,127 @@
+/*
+ * V4 — jetons de couleur et de forme. Thème clair par défaut ; sombre si l'utilisateur le choisit
+ * (data-theme="dark") ou si l'appareil est en sombre et que le joueur a laissé « Auto ».
+ * Le thème de l'interface est indépendant des univers des blocs (Confiserie, Orbital, Jardin).
+ * Contrastes vérifiés (texte ≥ 4,5:1) par tests/app/contrast.test.ts (jetons) et tests/e2e/v4.spec.ts (rendu).
+ */
+:root {
+  --font: 'Fredoka Variable', 'Fredoka', ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --bg: #fff3e0;
+  --bg-blob-1: #ffd3e2;
+  --bg-blob-2: #c6f1e4;
+  --bg-blob-3: #e2dbff;
+  --surface: #ffffff;
+  --surface-2: #fff8ef;
+  --surface-3: #f4ecff;
+  --ink: #23204a;
+  --ink-soft: #57537e;
+  --edge: #23204a;
+  --line-soft: rgba(35, 32, 74, 0.14);
+  --focus: #2f6bff;
+
+  --primary: #ff5e6c;
+  --primary-hi: #ff8a94;
+  --secondary: #3fd6b3;
+  --secondary-hi: #7be8cf;
+  --accent: #ffc83d;
+  --accent-hi: #ffdc7d;
+  --violet: #7c5cff;
+  --violet-ink: #5536d1;
+  /* Ruban « Niveau atteint » : texte blanc, même fond dans les deux thèmes (contraste ≥ 4,5:1). */
+  --ribbon-violet: #5536d1;
+  /* Mot « Crash » du titre : corail assez foncé pour le grand texte (≥ 3:1 sur le fond). */
+  --brand-accent: #e0364a;
+  --on-color: #23204a;
+
+  --coin: #f5a623;
+  --heart: #ff4d6d;
+  --star: #ffb800;
+  --ok-ink: #137a5a;
+  --ok-bg: #d8f6ec;
+  --warn-ink: #9a4b00;
+  --warn-bg: #fff0cf;
+  --danger-ink: #b42335;
+  --danger-bg: #ffe0e4;
+
+  --shadow: 0 8px 24px rgba(35, 32, 74, 0.12);
+  --radius-s: 12px;
+  --radius: 18px;
+  --radius-l: 26px;
+  --press: 5px;
+  --tap: 52px;
+
+  --scrim: rgba(22, 20, 52, 0.55);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #16163a;
+  --bg-blob-1: #3b1d50;
+  --bg-blob-2: #0f3a48;
+  --bg-blob-3: #2a2768;
+  --surface: #23234f;
+  --surface-2: #2b2b5e;
+  --surface-3: #33306b;
+  --ink: #fff3e0;
+  --ink-soft: #cbc6f0;
+  --edge: #6b65b8;
+  --line-soft: rgba(255, 243, 224, 0.16);
+  --focus: #8fb1ff;
+  --primary: #ff6b78;
+  --primary-hi: #ff98a1;
+  --secondary: #46dcb9;
+  --secondary-hi: #83ead2;
+  --accent: #ffcd4d;
+  --accent-hi: #ffe08a;
+  --violet: #9b85ff;
+  --violet-ink: #c6b8ff;
+  --brand-accent: #ff98a1;
+  --on-color: #1b1a3a;
+  --ok-ink: #7be8cf;
+  --ok-bg: #12403a;
+  --warn-ink: #ffd88a;
+  --warn-bg: #43361a;
+  --danger-ink: #ffb3bd;
+  --danger-bg: #4a1f2e;
+  --shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  --scrim: rgba(6, 6, 22, 0.7);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']),
+  :root[data-theme='system'] {
+    --bg: #16163a;
+    --bg-blob-1: #3b1d50;
+    --bg-blob-2: #0f3a48;
+    --bg-blob-3: #2a2768;
+    --surface: #23234f;
+    --surface-2: #2b2b5e;
+    --surface-3: #33306b;
+    --ink: #fff3e0;
+    --ink-soft: #cbc6f0;
+    --edge: #6b65b8;
+    --line-soft: rgba(255, 243, 224, 0.16);
+    --focus: #8fb1ff;
+    --primary: #ff6b78;
+    --primary-hi: #ff98a1;
+    --secondary: #46dcb9;
+    --secondary-hi: #83ead2;
+    --accent: #ffcd4d;
+    --accent-hi: #ffe08a;
+    --violet: #9b85ff;
+    --violet-ink: #c6b8ff;
+    --brand-accent: #ff98a1;
+    --on-color: #1b1a3a;
+    --ok-ink: #7be8cf;
+    --ok-bg: #12403a;
+    --warn-ink: #ffd88a;
+    --warn-bg: #43361a;
+    --danger-ink: #ffb3bd;
+    --danger-bg: #4a1f2e;
+    --shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    --scrim: rgba(6, 6, 22, 0.7);
+    color-scheme: dark;
+  }
+}
