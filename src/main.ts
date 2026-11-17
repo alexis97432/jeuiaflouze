@@ -5,7 +5,7 @@ import { createShell } from './app/shell';
 import { combineSinks, consoleSink, createTracker, memorySink } from './platform/metrics';
 import { randomId, randomSeed } from './platform/random';
 import { shareLink } from './platform/share';
-import { createLocalStore, getBrowserStorage } from './platform/storage';
+import { createLocalStore, createMetaStore, getBrowserStorage } from './platform/storage';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('Élément #app introuvable');
@@ -20,11 +20,14 @@ const tracker = createTracker({
 });
 tracker.track('session_start', {});
 
+const browserStorage = getBrowserStorage();
+
 createShell({
   root,
   startGame: loadGame(),
   tracker,
-  store: createLocalStore(getBrowserStorage()),
+  store: createLocalStore(browserStorage),
+  meta: createMetaStore(browserStorage),
   url: window.location.href,
   replaceUrl: (url) => window.history.replaceState(null, '', url),
   share: (data) => shareLink(data),

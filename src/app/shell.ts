@@ -12,9 +12,20 @@ import {
 } from './challenge-url';
 import { RULES_VERSION, type GameHandle, type RunResult } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
+import {
+  activeObjectives,
+  applyRun,
+  rewardLabel,
+  sanitizeProgress,
+  type Objective,
+  type ObjectiveId,
+  type ProgressState,
+} from './progression';
+import { createRunTracker, type RunTracker } from './run-tracker';
+import { dailySeed, utcDateKey } from '../platform/daily';
 import type { Mode, Tracker } from '../platform/metrics';
 import type { ShareData, ShareOutcome } from '../platform/share';
-import type { LocalStore } from '../platform/storage';
+import type { LocalStore, MetaStore } from '../platform/storage';
 
 export type Screen = 'home' | 'game' | 'result';
 
@@ -29,6 +40,10 @@ export type ShellOptions = {
   startGame: StartGame;
   tracker: Tracker;
   store: LocalStore;
+  /** Progression V2 et records du jour (`poc:meta:v1:`). */
+  meta: MetaStore;
+  /** Date courante (Tour du jour) ; injectable pour les tests. */
+  today?: () => Date;
   /** URL complète de la page au démarrage. */
   url: string;
   /** Remplace l'URL affichée sans recharger (history.replaceState). */
@@ -51,6 +66,11 @@ type RunState = {
   seed: number;
   mode: Mode;
   challenge: Challenge | null;
+  /** Date UTC figée au lancement, seulement pour la Tour du jour. */
+  day: string | null;
+  /** Objectifs actifs au lancement : seuls ceux-ci peuvent être validés par la partie. */
+  activeAtStart: ObjectiveId[];
+  events: RunTracker;
   handle: GameHandle | null;
 };
 
@@ -74,7 +94,9 @@ export function createShell(options: ShellOptions): Shell {
   const doc = options.doc ?? document;
   const now = options.now ?? (() => performance.now());
   let guardTimer: ReturnType<typeof setTimeout> | undefined;
-  const { root, tracker, store } = options;
+  const { root, tracker, store, meta } = options;
+  const today = options.today ?? (() => new Date());
+  let progress: ProgressState = sanitizeProgress(meta.readProgress());
   let screen: Screen = 'home';
   let run: RunState | null = null;
   let destroyed = false;
@@ -176,7 +198,14 @@ export function createShell(options: ShellOptions): Shell {
     const rules = el(doc, 'p', {},
       'Touchez l’écran ou appuyez sur Espace pour poser le bloc. Ce qui dépasse tombe.');
     const play = button('Jouer', () => startRun(null), true);
-    show('home', [title, rules, play, recordLine(), soundToggle()], play);
+    const day = utcDateKey(today());
+    const daily = button('Tour du jour', () => startRun(null, 'daily'), false, 'daily');
+    const dailyBest = meta.readDailyBest(day);
+    const dailyHint = el(doc, 'p', { class: 'hint', 'data-testid': 'daily-hint' },
+      `Même tour pour tous aujourd’hui (${day}, UTC)${dailyBest > 0 ? ` · votre record du jour : ${floors(dailyBest)}` : ''}`);
+    const goals = el(doc, 'ul', { class: 'goals', 'aria-label': 'Objectifs en cours', 'data-testid': 'goals' });
+    for (const o of activeObjectives(progress)) goals.append(el(doc, 'li', {}, o.label));
+    show('home', [title, rules, play, daily, dailyHint, goals, recordLine(), soundToggle()], play);
   };
 
   const stopRun = () => {
@@ -185,16 +214,33 @@ export function createShell(options: ShellOptions): Shell {
     pausedByVisibility = false;
   };
 
-  const startRun = (previous: RunState | null) => {
+  const startRun = (previous: RunState | null, requested?: Mode) => {
     stopRun();
-    const mode: Mode = challenge ? 'challenge' : 'free';
-    // Un défi se rejoue sur la même séquence ; une partie libre tire une nouvelle seed.
-    const seed = challenge ? challenge.seed : options.newSeed();
+    const mode: Mode = previous?.mode ?? requested ?? (challenge ? 'challenge' : 'free');
+    // Défi : même séquence. Tour du jour : seed de la date UTC, figée au lancement de cette partie.
+    // Libre : nouvelle seed.
+    const day = mode === 'daily' ? utcDateKey(today()) : null;
+    const seed =
+      mode === 'daily' && day ? dailySeed(day) : mode === 'challenge' && challenge ? challenge.seed : options.newSeed();
     const runId = options.newRunId();
-    run = { runId, seed, mode, challenge, handle: null };
+    run = {
+      runId,
+      seed,
+      mode,
+      challenge: mode === 'challenge' ? challenge : null,
+      day,
+      activeAtStart: activeObjectives(progress).map((o) => o.id),
+      events: createRunTracker(),
+      handle: null,
+    };
 
+    const runChallenge = run.challenge;
     const heading = el(doc, 'h2', { class: 'sr-only', tabindex: '-1' },
-      challenge ? `Défi en cours : dépasser ${floors(challenge.target)}` : 'Partie en cours');
+      runChallenge
+        ? `Défi en cours : dépasser ${floors(runChallenge.target)}`
+        : day
+          ? `Tour du jour ${day} en cours`
+          : 'Partie en cours');
     const canvas = el(doc, 'canvas', {
       class: 'game-canvas',
       width: '360',
@@ -213,14 +259,13 @@ export function createShell(options: ShellOptions): Shell {
     pauseOverlay.append(el(doc, 'p', {}, 'Partie en pause.'), resume);
     const stage = el(doc, 'div', { class: 'stage' });
     stage.append(canvas, pauseOverlay);
-    const target = challenge
-      ? el(doc, 'p', { class: 'hint', 'data-testid': 'target' }, `Objectif : plus de ${floors(challenge.target)}`)
-      : null;
+    const target = runChallenge
+      ? el(doc, 'p', { class: 'hint', 'data-testid': 'target' }, `Objectif : plus de ${floors(runChallenge.target)}`)
+      : day
+        ? el(doc, 'p', { class: 'hint', 'data-testid': 'target' }, `Tour du jour · ${day} (UTC)`)
+        : null;
 
     show('game', [heading, target, stage], canvas);
-    if (previous) tracker.track('retry', { mode, runId, previousRunId: previous.runId });
-    tracker.track('run_start', { mode, runId });
-    announce('Partie commencée.');
 
     const current = run;
     let ended = false;
@@ -230,6 +275,9 @@ export function createShell(options: ShellOptions): Shell {
         canvas,
         config: { seed, rulesVersion: RULES_VERSION },
         prefs,
+        onGameEvent: (event) => {
+          if (run === current) current.events.onEvent(event);
+        },
         onFirstPlacement: () => {
           if (placed || destroyed || run !== current) return;
           placed = true;
@@ -242,6 +290,10 @@ export function createShell(options: ShellOptions): Shell {
           queueMicrotask(() => finishRun(current, result));
         },
       });
+      // Mesures émises seulement après un montage réussi (revue A1 FLK, m1).
+      if (previous) tracker.track('retry', { mode, runId, previousRunId: previous.runId });
+      tracker.track('run_start', { mode, runId, ...(day ? { day } : {}) });
+      announce('Partie commencée.');
     } catch (error) {
       console.error('[shell] le jeu n’a pas pu démarrer', error);
       run = null;
@@ -268,10 +320,25 @@ export function createShell(options: ShellOptions): Shell {
       perfectCount: result.perfectCount,
       mode: current.mode,
     });
-    renderResult(current, result, isRecord);
+    const evaluation = applyRun(progress, current.activeAtStart, {
+      runId: current.runId,
+      mode: current.mode,
+      score: result.score,
+      perfectCount: result.perfectCount,
+      longestStreak: current.events.longestStreak,
+    });
+    if (evaluation.state !== progress) {
+      progress = evaluation.state;
+      meta.writeProgress(progress);
+    }
+    const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
+    renderResult(current, result, { isRecord, isDailyRecord, completedNow: evaluation.completedNow });
   };
 
-  const renderResult = (current: RunState, result: RunResult, isRecord: boolean) => {
+  type Outcome = { isRecord: boolean; isDailyRecord: boolean; completedNow: Objective[] };
+
+  const renderResult = (current: RunState, result: RunResult, outcome: Outcome) => {
+    const { isRecord } = outcome;
     const title = el(doc, 'h2', { tabindex: '-1' }, 'Partie terminée');
     const score = el(doc, 'p', { class: 'score', 'data-testid': 'score' }, floors(result.score));
     const parts: (HTMLElement | null)[] = [title, score];
@@ -291,6 +358,22 @@ export function createShell(options: ShellOptions): Shell {
             : `Pas encore : ${result.score} sur ${t} annoncés.`;
       parts.push(el(doc, 'p', { 'data-testid': 'challenge-outcome' }, text));
       summary += ` ${text}`;
+    }
+    if (current.day) {
+      const best = meta.readDailyBest(current.day);
+      const text = outcome.isDailyRecord
+        ? `Nouveau record du jour (${current.day}) !`
+        : `Record du jour (${current.day}) : ${floors(best)}`;
+      parts.push(el(doc, 'p', { 'data-testid': 'daily-outcome' }, text));
+      summary += ` ${text}`;
+    }
+    if (outcome.completedNow.length > 0) {
+      const list = el(doc, 'ul', { class: 'goals done', 'aria-label': 'Objectifs accomplis', 'data-testid': 'completed-goals' });
+      for (const o of outcome.completedNow) {
+        list.append(el(doc, 'li', {}, `${o.label} → ${rewardLabel(o.reward)} débloqué`));
+      }
+      parts.push(list);
+      summary += ` ${outcome.completedNow.length} objectif(s) accompli(s).`;
     }
     parts.push(el(doc, 'p', { class: 'hint' }, 'Score local, non vérifié.'), recordLine());
 

@@ -5,7 +5,8 @@ import type { StartGame, StartOptions } from '../../src/app/game-loader';
 import { createShell, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
 import { createTracker, memorySink } from '../../src/platform/metrics';
 import type { ShareOutcome } from '../../src/platform/share';
-import { createLocalStore } from '../../src/platform/storage';
+import { createLocalStore, createMetaStore } from '../../src/platform/storage';
+import { dailySeed } from '../../src/platform/daily';
 
 type Mount = { options: StartOptions; pause: number; resume: number; destroyed: boolean };
 
@@ -56,6 +57,8 @@ function setup(overrides: Partial<ShellOptions> = {}) {
   const sink = memorySink();
   const tracker = createTracker({ buildId: 'b', rulesVersion: 1, sessionId: 's', sink });
   const store = overrides.store ?? createLocalStore(null);
+  const meta = overrides.meta ?? createMetaStore(null);
+  const day = { now: new Date('2026-11-16T22:30:00Z') };
   const replaced: string[] = [];
   const share = vi.fn(async (): Promise<ShareOutcome> => 'shared');
   let seed = 100;
@@ -67,6 +70,8 @@ function setup(overrides: Partial<ShellOptions> = {}) {
     startGame: game.startGame,
     tracker,
     store,
+    meta,
+    today: () => day.now,
     url: 'https://jeu.test/',
     replaceUrl: (u) => void replaced.push(u),
     share,
@@ -86,7 +91,15 @@ function setup(overrides: Partial<ShellOptions> = {}) {
     await flush();
     clock.t += RESULT_INPUT_GUARD_MS; // fin du délai de garde du résultat
   };
-  return { game, sink, root, button, text, end, store, replaced, share, clock, shell: shell! };
+  /** Envoie des poses au moteur factice (parfaites ou non), comme le ferait onEvent. */
+  const place = (marks: boolean[], index = game.mounts.length - 1) => {
+    let streak = 0;
+    marks.forEach((perfect, i) => {
+      streak = perfect ? streak + 1 : 0;
+      game.mounts[index]!.options.onGameEvent?.({ type: 'placement', tick: i + 1, floor: i + 1, perfect, perfectStreak: streak });
+    });
+  };
+  return { game, sink, root, button, text, end, store, meta, day, place, replaced, share, clock, shell: shell! };
 }
 
 const names = (sink: ReturnType<typeof memorySink>) => sink.events.map((e) => e.name);
@@ -344,7 +357,7 @@ describe('robustesse', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     let fail = true;
     const game = fakeGame();
-    const { button, text } = setup({
+    const { button, text, sink } = setup({
       startGame: (o) => {
         if (fail) throw new RangeError('canvas');
         return game.startGame(o);
@@ -352,9 +365,12 @@ describe('robustesse', () => {
     });
     button('Jouer').click();
     expect(text('start-error')).toMatch(/pas pu démarrer/);
+    button('Réessayer').click();
+    expect(names(sink)).toEqual([]); // m1 : aucun run_start sans partie montée
     fail = false;
     button('Réessayer').click();
     expect(game.mounts).toHaveLength(1);
+    expect(names(sink)).toEqual(['run_start']);
   });
 
   it('destroy libère la partie en cours et les écouteurs', () => {
@@ -368,4 +384,57 @@ describe('robustesse', () => {
     expect(game.mounts[0]!.pause).toBe(0);
   });
 
+});
+
+describe('Tour du jour (V2)', () => {
+  it('joue la seed de la date UTC, figée au lancement, et tient un record du jour', async () => {
+    const { game, sink, button, text, end, day, meta } = setup();
+    expect(text('daily-hint')).toContain('2026-11-16');
+    button('Tour du jour').click();
+    expect(game.mounts[0]!.options.config.seed).toBe(630742688); // vecteur de référence (Python)
+    expect(sink.events.at(-1)).toMatchObject({ name: 'run_start', mode: 'daily', day: '2026-11-16' });
+    day.now = new Date('2026-11-17T00:00:01Z'); // minuit UTC passe pendant la partie
+    await end(6);
+    expect(text('daily-outcome')).toBe('Nouveau record du jour (2026-11-16) !');
+    expect(meta.readDailyBest('2026-11-16')).toBe(6);
+    expect(meta.readDailyBest('2026-11-17')).toBe(0);
+    button('Rejouer').click(); // nouvelle partie : nouvelle date
+    expect(game.mounts[1]!.options.config.seed).toBe(dailySeed('2026-11-17'));
+    expect(sink.events.at(-2)).toMatchObject({ name: 'retry', mode: 'daily' });
+  });
+});
+
+describe('objectifs (V2)', () => {
+  it('valide les objectifs actifs au lancement, une seule fois, et persiste la progression', async () => {
+    const { button, text, end, place, meta, root } = setup();
+    expect([...root.querySelectorAll('[data-testid="goals"] li')].map((li) => li.textContent)).toEqual([
+      'Poser au moins 5 étages dans une partie',
+      'Faire 2 parfaits consécutifs dans une partie',
+      'Poser au moins 12 étages dans une partie',
+    ]);
+    button('Jouer').click();
+    place([false, true, true, false, false]);
+    await end(5);
+    expect(text('completed-goals')).toContain('Apparence Marbré débloqué');
+    expect(text('completed-goals')).toContain('Apparence Bonbon débloqué');
+    expect(meta.readProgress()).toMatchObject({ completed: ['floors-5', 'streak-2'] });
+  });
+
+  it("n'évalue pas d'objectif devenu actif pendant la partie", async () => {
+    const meta = createMetaStore(null);
+    meta.writeProgress({ completed: ['floors-5', 'streak-2'], selected: { theme: 'confiserie', skin: 'gomme' }, evaluatedRuns: [] });
+    const { button, end, meta: m } = setup({ meta });
+    button('Jouer').click(); // actifs : floors-12, perfects-5, floors-18
+    await end(30); // 30 étages : floors-12 et floors-18 validés ; floors-25 n'était pas actif
+    expect(m.readProgress()).toMatchObject({ completed: ['floors-5', 'streak-2', 'floors-12', 'floors-18'] });
+  });
+
+  it('une progression corrompue ne bloque pas le jeu', async () => {
+    const meta = createMetaStore(null);
+    meta.writeProgress('pas un objet');
+    const { button, end, text } = setup({ meta });
+    button('Jouer').click();
+    await end(5);
+    expect(text('completed-goals')).toContain('Marbré');
+  });
 });

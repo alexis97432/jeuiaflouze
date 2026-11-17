@@ -5,19 +5,21 @@
  * `reducedMotion` est omis : le moteur suit alors la préférence système en direct.
  */
 import { mountGame } from '../game';
-import type { GameHandle, MountOptions } from './game-contract';
+import type { GameEvent, GameHandle, MountOptions } from './game-contract';
 
 export type ShellPrefs = { muted: boolean };
 export type StartOptions = Pick<MountOptions, 'canvas' | 'config' | 'onEnd'> & {
   prefs: ShellPrefs;
   /** Appelé à la première pose réussie de la partie (mesure first_placement). */
   onFirstPlacement?(): void;
+  /** Tous les événements du moteur, dans l'ordre (résumé de partie pour les objectifs). */
+  onGameEvent?(event: GameEvent): void;
 };
 export type StartGame = (options: StartOptions) => GameHandle;
 
 /** Adaptateur pur, testable avec un faux `mountGame`. */
 export function createStartGame(mount: (options: MountOptions) => GameHandle): StartGame {
-  return ({ prefs, onFirstPlacement, canvas, config, onEnd }) => {
+  return ({ prefs, onFirstPlacement, onGameEvent, canvas, config, onEnd }) => {
     let placed = false;
     return mount({
       canvas,
@@ -25,6 +27,7 @@ export function createStartGame(mount: (options: MountOptions) => GameHandle): S
       onEnd,
       sound: !prefs.muted,
       onEvent: (event) => {
+        onGameEvent?.(event);
         if (event.type !== 'placement' || placed) return; // un raté n'est pas une pose
         placed = true;
         onFirstPlacement?.();

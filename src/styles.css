@@ -35,3 +35,5 @@ button:disabled { opacity: 0.6; cursor: progress; }
 .fallback { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; }
 .fallback[hidden] { display: none; }
 .fallback input { font: inherit; font-size: 1rem; width: 100%; min-height: 44px; padding: 8px; border-radius: 8px; border: 2px solid var(--muted); background: #20202a; color: var(--fg); }
+.goals { margin: 0; padding: 0 0 0 1.2em; text-align: left; color: var(--muted); font-size: 0.95rem; display: grid; gap: 4px; }
+.goals.done { color: var(--accent); }

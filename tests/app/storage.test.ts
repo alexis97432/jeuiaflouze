@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   createLocalStore,
+  createMetaStore,
+  MAX_DAILY_RECORDS,
+  META_PREFIX,
   getBrowserStorage,
   MAX_RECENT_RESULTS,
   STORAGE_PREFIX,
@@ -112,5 +115,52 @@ describe('getBrowserStorage', () => {
     } as unknown as Window;
     expect(getBrowserStorage(win)).toBeNull();
     expect(getBrowserStorage(undefined)).toBeNull();
+  });
+});
+
+describe('createMetaStore (V2)', () => {
+  it('progression et records du jour sous poc:meta:v1:, sans toucher poc:v1:', () => {
+    const { storage, data } = fakeStorage();
+    data.set(`${STORAGE_PREFIX}best`, '7');
+    const meta = createMetaStore(storage);
+    meta.writeProgress({ completed: ['floors-5'] });
+    expect(meta.submitDaily('2026-11-16', 4)).toBe(true);
+    expect(meta.submitDaily('2026-11-16', 4)).toBe(false);
+    expect(meta.submitDaily('2026-11-16', 9)).toBe(true);
+    expect(meta.submitDaily('2026-11-16', 0)).toBe(false);
+    const again = createMetaStore(storage);
+    expect(again.readProgress()).toEqual({ completed: ['floors-5'] });
+    expect(again.readDailyBest('2026-11-16')).toBe(9);
+    expect(again.readDailyBest('2026-11-17')).toBe(0);
+    expect(createLocalStore(storage).readBest()).toBe(7); // record v1 conservé
+    expect([...data.keys()].filter((k) => k.startsWith(META_PREFIX)).sort()).toEqual([
+      `${META_PREFIX}daily`,
+      `${META_PREFIX}progress`,
+    ]);
+  });
+
+  it('garde les records des 14 dernières dates seulement', () => {
+    const meta = createMetaStore(fakeStorage().storage);
+    for (let d = 1; d <= 20; d++) meta.submitDaily(`2026-11-${String(d).padStart(2, '0')}`, d);
+    expect(meta.readDailyBest('2026-11-06')).toBe(0);
+    expect(meta.readDailyBest('2026-11-07')).toBe(7);
+    expect(meta.readDailyBest('2026-11-20')).toBe(20);
+    expect(MAX_DAILY_RECORDS).toBe(14);
+  });
+
+  it('records du jour corrompus ou date invalide : tolérés', () => {
+    const { storage, data } = fakeStorage();
+    data.set(`${META_PREFIX}daily`, '{"2026-11-16":-3}');
+    const meta = createMetaStore(storage);
+    expect(meta.readDailyBest('2026-11-16')).toBe(0);
+    expect(meta.submitDaily('pas une date', 5)).toBe(false);
+    expect(meta.submitDaily('2026-11-16', 2)).toBe(true);
+  });
+
+  it('stockage bloqué : progression gardée pour la session, persistent = false', () => {
+    const meta = createMetaStore(fakeStorage({ failGet: true, failSet: true }).storage);
+    meta.writeProgress({ completed: ['streak-2'] });
+    expect(meta.readProgress()).toEqual({ completed: ['streak-2'] });
+    expect(meta.persistent).toBe(false);
   });
 });
