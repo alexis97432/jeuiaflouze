@@ -17,7 +17,28 @@ export class Sfx {
   private master: GainNode | null = null;
   private closed = false;
 
-  constructor(private enabled: boolean, private audio: ThemeAudio = DEFAULT_AUDIO) {}
+  /** Gain maximal (volume 1). Le volume du joueur (0 à 1) le module. */
+  static readonly BASE_GAIN = 0.22;
+
+  constructor(private enabled: boolean, private audio: ThemeAudio = DEFAULT_AUDIO, private volume = 1) {
+    this.volume = Sfx.clampVolume(volume);
+  }
+
+  private static clampVolume(v: number): number {
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+  }
+
+  private gainValue(): number {
+    return this.enabled ? Sfx.BASE_GAIN * this.volume : 0;
+  }
+
+  /** Volume du joueur (V4), appliqué tout de suite si le son est déjà démarré. */
+  setVolume(value: number): void {
+    this.volume = Sfx.clampVolume(value);
+    if (this.master) this.master.gain.value = this.gainValue();
+  }
+
+  get currentVolume(): number { return this.volume; }
 
   /** Timbre et gamme de l'univers (V2) : la série de parfaits joue la gamme de l'univers. */
   setAudio(audio: ThemeAudio): void {
@@ -28,7 +49,7 @@ export class Sfx {
 
   setEnabled(value: boolean): void {
     this.enabled = value;
-    if (this.master) this.master.gain.value = value ? 0.22 : 0;
+    if (this.master) this.master.gain.value = this.gainValue();
   }
 
   unlock(): void {
@@ -44,7 +65,7 @@ export class Sfx {
         return;
       }
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.22;
+      this.master.gain.value = this.gainValue();
       this.master.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});

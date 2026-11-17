@@ -1,3 +1,5 @@
+// Police Fredoka (SIL OFL 1.1, voir docs/LICENCES-TIERS.md), servie avec le jeu : aucun appel externe.
+import '@fontsource-variable/fredoka';
 import './styles.css';
 import { RULES_VERSION } from './app/game-contract';
 import { loadGame } from './app/game-loader';
@@ -34,6 +36,8 @@ createShell({
   meta: createMetaStore(browserStorage),
   url: window.location.href,
   replaceUrl: (url) => window.history.replaceState(null, '', url),
+  // Bouton retour du téléphone : ramène à l'accueil, met la partie en pause (V4).
+  history: window.history,
   share: (data) => shareLink(data),
   newSeed: () => randomSeed(),
   newRunId: () => randomId(),
@@ -45,7 +49,7 @@ createShell({
   leaderboard: createLeaderboardService(import.meta.env.VITE_LEADERBOARD_URL as string | undefined),
   // Reprise : aucune régie réelle configurée (docs/SERVICES.md). Vidéo de démo libellée « Mode démo »
   // seulement en dev ou build de test marqué ; en production, aucune offre de vidéo.
-  // Vies : aucune tant que les achats vérifiés par le serveur ne sont pas exposés.
+  // Vies : celles achetées en pièces dans la boutique (progression locale, src/app/lives.ts).
   revive: {
     // Condition écrite en constantes de build (même règle que demoAdsAllowed) : Vite retire
     // entièrement la démo du build de production.

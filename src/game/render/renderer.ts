@@ -23,6 +23,8 @@ import {
 
 export { BLOCK_HEIGHT, reliefParts, SKIN_IDS, type ReliefParts, type SkinId } from './blocks';
 /** Bornes des effets : jamais plus d'objets que ça, quelle que soit la série. */
+/** Police du canvas, alignée sur l'interface V4 (Fredoka embarquée, sinon police arrondie du système). */
+export const GAME_FONT = '"Fredoka Variable", "Fredoka", ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif';
 export const MAX_DEBRIS = 16;
 export const MAX_SPARKS = 48;
 /** Au plus ce nombre d'éléments de décor dessinés par image. */
@@ -134,6 +136,11 @@ export class Renderer {
   private seed = 0x9e3779b9;
 
   private skin: DrawSkinId;
+  /**
+   * V4 : `light` (mode Fluide) = résolution interne plafonnée à 1,5, étincelles divisées par
+   * trois, débris et décor réduits. Purement visuel.
+   */
+  public quality: 'full' | 'light' = 'full';
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -183,7 +190,7 @@ export class Renderer {
 
   /** Ajuste la résolution interne à la taille CSS × devicePixelRatio. Renvoie true si changé. */
   resize(cssWidth: number, cssHeight: number, devicePixelRatio: number): boolean {
-    const dpr = Math.min(Math.max(devicePixelRatio || 1, 1), 3);
+    const dpr = Math.min(Math.max(devicePixelRatio || 1, 1), this.quality === 'light' ? 1.5 : 3);
     const w = Math.max(1, Math.round(cssWidth * dpr));
     const h = Math.max(1, Math.round(cssHeight * dpr));
     this.cssW = Math.max(1, cssWidth);
@@ -352,7 +359,7 @@ export class Renderer {
     for (const f of this.floats) {
       const rise = motion ? f.age * 40 : 0;
       ctx.globalAlpha = Math.max(0, 1 - f.age / 0.9);
-      ctx.font = `800 20px ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif`;
+      ctx.font = `800 20px ${GAME_FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
       ctx.lineWidth = 4;
@@ -462,8 +469,9 @@ export class Renderer {
     const hudRight = this.cssW * 0.8;
     const activeLine = this.cssH * ACTIVE_FRAC + 20;
     let drawn = 0;
-    for (let k = first; k <= last && drawn < MAX_DECOR; k++) {
-      for (let j = 0; j < 2 && drawn < MAX_DECOR; j++) {
+    const maxDecor = this.quality === 'light' ? Math.round(MAX_DECOR / 3) : MAX_DECOR;
+    for (let k = first; k <= last && drawn < maxDecor; k++) {
+      for (let j = 0; j < 2 && drawn < maxDecor; j++) {
         const id = k * 2 + j;
         const item: DecorItem = { x: unit(id * 4 + 1), r1: unit(id * 4 + 2), r2: unit(id * 4 + 3), r3: unit(id * 4 + 4) };
         const py = k * DECOR_SLOT + item.r1 * DECOR_SLOT * 0.8;
@@ -502,7 +510,7 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const big = Math.round(Math.min(72, this.cssW * 0.17));
-    const font = (weight: number, size: number) => `${weight} ${size}px ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif`;
+    const font = (weight: number, size: number) => `${weight} ${size}px ${GAME_FONT}`;
     // Liseré de la couleur opposée : le texte reste lisible même quand le ciel passe par des
     // tons moyens pendant une transition de palier.
     const halo = css(haloFor(ink), 0.7);
@@ -569,7 +577,7 @@ export class Renderer {
       ctx.textBaseline = 'middle';
       ctx.font = font(700, Math.round(big * 0.38));
       ctx.fillStyle = '#FFF4DB';
-      ctx.fillText(view.pause === 'hidden' ? 'Touchez pour reprendre' : 'Pause', this.cssW / 2, this.cssH / 2);
+      ctx.fillText(view.pause === 'hidden' ? 'Touche pour reprendre' : 'Pause', this.cssW / 2, this.cssH / 2);
     }
   }
 
@@ -673,7 +681,7 @@ export class Renderer {
   }
 
   private addDebris(b: Block, floor: number, side: -1 | 0 | 1): void {
-    if (this.debris.length >= MAX_DEBRIS) this.debris.shift();
+    if (this.debris.length >= (this.quality === 'light' ? 6 : MAX_DEBRIS)) this.debris.shift();
     const w = b.width / MILLI;
     const push = side === 0 ? 0 : side * (40 + 60 * (w / (START_WIDTH / MILLI)));
     this.debris.push({
@@ -685,6 +693,7 @@ export class Renderer {
   private addSparks(b: Block, floor: number, count: number): void {
     const y = (floor + 1) * BLOCK_HEIGHT;
     const colors = this.theme.sparks;
+    if (this.quality === 'light') count = Math.ceil(count / 3);
     for (let i = 0; i < count; i++) {
       if (this.sparks.length >= MAX_SPARKS) this.sparks.shift();
       const r1 = this.rand();

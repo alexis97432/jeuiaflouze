@@ -6,6 +6,7 @@
  * dessin : aucun RAF, écouteur, stockage, réseau, son, nom, URL ni identifiant.
  * Le shell (Alexis) convertit en fichier, partage, télécharge et écrit le texte.
  */
+import { GAME_FONT } from './renderer';
 import {
   MILLI,
   replayRun,
@@ -129,7 +130,7 @@ export const CARD_WIDTH = 1080;
 export const CARD_HEIGHT = 1350;
 
 const MODE_LABEL: Record<CardMode, string> = { free: 'Partie libre', challenge: 'Défi entre amis', daily: 'Tour du jour' };
-const FONT = (w: number, size: number) => `${w} ${size}px ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif`;
+const FONT = (w: number, size: number) => `${w} ${size}px ${GAME_FONT}`;
 const GOLD: Rgb = [255, 196, 46];
 
 /**

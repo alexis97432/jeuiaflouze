@@ -10,7 +10,26 @@ export const STORAGE_PREFIX = 'poc:v1:';
 export const MAX_RECENT_RESULTS = 10;
 export const MAX_SCORE = 1_000_000;
 
-export type Prefs = { muted: boolean };
+/**
+ * Préférences du joueur (V4). Format rétrocompatible : l'ancien `{ muted }` est lu tel quel et
+ * complété par les valeurs par défaut ; toute valeur inconnue ou abîmée est remplacée par défaut.
+ */
+export type ThemePref = 'system' | 'light' | 'dark';
+export type MotionPref = 'system' | 'reduce' | 'full';
+export type EffectsPref = 'full' | 'light';
+export type Prefs = {
+  muted: boolean;
+  /** Volume des sons, de 0 à 1. */
+  volume: number;
+  /** Thème de l'interface (pas l'univers des blocs). */
+  theme: ThemePref;
+  /** Animations : selon l'appareil, réduites ou normales. */
+  motion: MotionPref;
+  /** Effets visuels : complets, ou fluides (moins d'effets, pour les téléphones modestes). */
+  effects: EffectsPref;
+  /** Vibrations, quand l'appareil en propose. */
+  haptics: boolean;
+};
 export type StoredResult = { score: number; perfectCount: number; mode: 'free' | 'challenge' | 'daily' };
 
 export type LocalStore = {
@@ -24,7 +43,24 @@ export type LocalStore = {
   writePrefs(prefs: Prefs): void;
 };
 
-const DEFAULT_PREFS: Prefs = { muted: false };
+export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, theme: 'system', motion: 'system', effects: 'full', haptics: true };
+
+const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
+  typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+
+/** Préférences valides à partir de n'importe quelle valeur stockée (ancienne, partielle ou abîmée). */
+export function sanitizePrefs(raw: unknown): Prefs {
+  const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  const volume = typeof r.volume === 'number' && Number.isFinite(r.volume) ? Math.min(1, Math.max(0, r.volume)) : DEFAULT_PREFS.volume;
+  return {
+    muted: typeof r.muted === 'boolean' ? r.muted : DEFAULT_PREFS.muted,
+    volume: Math.round(volume * 100) / 100,
+    theme: pick(r.theme, ['system', 'light', 'dark'] as const, DEFAULT_PREFS.theme),
+    motion: pick(r.motion, ['system', 'reduce', 'full'] as const, DEFAULT_PREFS.motion),
+    effects: pick(r.effects, ['full', 'light'] as const, DEFAULT_PREFS.effects),
+    haptics: typeof r.haptics === 'boolean' ? r.haptics : DEFAULT_PREFS.haptics,
+  };
+}
 
 const isScore = (v: unknown): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= MAX_SCORE;
@@ -140,14 +176,8 @@ export function createLocalStore(storage: Storage | null): LocalStore {
       return true;
     },
     readRecent,
-    readPrefs: () =>
-      readJson(
-        'prefs',
-        (v): v is Prefs =>
-          typeof v === 'object' && v !== null && typeof (v as Prefs).muted === 'boolean',
-        DEFAULT_PREFS,
-      ),
-    writePrefs: (prefs) => kv.writeJson('prefs', { muted: prefs.muted }),
+    readPrefs: () => sanitizePrefs(kv.readRaw('prefs')),
+    writePrefs: (prefs) => kv.writeJson('prefs', sanitizePrefs(prefs)),
   };
 }
 
