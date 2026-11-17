@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { StepEvent } from '../../src/game/core';
 import { BLOCK_HEIGHT, MAX_DECOR, MAX_SPARKS, Renderer, reliefParts, type ViewState } from '../../src/game/render/renderer';
+import { edgeColors, isSkinId, SKIN_IDS } from '../../src/game/render/blocks';
+import { resolveAppearance } from '../../src/game/render/mount';
 import {
   contrast,
   getTheme,
@@ -213,5 +215,51 @@ describe('renderer (contexte factice)', () => {
     expect(strokes).toBeGreaterThan(5);
     expect(strokes).toBeLessThan(60);
     expect(BLOCK_HEIGHT).toBe(30);
+  });
+});
+
+describe('V2 (F4) : apparences', () => {
+  it('six apparences, identifiants stables convenus avec A3', () => {
+    expect(SKIN_IDS).toEqual(['gomme', 'marbre', 'bonbon', 'verre', 'strie', 'ceramique']);
+    expect(isSkinId('verre')).toBe(true);
+    expect(isSkinId('Verre')).toBe(false);
+    expect(isSkinId(undefined)).toBe(false);
+  });
+
+  it('resolveAppearance : sauvegarde obsolète ou abîmée → Confiserie / Gomme, sans erreur', () => {
+    expect(resolveAppearance({ theme: 'orbital', skin: 'verre' })).toEqual({ theme: 'orbital', skin: 'verre' });
+    expect(resolveAppearance({ theme: 'lune', skin: 'or' })).toEqual({ theme: 'confiserie', skin: 'gomme' });
+    expect(resolveAppearance({ theme: 'jardin' })).toEqual({ theme: 'jardin', skin: 'gomme' });
+    for (const raw of [null, undefined, 42, 'orbital', [], { theme: 1 }]) {
+      expect(resolveAppearance(raw)).toEqual({ theme: 'confiserie', skin: 'gomme' });
+    }
+  });
+
+  it.each(SKIN_IDS)('%s : bord de chaque bloc ≥ 3 sur le ciel derrière lui, dans chaque univers et à toute hauteur', (skin) => {
+    for (const theme of ALL) {
+      for (const h of HEIGHTS) {
+        const sky = skyAt(theme, h);
+        for (let y = 0.25; y <= 0.951; y += 0.05) {
+          const behind = mix(sky.top, sky.bottom, y);
+          for (const b of theme.blocks) {
+            const { face, outline } = edgeColors(b, skin, behind);
+            const edge = Math.max(contrast(face, behind), contrast(outline, behind));
+            expect(edge, `${theme.name}, ${skin}, hauteur ${h}, y ${y.toFixed(2)}, bloc ${b.join(',')}`).toBeGreaterThanOrEqual(3);
+          }
+        }
+      }
+    }
+  });
+
+  it('le renderer garde son apparence et la change en vidant le cache de dégradés', () => {
+    const { canvas } = fakeCanvas();
+    const r = new Renderer(canvas, true, getTheme('jardin'), 'ceramique');
+    expect(r.skinId).toBe('ceramique');
+    r.resize(390, 844, 2);
+    r.draw(viewFor(10), 16);
+    expect(r.gradientCacheSize).toBeGreaterThan(0);
+    r.setSkin('verre');
+    expect(r.skinId).toBe('verre');
+    expect(r.gradientCacheSize).toBe(0);
   });
 });

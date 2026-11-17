@@ -3,7 +3,23 @@ import { FixedStepDriver } from '../input/fixed-step';
 import { attachInput } from '../input/input';
 import { Sfx } from './audio';
 import { Renderer } from './renderer';
-import { getTheme, VOYAGE, type ThemeId } from './themes';
+import { DEFAULT_SKIN, isSkinId, type SkinId } from './blocks';
+import { DEFAULT_THEME, getTheme, isThemeId, VOYAGE, type ThemeId } from './themes';
+
+/** Univers et apparence de blocs choisis par le shell (V2). Purement visuels. */
+export type Appearance = { theme: ThemeId; skin: SkinId };
+
+/**
+ * Apparence valide à partir d'une valeur quelconque (sauvegarde obsolète, URL…) :
+ * identifiant inconnu → valeur par défaut (Confiserie, Gomme), sans erreur.
+ */
+export function resolveAppearance(raw: unknown): Appearance {
+  const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  return {
+    theme: isThemeId(r.theme) ? r.theme : DEFAULT_THEME,
+    skin: isSkinId(r.skin) ? r.skin : DEFAULT_SKIN,
+  };
+}
 
 export type GameHandle = {
   pause(): void;
@@ -26,6 +42,11 @@ export type MountOptions = {
   sound?: boolean;
   /** Proposition additive : force reduced-motion ; défaut = préférence système. */
   reducedMotion?: boolean;
+  /**
+   * V2 (F4) : univers et apparence des blocs. Validés à la création : un identifiant inconnu
+   * retombe sur Confiserie / Gomme. Aucun effet sur les règles, le rejeu ou le score.
+   */
+  appearance?: Appearance;
 };
 
 /**
@@ -33,6 +54,7 @@ export type MountOptions = {
  * les tests. L'option publique `appearance` sera ajoutée en F4 après accord avec Alexis.
  */
 export type InternalMountOptions = MountOptions & {
+  /** Raccourci interne (démo, tests) ; `appearance.theme` prime s'il est fourni. */
   theme?: ThemeId;
   /** Variante « la tour voyage » (avis FLK V2) : les univers se succèdent avec la hauteur. */
   voyage?: boolean;
@@ -60,8 +82,9 @@ export function createGame(options: InternalMountOptions): GameHandle & { inspec
   const doc = canvas.ownerDocument;
   const win = doc.defaultView ?? window;
   const media = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  const theme = options.voyage ? VOYAGE : getTheme(options.theme);
-  const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme);
+  const appearance = resolveAppearance(options.appearance ?? { theme: options.theme });
+  const theme = options.voyage ? VOYAGE : getTheme(appearance.theme);
+  const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme, appearance.skin);
   const sfx = new Sfx(options.sound ?? true, theme.audio);
 
   let destroyed = false;

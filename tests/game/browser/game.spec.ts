@@ -297,3 +297,33 @@ test.describe('V2 (F3) : univers', () => {
     console.info('[mesure Chromium headless, conteneur cloud, CPU ×4, 50 étages] ' + lines.join(' | '));
   });
 });
+
+test.describe('V2 (F4) : apparences', () => {
+  for (const skin of ['gomme', 'marbre', 'bonbon', 'verre', 'strie', 'ceramique']) {
+    test(`${skin} : aucune matière ne déborde du bloc (trois univers, pixels réels)`, async ({ page }) => {
+      await page.goto(URL);
+      for (const theme of ['confiserie', 'orbital', 'jardin']) {
+        const r = await page.evaluate(([t, s]) => (window as any).__flk.reliefExtent(t, s), [theme, skin]);
+        expect(r.lo, `${theme}/${skin}`).toBeGreaterThanOrEqual(89);
+        expect(r.hi, `${theme}/${skin}`).toBeLessThanOrEqual(240);
+        expect(r.count, `${theme}/${skin}`).toBeGreaterThan(140);
+      }
+    });
+  }
+
+  test('18 aperçus univers × apparence, tous différents ; false sans Canvas 2D', async ({ page }) => {
+    await page.goto(URL);
+    const prints = await page.evaluate(() => (window as any).__flk.previewBoard());
+    expect(Object.keys(prints)).toHaveLength(18);
+    expect(new Set(Object.values(prints)).size).toBe(18);
+    expect(await page.evaluate(() => (window as any).__flk.previewWithoutContext())).toBe(false);
+  });
+
+  test('appearance transmise au montage : le jeu applique univers et apparence', async ({ page }) => {
+    await page.goto(URL);
+    await mount(page, { seed: 3, theme: 'jardin', skin: 'ceramique' });
+    await waitTicks(page, 5);
+    const s = await page.evaluate(() => (window as any).__flk.state());
+    expect([s.theme, s.skin]).toEqual(['Jardin', 'ceramique']);
+  });
+});

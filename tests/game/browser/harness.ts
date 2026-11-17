@@ -6,7 +6,9 @@
 import { verifyRunResult, type RunResult } from '../../../src/game/core';
 import { createGame } from '../../../src/game/render/mount';
 import { Renderer } from '../../../src/game/render/renderer';
-import { getTheme } from '../../../src/game/render/themes';
+import { getTheme, THEME_IDS } from '../../../src/game/render/themes';
+import { SKIN_IDS } from '../../../src/game/render/blocks';
+import { renderAppearancePreview } from '../../../src/game/render/preview';
 
 const live = new Map<string, number>();
 const keyOf = (t: EventTarget, type: string) =>
@@ -61,19 +63,21 @@ function snapshot() {
     audio: i.sfx.context?.state ?? 'none', destroyed: i.destroyed, endReported: i.endReported,
     inputTicks: [...i.sim.inputTicks], perfectCount: i.sim.perfectCount, reducedMotion: i.renderer.reducedMotion,
     moving: i.sim.moving, base: i.sim.base, speed: i.sim.speed, direction: i.sim.direction,
-    decor: i.renderer.decorCount, gradients: i.renderer.gradientCacheSize, theme: i.renderer.themeName,
+    decor: i.renderer.decorCount, gradients: i.renderer.gradientCacheSize, theme: i.renderer.themeName, skin: i.renderer.skinId,
   };
 }
 
 const api = {
-  mount(opts: { seed?: number; sound?: boolean; reducedMotion?: boolean; theme?: string; voyage?: boolean } = {}) {
+  mount(opts: { seed?: number; sound?: boolean; reducedMotion?: boolean; theme?: string; skin?: string; voyage?: boolean } = {}) {
     game?.destroy();
     const options: Parameters<typeof createGame>[0] = {
       canvas, config: { seed: opts.seed ?? 1, rulesVersion: 1 }, onEnd: (r) => ends.push(r), onEvent: (e) => gameEvents.push(e),
     };
     if (opts.sound !== undefined) options.sound = opts.sound;
     if (opts.reducedMotion !== undefined) options.reducedMotion = opts.reducedMotion;
-    if (opts.theme !== undefined) options.theme = opts.theme as NonNullable<typeof options.theme>;
+    if (opts.theme !== undefined || opts.skin !== undefined) {
+      options.appearance = { theme: (opts.theme ?? 'confiserie') as never, skin: (opts.skin ?? 'gomme') as never };
+    }
     if (opts.voyage) options.voyage = true;
     game = createGame(options);
     const r = game.inspect().renderer;
@@ -107,12 +111,12 @@ const api = {
    * décor). Renvoie les colonnes, sur toute la hauteur du bloc, où les deux images diffèrent.
    * Toute différence hors de [90, 240[ signifie que le bloc a débordé de sa largeur logique.
    */
-  reliefExtent(theme: string) {
+  reliefExtent(theme: string, skin = 'gomme') {
     const render = (topWidth: number) => {
       const c = document.createElement('canvas');
       c.style.cssText = 'position:fixed;left:0;top:0;width:360px;height:640px';
       document.body.append(c);
-      const r = new Renderer(c, true, getTheme(theme));
+      const r = new Renderer(c, true, getTheme(theme), skin as never);
       r.resize(360, 640, 1);
       const stack = [{ left: 60_000, width: 240_000 }, { left: 90_000, width: topWidth }];
       r.draw({ stack, moving: null, score: 1, perfectStreak: 0, pause: 'none' }, 16);
@@ -130,6 +134,37 @@ const api = {
     }
     const sorted = [...cols].sort((x, y) => x - y);
     return { lo: sorted[0] ?? -1, hi: sorted[sorted.length - 1] ?? -1, count: sorted.length };
+  },
+  /** Planche des 18 aperçus univers × apparence (captures et tests). Renvoie une empreinte par aperçu. */
+  previewBoard(cell = { w: 120, h: 84 }) {
+    const grid = document.createElement('div');
+    grid.id = 'board';
+    grid.style.cssText = `position:fixed;inset:0;z-index:9;background:#FFF4DB;display:grid;grid-template-columns:repeat(${SKIN_IDS.length},${cell.w}px);gap:6px;padding:6px;align-content:start;font:600 11px system-ui;color:#20213D`;
+    const prints: Record<string, number> = {};
+    for (const theme of THEME_IDS) {
+      for (const skin of SKIN_IDS) {
+        const fig = document.createElement('figure');
+        fig.style.margin = '0';
+        const c = document.createElement('canvas');
+        c.style.cssText = `width:${cell.w}px;height:${cell.h}px;border-radius:8px;display:block`;
+        const cap = document.createElement('figcaption');
+        cap.textContent = `${theme} · ${skin}`;
+        fig.append(c, cap);
+        grid.append(fig);
+        document.body.append(grid);
+        renderAppearancePreview(c, { theme, skin }, { width: cell.w, height: cell.h, dpr: 2 });
+        const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let h = 2166136261;
+        for (let i = 0; i < d.length; i += 16) { h ^= d[i]! ^ (d[i + 1]! << 8) ^ (d[i + 2]! << 16); h = Math.imul(h, 16777619) >>> 0; }
+        prints[`${theme}/${skin}`] = h >>> 0;
+      }
+    }
+    return prints;
+  },
+  previewWithoutContext() {
+    const c = document.createElement('canvas');
+    c.getContext = (() => null) as typeof c.getContext;
+    return renderAppearancePreview(c, { theme: 'orbital', skin: 'verre' }, { width: 50, height: 40 });
   },
   /** Garde une référence au contexte audio pour vérifier sa fermeture après destroy. */
   holdAudio() { heldAudio = game?.inspect().sfx.context ?? null; return heldAudio?.state ?? 'none'; },
