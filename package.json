@@ -13,7 +13,10 @@
     "build": "vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "test:e2e": "playwright test --trace off && npm run test:game-browser",
-    "test:game-browser": "playwright test -c tests/game/browser/playwright.config.ts --trace off"
+    "test:game-browser": "playwright test -c tests/game/browser/playwright.config.ts --trace off",
+    "server:build": "vite build -c server/vite.config.ts",
+    "server:start": "node dist-server/main.mjs",
+    "server:dev": "npm run server:build && DEMO=1 ALLOWED_ORIGINS=http://localhost:5173 node dist-server/main.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

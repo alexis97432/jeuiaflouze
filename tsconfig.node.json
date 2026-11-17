@@ -3,5 +3,5 @@
   // tsconfig.json, sans types Node : `process` ou `Buffer` y échouent au typecheck.
   "extends": "./tsconfig.json",
   "compilerOptions": { "types": ["vite/client", "node"] },
-  "include": ["src", "tests", "vite.config.ts", "playwright.config.ts"]
+  "include": ["src", "tests", "server", "vite.config.ts", "playwright.config.ts"]
 }
