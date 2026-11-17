@@ -289,3 +289,28 @@ test('E1 : deux onglets du même navigateur ne perdent ni gains ni réclamation'
   expect(saved.xp).toBeGreaterThan(0); // mais toujours de l'XP (le 1er étage ne se rate pas)
   await other.close();
 });
+
+test('E1 : sous le vrai verrou Web Locks, un onglet concurrent ne perd pas la réclamation', async ({ page, context }) => {
+  await context.addInitScript(() => {
+    if (localStorage.getItem('poc:meta:v1:progress') === null) {
+      localStorage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 0, xp: 0, grants: ['v2-objectives-backfill'] }));
+    }
+  });
+  await page.goto('/');
+  const other = await context.newPage();
+  await other.goto('/');
+  // L'autre onglet prend le verrou, lit, travaille 800 ms, puis écrit +100.
+  await other.evaluate(() => {
+    void navigator.locks.request('poc:meta:v1:progress', async () => {
+      const doc = JSON.parse(localStorage.getItem('poc:meta:v1:progress')!);
+      await new Promise((r) => setTimeout(r, 800));
+      localStorage.setItem('poc:meta:v1:progress', JSON.stringify({ ...doc, coins: doc.coins + 100 }));
+    });
+  });
+  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap(); // pendant que l'autre tient le verrou
+  await expect(page.getByTestId('coins')).toHaveText('105 pièces');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress')!));
+  expect(saved).toMatchObject({ coins: 105 });
+  expect(saved.calendar.lastClaimDate).not.toBeNull();
+  await other.close();
+});

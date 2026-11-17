@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunResult } from '../../src/app/game-contract';
 import type { StartGame, StartOptions } from '../../src/app/game-loader';
-import { createShell, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
+import { createShell, PROGRESS_LOCK, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
 import { createTracker, memorySink } from '../../src/platform/metrics';
 import type { ShareOutcome } from '../../src/platform/share';
 import { createLocalStore, createMetaStore } from '../../src/platform/storage';
@@ -669,5 +669,66 @@ describe('passage de niveau (revue FLK, m1)', () => {
     button('Jouer').click();
     await end(30); // +32 XP → 132 : niveau 3, sans titre propre
     expect(text('level-up')).toBe('Niveau 3 atteint !');
+  });
+});
+
+/**
+ * Gestionnaire Web Locks fidèle : un seul détenteur par nom, file d'attente FIFO, et le verrou
+ * reste tenu tant que la promesse renvoyée par le détenteur n'est pas résolue.
+ */
+function fakeLocks() {
+  const tails = new Map<string, Promise<unknown>>();
+  const requested: string[] = [];
+  return {
+    requested,
+    request(name: string, callback: () => unknown): Promise<unknown> {
+      requested.push(name);
+      const previous = tails.get(name) ?? Promise.resolve();
+      const run = previous.then(() => callback());
+      tails.set(name, run.catch(() => undefined));
+      return run;
+    },
+  } as unknown as Pick<LockManager, 'request'> & { requested: string[] };
+}
+
+describe('E1 branché : onglets réellement concurrents sous verrou Web Locks (revue C6 Codex)', () => {
+  it("un onglet qui tient le verrou pendant sa lecture-écriture ne perd pas la réclamation de l'autre", async () => {
+    document.body.innerHTML = '<main id="app"></main>';
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 0, xp: 0, grants: ['v2-objectives-backfill'] }));
+    const locks = fakeLocks();
+    const { button, text } = setup({ meta: createMetaStore(storage), store: createLocalStore(storage), locks });
+
+    // Onglet B (simulé) : lit, attend (traitement en cours), puis écrit +100 — tout sous le verrou.
+    let releaseB!: () => void;
+    const bDone = locks.request(PROGRESS_LOCK, async () => {
+      const docB = storage.dump('poc:meta:v1:progress') as { coins: number };
+      await new Promise<void>((r) => (releaseB = r));
+      storage.setItem('poc:meta:v1:progress', JSON.stringify({ ...docB, coins: docB.coins + 100 }));
+    });
+
+    // Onglet A réclame PENDANT que B tient le verrou : sa section attend.
+    button('Récupérer +5').click();
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 0 }); // A n'a pas écrit
+    releaseB();
+    await bDone;
+    await flush();
+    // A a relu APRÈS l'écriture de B : 100 + 5, réclamation conservée.
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 105, calendar: { lastClaimDate: '2026-11-16' } });
+    expect(text('coins')).toBe('105 pièces');
+    expect(locks.requested.filter((n) => n === PROGRESS_LOCK)).toHaveLength(2);
+  });
+
+  it('la fin de partie (record, progression, record du jour) passe sous le même verrou', async () => {
+    const locks = fakeLocks();
+    const storage = memoryStorage();
+    const { button, end, text } = setup({ meta: createMetaStore(storage), store: createLocalStore(storage), locks });
+    button('Jouer la tour du jour').click();
+    await end(6);
+    await flush();
+    expect(locks.requested).toEqual([PROGRESS_LOCK]);
+    expect(text('gains')).toContain('XP');
+    expect(storage.dump('poc:meta:v1:daily')).toEqual({ '2026-11-16': 6 });
   });
 });

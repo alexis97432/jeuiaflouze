@@ -69,7 +69,15 @@ export type ShellOptions = {
   doc?: Document;
   /** Horloge monotone (ms) ; injectable pour les tests. */
   now?: () => number;
+  /**
+   * Verrou entre onglets (Web Locks). Par défaut `navigator.locks` ; `null` force le repli
+   * sans verrou (navigateur sans Web Locks). Injectable pour les tests.
+   */
+  locks?: Pick<LockManager, 'request'> | null;
 };
+
+/** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
+export const PROGRESS_LOCK = 'poc:meta:v1:progress';
 
 export type Shell = {
   readonly screen: Screen;
@@ -121,6 +129,25 @@ export function createShell(options: ShellOptions): Shell {
    * permettre une seconde réclamation du même jour (revue E1 branché FLK, M2). Synchrone :
    * rien ne peut s'intercaler entre la relecture et l'écriture dans un même onglet.
    */
+  const locks = options.locks !== undefined ? options.locks : (doc.defaultView?.navigator.locks ?? null);
+  /**
+   * Exécute `section` (lecture → modification → écriture, synchrone) sous un verrou Web Locks
+   * commun à tous les onglets du jeu : deux onglets réellement concurrents ne peuvent plus lire
+   * tous deux avant d'écrire (revue C6 Codex, revue E1 branché FLK M2). Sans Web Locks
+   * (navigateurs anciens), repli : relecture juste avant l'écriture, sans exclusion entre onglets.
+   */
+  const withProgressLock = (section: () => void): void => {
+    if (!locks) {
+      section();
+      return;
+    }
+    void locks.request(PROGRESS_LOCK, () => {
+      if (!destroyed) section();
+    }).catch((error: unknown) => {
+      console.error('[shell] verrou de progression indisponible, repli sans verrou', error);
+      if (!destroyed) section();
+    });
+  };
   const updateDoc = <R>(change: (current: ProgressDoc) => { doc: ProgressDoc; result: R }): R => {
     refreshDoc();
     const { doc: next, result } = change(progress);
@@ -210,17 +237,18 @@ export function createShell(options: ShellOptions): Shell {
         : 'Récompense de connexion déjà récupérée aujourd’hui.');
     panel.append(calendarLine);
     if (status.canClaim) {
-      const claim = domButton(doc, `Récupérer +${status.reward}`, () => {
+      const claim = domButton(doc, `Récupérer +${status.reward}`, () => withProgressLock(() => {
         const result = updateDoc((current) => {
           const r = claimCalendar(current, utcDateKey(today()));
           return { doc: r.doc, result: r };
         });
         if (result.claimed) announce(`+${result.reward} pièces récupérées.`);
         else announce('Récompense du jour déjà récupérée.');
+        if (screen !== 'home') return;
         renderHome();
         view.querySelector<HTMLElement>('[data-testid="calendar"]')?.setAttribute('tabindex', '-1');
         view.querySelector<HTMLElement>('[data-testid="calendar"]')?.focus();
-      }, 'ghost', 'claim');
+      }), 'ghost', 'claim');
       panel.append(claim);
     }
     panel.append(el(doc, 'p', { class: 'hint small' },
@@ -239,17 +267,17 @@ export function createShell(options: ShellOptions): Shell {
 
   const renderCollectionScreen = (focusCard?: string) => {
     const { nodes, focus } = renderCollection(doc, progress, {
-      onSelect: (next) => {
+      onSelect: (next) => withProgressLock(() => {
         const changed = updateDoc((current) => {
           const updated = selectAppearance(current, next);
           const same = updated.selected.theme === current.selected.theme && updated.selected.skin === current.selected.skin;
           return { doc: same ? current : updated, result: !same };
         });
-        if (!changed) return;
+        if (!changed || screen !== 'collection') return;
         // Le focus reste sur la carte choisie, pas sur le titre.
         renderCollectionScreen(next.theme ? `card-theme-${next.theme}` : `card-skin-${next.skin}`);
         announce('Sélection enregistrée.');
-      },
+      }),
       onBack: () => {
         renderHome();
         view.querySelector<HTMLButtonElement>('[data-testid="open-collection"]')?.focus();
@@ -443,27 +471,30 @@ export function createShell(options: ShellOptions): Shell {
       perfectCount: result.perfectCount,
     });
     stopRun();
-    const isRecord = store.submitScore({
-      score: result.score,
-      perfectCount: result.perfectCount,
-      mode: current.mode,
-    });
-    const economy = updateDoc((doc) => {
-      const e = applyRunEconomy(doc, current.activeAtStart, {
-        runId: current.runId,
-        mode: current.mode,
+    // Record, progression et record du jour : une seule section exclusive entre onglets.
+    withProgressLock(() => {
+      const isRecord = store.submitScore({
         score: result.score,
         perfectCount: result.perfectCount,
-        longestStreak: current.events.longestStreak,
+        mode: current.mode,
       });
-      return { doc: e.doc, result: e };
-    });
-    const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
-    renderResult(current, result, {
-      isRecord,
-      isDailyRecord,
-      completedNow: economy.completedNow,
-      gained: economy.gained,
+      const economy = updateDoc((doc) => {
+        const e = applyRunEconomy(doc, current.activeAtStart, {
+          runId: current.runId,
+          mode: current.mode,
+          score: result.score,
+          perfectCount: result.perfectCount,
+          longestStreak: current.events.longestStreak,
+        });
+        return { doc: e.doc, result: e };
+      });
+      const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
+      renderResult(current, result, {
+        isRecord,
+        isDailyRecord,
+        completedNow: economy.completedNow,
+        gained: economy.gained,
+      });
     });
   };
 
