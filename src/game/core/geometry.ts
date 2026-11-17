@@ -23,18 +23,19 @@ export type PlacementOutcome =
  * Ordre des règles :
  * 1. intersection horizontale ≤ 0 (bords qui se touchent inclus) → raté,
  *    même si l'écart des bords gauches est dans la tolérance ;
- * 2. |gauche mobile − gauche base| ≤ PERFECT_TOLERANCE → parfait : la nouvelle
+ * 2. |gauche mobile − gauche base| ≤ tolérance (PERFECT_TOLERANCE par défaut ; plus large
+ *    sous l'Aimant des règles v3) → parfait : la nouvelle
  *    base reprend exactement la base (pas d'agrandissement), rien ne tombe ;
  * 3. sinon on garde exactement l'intersection et le reste tombe d'un seul côté
  *    (le bloc mobile a la largeur de la base, donc un seul débord est possible).
  */
-export function resolvePlacement(base: Block, moving: Block): PlacementOutcome {
+export function resolvePlacement(base: Block, moving: Block, tolerance: number = PERFECT_TOLERANCE): PlacementOutcome {
   const left = Math.max(base.left, moving.left);
   const right = Math.min(base.left + base.width, moving.left + moving.width);
   const overlap = right - left;
   if (overlap <= 0) return { kind: 'missed' };
 
-  if (Math.abs(moving.left - base.left) <= PERFECT_TOLERANCE) {
+  if (Math.abs(moving.left - base.left) <= tolerance) {
     return { kind: 'placed', placed: { left: base.left, width: base.width }, cut: null, perfect: true };
   }
 

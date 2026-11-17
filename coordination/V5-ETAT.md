@@ -23,7 +23,7 @@ Voir [`docs/V5-DIRECTION.md`](../docs/V5-DIRECTION.md) : style « Pop Choc », r
 | # | Étape | État |
 |---|---|---|
 | E0 | Lecture de l'état réel, diagnostic et direction créative | fait |
-| E1 | Règles v3 : `src/game/core/v3.ts`, rejeu, tests et rejeux de référence ; v1 et v2 intactes | à faire |
+| E1 | Règles v3 : `src/game/core/v3.ts`, rejeu, tests et rejeux de référence ; v1 et v2 intactes | fait (225 tests moteur, `tests/game/v3.test.ts`, `golden-v3.json`) |
 | E2 | Branchement v3 : contrat, liens `?v=3`, résultat, carte, classement, serveur | à faire |
 | E3 | Rendu « Pop Choc » : effets de pose, parfait, séries, Fièvre, boosts, chute, absurdités, interface en jeu | à faire |
 | E4 | Son et vibrations coordonnés | à faire |

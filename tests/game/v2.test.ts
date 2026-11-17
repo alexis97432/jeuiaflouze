@@ -244,8 +244,8 @@ describe('v2 : rejeu', () => {
       .toBe('bad_continue_ticks');
     // continueTicks interdit en v1.
     expect(err({ seed: 1, rulesVersion: 1, inputTicks: [1], continueTicks: [] })).toBe('bad_continue_ticks');
-    // Version inconnue.
-    expect(err({ ...base, rulesVersion: 3 })).toBe('bad_rules_version');
+    // Version inconnue (la v3 existe depuis la V5).
+    expect(err({ ...base, rulesVersion: 4 })).toBe('bad_rules_version');
   });
 
   it('rejette une entrée pendant le compte à rebours (bornes t+1 et t+360), accepte t+361', () => {

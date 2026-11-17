@@ -59,7 +59,7 @@ describe('validation de rejeu malformé', () => {
     ['null', null, 'malformed'],
     ['chaîne', 'abc', 'malformed'],
     ['nombre', 42, 'malformed'],
-    ['rulesVersion 3', { ...base, rulesVersion: 3 }, 'bad_rules_version'],
+    ['rulesVersion 4 (inconnue)', { ...base, rulesVersion: 4 }, 'bad_rules_version'],
     ['continueTicks en v1', { ...base, continueTicks: [] }, 'bad_continue_ticks'],
     ['rulesVersion "1"', { ...base, rulesVersion: '1' }, 'bad_rules_version'],
     ['rulesVersion absente', { seed: 1, inputTicks: [1] }, 'bad_rules_version'],
