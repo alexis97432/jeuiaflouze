@@ -10,6 +10,10 @@ import { Renderer } from '../../../src/game/render/renderer';
 import { getTheme, THEME_IDS } from '../../../src/game/render/themes';
 import { ALL_SKIN_IDS, SKIN_IDS } from '../../../src/game/render/blocks';
 import { drawAppearancePreview, renderAppearancePreview } from '../../../src/game/render/preview';
+import { renderResultCard, type CardMode } from '../../../src/game/render/card';
+import golden2 from '../golden-v2.json';
+import golden1 from '../golden-v1.json';
+import { botRun } from '../bot';
 
 const live = new Map<string, number>();
 const keyOf = (t: EventTarget, type: string) =>
@@ -88,6 +92,35 @@ const api = {
     r.draw = (v, n) => { const t0 = performance.now(); draw(v, n); drawMs.push(performance.now() - t0); };
   },
   pause: () => game?.pause(),
+  /**
+   * Carte de résultat F9 affichée plein écran (captures) : `which` = v1, v2, v2-reprise ou long.
+   * Renvoie une empreinte des pixels et false si le rendu est refusé.
+   */
+  card(which: 'v1' | 'v2' | 'v2-reprise' | 'long' | 'faux', opts: { theme?: string; skin?: string; mode?: CardMode; day?: string } = {}) {
+    document.getElementById('card')?.remove();
+    const c = document.createElement('canvas');
+    c.id = 'card';
+    c.style.cssText = 'position:fixed;left:0;top:0;width:540px;height:675px;z-index:20';
+    document.body.append(c);
+    const strip = <T extends { name: string; stackFingerprint: number }>(v: T) => { const { name: _n, stackFingerprint: _f, ...r } = v; return r; };
+    const v1 = (() => { const { name: _n, stackFingerprint: _f, topBlock: _t, bestPerfectStreak: _b, ...r } = golden1.vectors[4]!; return { ...r, rulesVersion: 1 }; })();
+    const result = which === 'v1' ? v1
+      : which === 'v2' ? strip(golden2.vectors[0]!)
+        : which === 'v2-reprise' ? strip(golden2.vectors[1]!)
+          : which === 'long' ? botRun(7, 150, 4000)
+            : { ...strip(golden2.vectors[0]!), score: 999 };
+    const ok = renderResultCard(c, {
+      result: result as never,
+      appearance: { theme: (opts.theme ?? 'confiserie') as never, skin: 'gomme' },
+      mode: opts.mode ?? 'free',
+      ...(opts.day ? { day: opts.day } : {}),
+    }, { scale: 1, ...(opts.skin ? { drawSkin: opts.skin as never } : {}) });
+    if (!ok) return { ok, print: 0, w: c.width, h: c.height };
+    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+    let h = 2166136261;
+    for (let i = 0; i < d.length; i += 64) { h ^= d[i]! ^ (d[i + 1]! << 8) ^ (d[i + 2]! << 16); h = Math.imul(h, 16777619) >>> 0; }
+    return { ok, print: h >>> 0, w: c.width, h: c.height };
+  },
   continueRun: () => game?.continueRun() ?? false,
   declineContinue: () => game?.declineContinue(),
   /** État v2 lu dans la simulation (jauge, bonus, reprise). */
