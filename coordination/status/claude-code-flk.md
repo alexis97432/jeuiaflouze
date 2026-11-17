@@ -1,55 +1,31 @@
 # Claude Code FLK
 
-## Bilan V3 FLK — 17 novembre 2026, après C7
+## Bilan V3 FLK — 17 novembre 2026, après C8
 
-Base d'intégration : `31575e4`, la V2 publiée. **Aucune PR V3 n'est fusionnée.** Je ne fusionne pas mes propres PR.
-
-### Mes livraisons
+**Intégré** (par Alexis, après PASS Codex) : F6 `e702748`, F8 `57928d7`, F7 `cf95c51` (`c77c909`) et F9 `d8ba36f` (`608cb7c`).
 
 | PR | Tâche | SHA | État |
 |---|---|---|---|
-| #28 | F6 règles v2 | `e702748` | **PASS Codex** (C7) |
-| #30 | F8 : 8 apparences dessinées | `57928d7` | **PASS Codex** (C7) |
-| #39 | F7 : bonus et reprise jouables dans le jeu (empilée sur F6 et F8) | `cf95c51` | revue Codex demandée |
-| #40 | F9 : carte de résultat (empilée sur F7) | `d8ba36f` | revue Codex demandée |
-| #41 | F8b : apparences V3 exposées sans élargir `SkinId` (empilée sur F9) | `1509f1e` | revue Codex demandée |
-| #31 | revues V3 d'Alexis (A1 à A6) | `84cb428` | 7 PASS |
+| #41 | F8b : apparences V3 exposées, avec le correctif R1 de C8 (carte publique) | `28c0ec1` | nouvelle revue Codex demandée |
 
-Ordre d'intégration : #28, #30, #39, #40, #41, une pile linéaire. Fusion d'essai avec A6 (#37) : aucun conflit, typecheck 0, 433 tests vitest et 67 tests e2e passés.
+**Fusions des PR d'Alexis par FLK** (PASS FLK sur les SHA exacts, CI verte, arbre final testé) :
+- #26 A1 (`88ab97c`) → `5213024` ;
+- #29 A2 (`337f771`) → `0c398eb` ;
+- #32 A3 (`100828c`) → `6dc710f` ;
+- #34 A4 (`fa44b5b`) → `431f032`.
 
-### Éléments par état
+GitHub signale un faux conflit (plusieurs ancêtres communs) sur #33 A3b (`922685d`), #35 A5 (`96d52da`) et #37 A6 (`d960367`). `git merge-tree` ne trouve aucun conflit. Je les intègre donc par #45 : trois commits de fusion seulement, typecheck 0, 432 tests vitest et 67 tests e2e passés.
 
-Rien de la V3 n'est encore publié.
+**Revues** :
+- #42 A6b (`875fc8e`) : **CHANGES_REQUESTED**. La carte d'un skin V3 est dessinée en Gomme, car la PR embarque F8b `1509f1e`. Il faut refusionner `28c0ec1` et retirer le transtypage.
+- Le reste d'A6b est prêt : parties en v2, liens v2 conservés, anciens liens v1, vie rendue, catalogue `AnySkinId`.
 
-**Fonctionnel dans le jeu, testé, en attente de revue et d'intégration :**
-- règles v2 : jauge, Ralenti et ×2, points distincts de la hauteur ;
-- offre de reprise unique avec compte à rebours (F7) ;
-- carte de résultat (F9) ;
-- 8 apparences V3 utilisables par l'option publique (F8b) ;
-- démo du jeu en v2 par défaut.
-
-**À brancher côté Alexis (A6b, revue #37)** :
-- lancer les parties en v2 : sans cela, bonus et reprise n'apparaissent pas dans l'application ;
-- brancher l'image de résultat sur `renderResultCard` ;
-- passer à `isAnySkinId` et `AnySkinId` pour la boutique, le passe et la sélection ;
-- compenser une vie consommée si la reprise est refusée.
-
-**Démo, étiquetée :**
-- offre de reprise de la démo du jeu, sans vidéo ni vie ;
-- régie vidéo et paiements de démo, en développement seulement ;
-- joueurs de démo du classement.
-
-**Bloqués par des dépendances extérieures** (décisions du propriétaire du projet) :
-- hébergement du serveur : le classement reste Indisponible sur Pages ;
-- prestataire de paiement et comptes : vies payantes et premium restent Indisponibles ;
-- régie vidéo et public visé.
-
-Aucune de ces dépendances ne bloque le jeu gratuit ni les tâches F7, F9 et F8b.
-
-### Limites
-- Aucun test sur un vrai téléphone.
-- Les réglages restent des hypothèses à tester en jeu.
-- L'holographique est une image fixe.
+**Éléments par état** :
+- **Rien de la V3 n'est encore publié.**
+- **Fonctionnel une fois #45 et #42 intégrés** : bonus, reprise, carte et skins V3 dans l'application.
+- **Démo** : vidéo de démo en développement seulement ; joueurs de démo du classement.
+- **Indisponible, faute de prestataire** : classement en ligne sur Pages, paiements, vidéo réelle. Aucune de ces dépendances ne bloque le jeu gratuit.
+- **Limites** : aucun test sur un vrai téléphone ; réglages à tester en jeu.
 
 ## Avis V2 indépendant (brief C3, PR #10 `8403cfa`)
 
