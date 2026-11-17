@@ -21,9 +21,10 @@ export function isSkinId(v: unknown): v is SkinId {
 }
 
 /**
- * Apparences V3 (F8), dessinées et testées, mais **pas encore exposées au shell** :
- * `SKIN_IDS`, `isSkinId` et `resolveAppearance` restent ceux de la V2 jusqu'à l'accord
- * d'Alexis (le shell type ses libellés sur `SkinId`). Usage interne : démo, harnais, aperçus.
+ * Apparences V3 (F8, exposées en F8b). `SKIN_IDS` / `SkinId` / `isSkinId` restent la liste V2
+ * (récompenses d'objectifs) : le shell type ses libellés sur `SkinId`, l'élargir casserait sa
+ * compilation. Toute apparence dessinable : `ALL_SKIN_IDS`, `AnySkinId`, `isAnySkinId`, acceptés
+ * par `Appearance`, `resolveAppearance`, `mountGame` et `renderAppearancePreview`.
  */
 export type SkinIdV3 = 'graphite' | 'nacre' | 'holographique' | 'pixel' | 'galaxie' | 'lave' | 'or' | 'cristal';
 export const SKIN_IDS_V3: readonly SkinIdV3[] = ['graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave', 'or', 'cristal'];
@@ -33,6 +34,9 @@ export const ALL_SKIN_IDS: readonly DrawSkinId[] = [...SKIN_IDS, ...SKIN_IDS_V3]
 export function isDrawSkinId(v: unknown): v is DrawSkinId {
   return typeof v === 'string' && (ALL_SKIN_IDS as readonly string[]).includes(v);
 }
+/** Nom public de `DrawSkinId` : toute apparence que le moteur sait dessiner. */
+export type AnySkinId = DrawSkinId;
+export const isAnySkinId = isDrawSkinId;
 
 /** Teintes fixes des matières V3, mélangées à la couleur de l'étage. */
 const GRAPHITE: Rgb = [58, 60, 70];

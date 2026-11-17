@@ -5,7 +5,7 @@
  * mouvement (compatible reduced-motion).
  */
 import { BLOCK_HEIGHT, drawBlock, type DrawSkinId } from './blocks';
-import { resolveAppearance, type Appearance } from './mount';
+import { resolveAnyAppearance, type AnyAppearance, type Appearance } from './mount';
 import { css, getTheme, mix, skyAt, TIER_FLOORS, type DecorItem } from './themes';
 
 export type PreviewOptions = {
@@ -24,10 +24,10 @@ export type PreviewOptions = {
  */
 export function renderAppearancePreview(
   canvas: HTMLCanvasElement,
-  appearance: Partial<Appearance> | undefined,
+  appearance: Partial<AnyAppearance> | undefined,
   options: PreviewOptions = {},
 ): boolean {
-  return drawAppearancePreview(canvas, resolveAppearance(appearance), options);
+  return drawAppearancePreview(canvas, resolveAnyAppearance(appearance), options);
 }
 
 /**

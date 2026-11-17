@@ -334,4 +334,14 @@ test.describe('V2 (F4) : apparences', () => {
     const s = await page.evaluate(() => (window as any).__flk.state());
     expect([s.theme, s.skin]).toEqual(['Jardin', 'ceramique']);
   });
+
+  test('F8b : une apparence V3 passée par l’option publique appearance est appliquée', async ({ page }) => {
+    await page.goto(URL);
+    for (const skin of ['graphite', 'lave', 'cristal']) {
+      await mount(page, { seed: 3, theme: 'orbital', skin });
+      await waitTicks(page, 3);
+      const s = await page.evaluate(() => (window as any).__flk.state());
+      expect([s.theme, s.skin]).toEqual(['Orbital', skin]);
+    }
+  });
 });

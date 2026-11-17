@@ -24,6 +24,11 @@ import { DEFAULT_THEME, getTheme, isThemeId, VOYAGE, type ThemeId } from './them
 
 /** Univers et apparence de blocs choisis par le shell (V2). Purement visuels. */
 export type Appearance = { theme: ThemeId; skin: SkinId };
+/**
+ * V3 (F8b) : apparence avec n'importe quelle matière dessinable (V2 + V3). Accepté en entrée
+ * par `mountGame` et `renderAppearancePreview` ; `Appearance` (V2) en reste un sous-type.
+ */
+export type AnyAppearance = { theme: ThemeId; skin: DrawSkinId };
 
 /**
  * Apparence valide à partir d'une valeur quelconque (sauvegarde obsolète, URL…) :
@@ -35,6 +40,12 @@ export function resolveAppearance(raw: unknown): Appearance {
     theme: isThemeId(r.theme) ? r.theme : DEFAULT_THEME,
     skin: isSkinId(r.skin) ? r.skin : DEFAULT_SKIN,
   };
+}
+
+/** Comme `resolveAppearance`, en acceptant aussi les huit matières V3. */
+export function resolveAnyAppearance(raw: unknown): AnyAppearance {
+  const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  return { theme: resolveAppearance(r).theme, skin: isDrawSkinId(r.skin) ? r.skin : DEFAULT_SKIN };
 }
 
 /** Configuration de partie : rulesVersion 1 (anciens défis) ou 2 (V3 : bonus, points, reprise). */
@@ -132,7 +143,7 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
   const doc = canvas.ownerDocument;
   const win = doc.defaultView ?? window;
   const media = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  const appearance = resolveAppearance(options.appearance ?? { theme: options.theme });
+  const appearance = resolveAnyAppearance(options.appearance ?? { theme: options.theme });
   const theme = options.voyage ? VOYAGE : getTheme(appearance.theme);
   const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme, isDrawSkinId(options.drawSkin) ? options.drawSkin : appearance.skin);
   const sfx = new Sfx(options.sound ?? true, theme.audio);
