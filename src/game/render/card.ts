@@ -15,7 +15,7 @@ import {
   type Block,
 } from '../core';
 import { BLOCK_HEIGHT, drawBlock, isDrawSkinId, type DrawSkinId } from './blocks';
-import { resolveAppearance, type Appearance } from './mount';
+import { resolveAnyAppearance, type AnyAppearance } from './mount';
 import { bestInk, css, getTheme, haloFor, mix, skyAt, type Rgb } from './themes';
 
 /** Case du motif : pose normale ou parfaite, couverte ou non par un bonus (v2). */
@@ -111,7 +111,8 @@ export type CardMode = 'free' | 'challenge' | 'daily';
 
 export type ResultCard = {
   result: AnyRunResult;
-  appearance?: Partial<Appearance>;
+  /** Univers et matière, V2 ou V3 (F8b) ; valeur inconnue → Confiserie / Gomme. */
+  appearance?: Partial<AnyAppearance>;
   mode: CardMode;
   /** Tour du jour : date UTC `AAAA-MM-JJ` (affichée telle quelle, sans heure locale). */
   day?: string;
@@ -120,7 +121,7 @@ export type ResultCard = {
 export type CardOptions = {
   /** Facteur de taille : 1 = 1080 × 1350 px (format portrait des réseaux). Borné à [0,1 ; 2]. */
   scale?: number;
-  /** Interne (démo, harnais) : apparence V3 pas encore exposée par `resolveAppearance`. */
+  /** Interne (démo) : prime sur `appearance.skin`. Le chemin public est `appearance` (F8b). */
   drawSkin?: DrawSkinId;
 };
 
@@ -145,7 +146,7 @@ export function renderResultCard(canvas: HTMLCanvasElement, card: ResultCard, op
   canvas.height = Math.round(CARD_HEIGHT * k);
   const W = CARD_WIDTH;
   const H = CARD_HEIGHT;
-  const appearance = resolveAppearance(card.appearance);
+  const appearance = resolveAnyAppearance(card.appearance);
   const skin: DrawSkinId = isDrawSkinId(options.drawSkin) ? options.drawSkin : appearance.skin;
   const theme = getTheme(appearance.theme);
   const sky = skyAt(theme, summary.height);
