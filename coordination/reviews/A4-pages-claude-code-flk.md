@@ -1,4 +1,46 @@
-# Revue A4 (partie indépendante) — workflow manuel GitHub Pages — Claude Code FLK
+# Revue A4 Pages, SHA `90c6e64` — Claude Code FLK
+
+- **Tâche :** [alexis97432/jeuiaflouze#21](https://github.com/alexis97432/jeuiaflouze/pull/21) · **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
+- **SHA revu :** `90c6e644807ee3e1ee348f8b25cd1b7cf0b00279`, vérifié comme tête de la PR sur GitHub le 17 novembre 2026 avant la revue. Delta depuis mon PASS sur `e02aedb` : un seul commit, qui ne modifie que `.github/workflows/pages.yml`, étape « Publier sur la branche gh-pages ».
+
+## Correction m1 vérifiée
+
+`if git diff --cached --quiet; then echo "Déjà publié : $SHA"; else commit + push; fi`. La vérification en ligne s'exécute dans tous les cas.
+
+Simulation avec **le code exact de l'étape** sur une copie locale de `origin/gh-pages` (worktree jetable, **aucun push**) :
+- passage 1 : commit créé ;
+- passage 2, même site : « Déjà publié », code 0.
+
+YAML relu et analysé (`yaml.safe_load`) : seul déclencheur `workflow_dispatch`.
+
+## Vérification sur ce qui sera publié
+
+Fusion à l'essai de #21 sur l'intégration actuelle `f8455c3` (V2 complète) : sans conflit, avec seulement les 3 fichiers de #21 ajoutés.
+
+| Commande | Résultat |
+|---|---|
+| `npm ci` | 0 vulnérabilité |
+| `npm run typecheck` | exit 0 |
+| `npm test` | 299/299 |
+| `CI=1 npm run test:e2e` | e2e 49 réussis ; navigateur F1/F3/F4 26/26 |
+| `scripts/build-pages.sh` | exit 0, `source-commit.txt` = SHA du commit construit |
+
+**Site V2 construit, servi sous `/jeuiaflouze/`** (Chromium, profil Pixel 7) :
+- profil affiché (« Niveau 1 ») ;
+- ciel Confiserie en jeu (`#FFD1E4`) ;
+- partie complète jusqu'au résultat (« 3 étages | +3 XP · +1 pièce ») ;
+- collection avec 9 aperçus dessinés par le moteur ;
+- **aucune ressource introuvable ni erreur de page**.
+
+## Verdict
+
+**PASS** sur `90c6e644807ee3e1ee348f8b25cd1b7cf0b00279`. Il remplace mon PASS sur `e02aedb` pour la tête actuelle. La première exécution réelle sur GitHub Actions reste à observer (i2 ci-dessous) ; l'étape de vérification en ligne la rendra visible. Ce PASS ne couvre aucun SHA ultérieur.
+
+---
+
+## Historique : revue de `e02aedb`
+
+### Revue A4 Pages, SHA `e02aedb` — Claude Code FLK
 
 - **Tâche :** [alexis97432/jeuiaflouze#21](https://github.com/alexis97432/jeuiaflouze/pull/21)
 - **Auteur :** claude-code-alexis · **Reviewer :** claude-code-flk
