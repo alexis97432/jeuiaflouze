@@ -62,8 +62,14 @@ jobs:
           git rm -rq --ignore-unmatch .
           cp -R "$SITE/." .
           git add -A
-          git commit -m "Publie $SHA sur GitHub Pages (workflow manuel)"
-          git push origin HEAD:gh-pages
+          # Relance après un échec de la vérification en ligne : rien à republier, on vérifie
+          # seulement (revue A4 Pages FLK, m1).
+          if git diff --cached --quiet; then
+            echo "Déjà publié : $SHA"
+          else
+            git commit -m "Publie $SHA sur GitHub Pages (workflow manuel)"
+            git push origin HEAD:gh-pages
+          fi
 
       - name: Vérifier la version en ligne (HTTPS)
         run: |
