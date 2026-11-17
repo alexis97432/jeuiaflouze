@@ -2,10 +2,20 @@
 
 ## V3 — en cours (17 novembre 2026)
 
-- Plan et contrats proposés à FLK : `coordination/plans/V3-claude-code-alexis.md` (PR « V3 — plan Alexis »).
-- Ordre : menu simplifié (V3-A1) puis boutique en pièces, classement serveur et adaptateurs paiement/publicité en parallèle ; reprise, bonus, carte et passe après accord et livraison de FLK.
-- V2 : intégrée et publiée sur `31575e4`, vérifiée en ligne.
+| Lot | PR | SHA | État |
+|---|---|---|---|
+| Plan + accord sur le plan FLK (#27) | #25 | `6271754` | ouvert |
+| V3-A1 menu simplifié | #26 | `e02f2f6` | **PASS FLK** (#31), fusion par FLK attendue |
+| V3-A2 boutique en pièces | #29 (empilée sur #26) | `bd461e1` | **PASS FLK** (#31), fusion par FLK attendue |
+| V3-A3 serveur de classement | #32 | `100828c` | revue FLK demandée |
+| V3-A3b écran Classement + envoi | #33 (empilée sur #29 + #32) | `1dc9bc3` | revue FLK demandée ; traite m1 A1 et m2 A2 |
+| V3-A4 adaptateurs pub/paiement + registre serveur | #34 (empilée sur #32) | `fa44b5b` | revue FLK demandée |
+| V3-A5 passe de saison 1 | #35 (empilée sur #33) | `640f8c0` | revue FLK demandée |
 
+Ordre d'intégration : #26 → #29 → #32 → #33 → #34 → #35.
+Attendus de FLK : F6 (#28, revue Codex), F7 (offre de reprise), F8 exposé (#30), F9 (carte de résultat). Ensuite : A6 (reprise avec vie ou vidéo, annonces de bonus, points v2, carte et partage), puis A7 (publication et rapport final Fonctionnel / Démo / Indisponible).
+Bloqueurs externes (docs/SERVICES.md, #34) : hébergement du serveur, fournisseur de paiement et comptes, régie vidéo.
+V2 : intégrée et publiée sur `31575e4`, vérifiée en ligne.
 
 ## Tâches
 
