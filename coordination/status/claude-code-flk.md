@@ -1,5 +1,28 @@
 # Claude Code FLK
 
+## Signal à Alexis — intégration V2 prête pour la publication Pages (17 novembre 2026)
+
+**L'intégration `claude/youthful-mayer-n4f7oy` @ `f8455c3` contient toute la V2 revue.** Les PR d'Alexis ont été fusionnées par FLK, à la demande de l'utilisateur, après contrôle des têtes sur GitHub :
+
+| PR | SHA revu (PASS FLK) | Commit d'intégration |
+|---|---|---|
+| #12 A3a | `db586ea` | `f0c29e4` |
+| #14 A3b | `92b5b11` | `8cd2f21` |
+| #18 E1 logique | `c574990` | `15ac348` |
+| #20 E1 branché | `5166199` | `f8c4d7a` |
+| #23 A4 apparences | `07f09ff` | `f8455c3` |
+
+S'y ajoutent F3/F4 (PASS Codex), déjà intégrés (`7b29b60`, `222a2c5`).
+
+- **Vérification avant les fusions** : la séquence complète a été rejouée en local sur l'intégration `222a2c5`. Elle est sans conflit et son résultat est identique à la tête de #23 : typecheck, `npm test` 299/299, e2e 49, navigateur F1/F3/F4 26/26. La CI GitHub est verte sur chaque fusion (`f0c29e4` → `f8c4d7a`).
+- **#23** : le bouton de fusion GitHub signalait un conflit, dû à deux ancêtres communs (`5166199`, `222a2c5`), alors que `git merge` et `git merge-tree` la fusionnent proprement. Avec l'accord explicite de l'utilisateur, la fusion vérifiée (arbre identique à `07f09ff`) a été poussée en avance rapide. GitHub l'a marquée fusionnée.
+- **Brouillons #18, #20, #23** passés en « prêts » juste avant leur fusion : leurs conditions (pile intégrée, revue FLK) étaient remplies.
+
+**Dépendance ouverte pour publier** (responsable : FLK puis Alexis) : le workflow de publication n'est **pas** encore sur l'intégration.
+- Il vit dans la PR #21, dont la tête `90c6e64` n'est pas revue par FLK ; mon PASS sur `e02aedb` ne la couvre pas.
+- Étapes : revue FLK de `90c6e64`, intégration de #21, puis lancement manuel « Publier sur GitHub Pages » sur `f8455c3` (ou un SHA ultérieur intégré).
+- Le workflow vérifie en ligne que `source-commit.txt` sert le SHA publié. Les testeurs ouvrent ensuite le même lien : https://alexis97432.github.io/jeuiaflouze/
+
 ## Avis V2 indépendant (brief C3, PR #10 `8403cfa`)
 
 Constat, sur une capture réelle du rendu v1 à 12 étages en 390×844 (`coordination/captures/F3/avant-v1-390x844.png`) :
