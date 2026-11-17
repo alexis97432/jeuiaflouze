@@ -14,6 +14,8 @@ import {
   objectiveFor,
   rewardLabel,
   SKIN_IDS,
+  OBTAINABLE_V3_SKINS,
+  V3_SKIN_SOURCE,
   THEME_IDS,
   unlockedSkins,
   unlockedThemes,
@@ -80,7 +82,8 @@ function card(
     item.append(el(doc, 'p', { class: 'card-state' }, 'Obtenu'));
   } else {
     const goal = objectiveFor(reward);
-    item.append(el(doc, 'p', { class: 'card-lock' }, goal ? `À débloquer : ${goal.label.toLowerCase()}` : 'Verrouillé'));
+    const source = reward.kind === 'skin' ? V3_SKIN_SOURCE[reward.id] : undefined;
+    item.append(el(doc, 'p', { class: 'card-lock' }, goal ? `À débloquer : ${goal.label.toLowerCase()}` : source ?? 'Verrouillé'));
   }
   return item;
 }
@@ -97,8 +100,10 @@ export function renderCollection(
   const themes = unlockedThemes(progress);
   const skins = unlockedSkins(progress);
   const badges = earnedBadges(progress);
-  const total = THEME_IDS.length + SKIN_IDS.length + BADGE_IDS.length;
-  const owned = themes.length + skins.length + badges.length;
+  // Total limité aux objets obtenables dans cette version (revue FLK A2 m1) : V2, boutique et
+  // piste gratuite du passe ; le premium indisponible n'est pas compté.
+  const total = THEME_IDS.length + SKIN_IDS.length + OBTAINABLE_V3_SKINS.length + BADGE_IDS.length;
+  const owned = themes.length + skins.filter((id) => (SKIN_IDS as readonly string[]).includes(id) || (OBTAINABLE_V3_SKINS as readonly string[]).includes(id)).length + badges.length;
   const count = el(doc, 'p', { class: 'hint', 'data-testid': 'collection-count' }, `${owned} / ${total} obtenus`);
 
   const section = (label: string, cards: HTMLElement[]) => {
@@ -118,7 +123,7 @@ export function renderCollection(
       () => callbacks.onSelect({ theme: id }),
     ),
   );
-  const skinCards = SKIN_IDS.map((id) =>
+  const skinCards = [...SKIN_IDS, ...OBTAINABLE_V3_SKINS].map((id) =>
     card(
       doc,
       { kind: 'skin', id },

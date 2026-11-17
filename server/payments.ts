@@ -39,7 +39,7 @@ type Account = {
 export function createLedger(catalog: Catalog = SERVER_CATALOG) {
   const accounts = new Map<string, Account>();
   const receipts = new Map<string, { accountId: string; productId: string; demo: boolean; refunded: boolean; livesLeft: number }>();
-  const consumed = new Map<string, { accountId: string; ok: boolean; demo: boolean }>();
+  const consumed = new Map<string, { accountId: string; ok: boolean; demo: boolean; refunded?: boolean }>();
 
   const account = (id: string): Account => {
     let a = accounts.get(id);
@@ -111,6 +111,19 @@ export function createLedger(catalog: Catalog = SERVER_CATALOG) {
       }
       consumed.set(requestId, { accountId, ok, demo });
       return { ok, demo, wallet: wallet(accountId) };
+    },
+    /**
+     * Rend la vie d'une reprise qui n'a pas eu lieu (moteur hors attente, partie quittée).
+     * Une seule fois par `requestId`, au même compte et dans la même réserve (vérifiée ou démo).
+     */
+    returnLife(accountId: string, requestId: string): { ok: boolean; wallet: Wallet } {
+      const c = consumed.get(requestId);
+      if (!c || !c.ok || c.refunded || c.accountId !== accountId) return { ok: false, wallet: wallet(accountId) };
+      c.refunded = true;
+      const a = account(accountId);
+      if (c.demo) a.demoLives++;
+      else a.lives++;
+      return { ok: true, wallet: wallet(accountId) };
     },
     /** Remboursement notifié par le fournisseur : retire le droit ou les vies restantes du reçu. */
     refund(receiptId: string): { ok: boolean } {

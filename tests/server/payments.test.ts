@@ -49,3 +49,16 @@ describe('registre des achats (serveur)', () => {
     expect(await demoVerifier('vrai-recu', 'acc1')).toBeNull();
   });
 });
+
+describe('vie rendue (reprise refusée par le moteur)', () => {
+  it('une seule fois, même réserve, jamais pour une autre demande ou un autre compte', () => {
+    const l = createLedger();
+    l.credit({ receiptId: 'r1', productId: 'lives-3', accountId: 'acc1', demo: false });
+    l.consumeLife('acc1', 'run1:revive');
+    expect(l.returnLife('acc2', 'run1:revive').ok).toBe(false);
+    expect(l.returnLife('acc1', 'run1:revive').ok).toBe(true);
+    expect(l.returnLife('acc1', 'run1:revive').ok).toBe(false);
+    expect(l.returnLife('acc1', 'inconnu').ok).toBe(false);
+    expect(l.wallet('acc1').lives).toBe(3);
+  });
+});

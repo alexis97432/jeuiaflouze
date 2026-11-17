@@ -52,7 +52,7 @@ test('le lien partagé ouvre le même défi dans un autre navigateur', async ({ 
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
   await expect(page.getByTestId('share-status')).toHaveText('Lien du défi copié.');
   const [link] = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
-  expect(link).toMatch(/\?v=1&seed=\d+&target=\d+$/);
+  expect(link).toMatch(/\?v=2&seed=\d+&target=\d+$/); // partie v2 (F7) : lien v2, cible en étages
   const run = (await metrics(page)).find((e) => e.name === 'run_end');
   expect(link).toContain(`target=${score}`);
   expect((await metrics(page)).map((e) => e.name).slice(-2)).toEqual(['share_attempt', 'share_success']);
@@ -339,7 +339,7 @@ test('A4 : aperçus de collection dessinés par le moteur, apparence appliquée 
   await page.getByTestId('nav-rewards').tap();
   await page.getByTestId('open-collection').tap();
   const previews = page.locator('canvas.swatch.preview');
-  await expect(previews).toHaveCount(9);
+  await expect(previews).toHaveCount(15);
   const colorsPerPreview = await previews.evaluateAll((canvases) =>
     (canvases as HTMLCanvasElement[]).map((c) => {
       const { data } = c.getContext('2d')!.getImageData(0, 0, c.width, c.height);
@@ -429,7 +429,7 @@ test('sauvegarde V2 publiée : migrée en v3 sans perte (XP, pièces, objectifs,
 });
 
 /** Polices larges (repli Android, runner CI) : la CI échouait à 320 px avec DejaVu Sans. */
-for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
+for (const viewport of [{ width: 320, height: 568 }, { width: 412, height: 839 }, { width: 568, height: 320 }]) {
   test(`polices larges ${viewport.width}×${viewport.height} : aucun débordement, menu visible, aucun mot coupé`, async ({ browser }) => {
     const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
     const page = await context.newPage();
@@ -458,6 +458,22 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }
       await page.getByTestId(nav!).tap();
       await noHorizontalOverflow(page);
     }
+    // Sous-écrans aux noms longs (« Holographique », paliers du passe).
+    for (const sub of ['open-collection', 'open-season']) {
+      await page.goto('/');
+      await page.getByTestId('nav-rewards').tap();
+      await page.getByTestId(sub).tap();
+      await noHorizontalOverflow(page);
+    }
     await context.close();
   });
 }
+
+test('ancien lien de défi ?v=1 : toujours accepté et joué en règles v1', async ({ page }) => {
+  await page.goto('/?v=1&seed=4242&target=6');
+  await expect(page.getByTestId('challenge-invite')).toContainText('6 étages');
+  await page.getByRole('button', { name: 'Relever le défi' }).tap();
+  await tapUntilResult(page);
+  await expect(page.getByTestId('challenge-outcome')).toBeVisible();
+  await expect(page.getByTestId('points')).toHaveCount(0); // v1 : pas de points ×2
+});

@@ -116,7 +116,7 @@ describe('parcours libre', () => {
     button('Jouer').click();
     expect(shell.screen).toBe('game');
     const mount = game.mounts[0]!;
-    expect(mount.options.config).toEqual({ seed: 100, rulesVersion: 1 });
+    expect(mount.options.config).toEqual({ seed: 100, rulesVersion: 2 }); // nouvelles parties : règles v2 (F7)
     expect(document.activeElement).toBe(mount.options.canvas);
 
     await end(4);
@@ -237,7 +237,7 @@ describe('défi par URL', () => {
     expect(document.activeElement?.textContent).toBe('Relever le défi');
 
     button('Relever le défi').click();
-    expect(game.mounts[0]!.options.config.seed).toBe(4242);
+    expect(game.mounts[0]!.options.config).toEqual({ seed: 4242, rulesVersion: 1 }); // ancien lien : règles v1
     expect(text('target')).toContain('6 étages');
     await end(6);
     expect(text('challenge-outcome')).toMatch(/Égalité/);
@@ -459,8 +459,8 @@ describe('accueil V2 et collection', () => {
   it('collection : verrous explicites, choix persistant, retour avec focus rendu', async () => {
     const { button, root, text, end, place, meta } = setup();
     button('Récompenses').click();
-    expect(text('open-collection')).toBe('Ma collection 2/11');
-    button('Ma collection 2/11').click();
+    expect(text('open-collection')).toBe('Ma collection 2/17');
+    button('Ma collection 2/17').click();
     expect(text('card-skin-marbre')).toContain('À débloquer : poser au moins 5 étages dans une partie');
     expect(text('card-theme-jardin')).toContain('À débloquer : terminer une tour du jour avec au moins 8 étages');
     expect(text('card-skin-gomme')).toContain('Sélectionné');
@@ -474,7 +474,7 @@ describe('accueil V2 et collection', () => {
     place([false, false, false, false, false]);
     await end(5);
     button('Voir la collection').click();
-    expect(text('collection-count')).toBe('3 / 11 obtenus');
+    expect(text('collection-count')).toBe('3 / 17 obtenus');
     const choose = root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!;
     expect(choose.getAttribute('aria-label')).toBe('Choisir Apparence Marbré');
     choose.click();
@@ -540,7 +540,7 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     expect(first.text('coins')).toBe('40 pièces');
     expect(first.text('calendar')).toContain('Déjà pris');
     // 3. Choix d'apparence.
-    first.button('Ma collection 5/11').click();
+    first.button('Ma collection 5/17').click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
     first.shell.destroy();
 
@@ -561,7 +561,7 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     second.button('Récompenses').click();
     expect(second.text('xp')).toBe('Encore 26 étoiles pour le niveau 2');
     expect(second.text('calendar')).toContain('Déjà pris');
-    second.button('Ma collection 5/11').click();
+    second.button('Ma collection 5/17').click();
     expect(second.text('card-skin-marbre')).toContain('Sélectionné');
     expect(storage.dump('poc:meta:v1:progress')).toEqual(saved); // la lecture seule ne réécrit rien
   });
@@ -763,7 +763,7 @@ describe('apparences branchées (A4)', () => {
     await first.end(1);
     first.button('Accueil').click();
     first.button('Récompenses').click();
-    first.button('Ma collection 4/11').click();
+    first.button('Ma collection 4/17').click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-theme-orbital"] button')!.click();
     first.button('← Retour').click();
@@ -904,7 +904,7 @@ describe('classement (V3-A3)', () => {
   const T = (mode: 'free' | 'daily', n = 1, seed = 4242, day?: string): RankTicket => ({
     ticket: n.toString(16).padStart(32, '0'),
     seed,
-    rulesVersion: 1,
+    rulesVersion: 2,
     mode,
     ...(day ? { day } : {}),
     expiresAt: Date.parse('2026-11-17T02:00:00Z'),
@@ -1143,7 +1143,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     const { button, root } = setup({ startGame: g.startGame });
     button('Jouer').click();
     expect(g.mounts[0]!.options.allowContinue).toBeUndefined();
-    g.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    g.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
     expect(root.querySelector('[data-testid="revive"]')).toBeNull();
     expect(g.mounts[0]!.handle.declineContinue).toHaveBeenCalledTimes(1);
   });
@@ -1155,7 +1155,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     button('Jouer').click();
     const m = g.mounts[0]!;
     expect(m.options.allowContinue).toBe(true);
-    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
     expect(text('revive-demo')).toContain('Mode démo');
     expect(document.activeElement?.textContent).toBe('Regarder une vidéo');
     const video = root.querySelector<HTMLButtonElement>('[data-testid="revive-ad"]')!;
@@ -1166,7 +1166,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     await flush();
     expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
     expect(root.querySelector('[data-testid="revive"]')).toBeNull();
-    m.options.onGameEvent!({ type: 'continue-offer', tick: 90 } as never); // second raté : déjà récompensé
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 90 }); // second raté : déjà récompensé
     expect(root.querySelector('[data-testid="revive"]')).not.toBeNull();
   });
 
@@ -1176,7 +1176,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     const { button, text } = setup({ startGame: g.startGame, revive: { ads } });
     button('Jouer').click();
     const m = g.mounts[0]!;
-    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
     button('Regarder une vidéo').click();
     calls[0]!(outcome);
     await flush();
@@ -1189,17 +1189,17 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
   it('vie possédée : consommée une fois, reprise ; échec : rien retiré, message', async () => {
     const g = reviveGame();
     const consume = vi.fn<LivesProvider['consume']>().mockResolvedValueOnce('error').mockResolvedValueOnce('ok');
-    const { button, text } = setup({ startGame: g.startGame, revive: { lives: { count: () => 2, consume } } });
+    const { button, text } = setup({ startGame: g.startGame, revive: { lives: { count: () => 2, consume, refund: vi.fn(async () => undefined) } } });
     button('Jouer').click();
     const m = g.mounts[0]!;
-    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
     button('Utiliser une vie (2)').click();
     await flush();
     expect(text('revive-status')).toContain('Rien n’a été retiré');
     expect(m.handle.continueRun).not.toHaveBeenCalled();
     button('Utiliser une vie (2)').click();
     await flush();
-    expect(consume).toHaveBeenLastCalledWith('run1:revive');
+    expect(consume.mock.calls).toEqual([['run1:revive'], ['run1:revive']]); // même demande : idempotente côté serveur
     expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
   });
 
@@ -1215,22 +1215,22 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     const g = reviveGame();
     const { button, text } = setup({ startGame: g.startGame });
     button('Jouer').click();
-    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-start', bonus: 'double', floors: 5 } as never);
+    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-start', bonus: 'double', floors: 5 });
     expect(text('live')).toBe('Bonus ×2 pour 5 étages !');
-    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-end', bonus: 'double' } as never);
+    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-end', bonus: 'double' });
     expect(text('live')).toBe('Fin du bonus ×2.');
   });
 
   it('résultat v2 : points affichés, gains et record sur la hauteur ; reprise hors classement', async () => {
     const g = reviveGame();
     const storage = memoryStorage();
-    const svc = { available: true, issueTicket: vi.fn(async (mode: 'free' | 'daily') => ({ ok: true as const, value: { ticket: '1'.padStart(32, '0'), seed: 5, rulesVersion: 1, mode, expiresAt: Date.parse('2026-11-17T02:00:00Z'), ...(mode === 'daily' ? { day: '2026-11-16' } : {}) } })), submit: vi.fn(), read: vi.fn() };
+    const svc = { available: true, issueTicket: vi.fn(async (mode: 'free' | 'daily') => ({ ok: true as const, value: { ticket: '1'.padStart(32, '0'), seed: 5, rulesVersion: 2, mode, expiresAt: Date.parse('2026-11-17T02:00:00Z'), ...(mode === 'daily' ? { day: '2026-11-16' } : {}) } })), submit: vi.fn(), read: vi.fn() };
     const meta = createMetaStore(storage);
     meta.writePlayer({ id: 'c'.repeat(32), pseudo: 'Alex' });
     const { button, text, store } = setup({ startGame: g.startGame, meta, leaderboard: svc as unknown as LeaderboardService });
     await flush();
     button('Jouer').click();
-    g.mounts[0]!.options.onEnd(v2(6, 40, 1) as never);
+    g.mounts[0]!.options.onEnd(v2(6, 40, 1));
     await flush();
     expect(text('score')).toBe('6 étages');
     expect(text('points')).toBe('40 points');
@@ -1263,5 +1263,229 @@ describe('carte de résultat (V3-A6, F9 injectée)', () => {
     plain.button('Jouer').click();
     await plain.end(4);
     expect([...plain.root.querySelectorAll('button')].some((b) => b.textContent === 'Enregistrer l’image')).toBe(false);
+  });
+});
+
+describe('V3-A6b : secours du partage d’image, annonces, sauvegarde et récompense unique', () => {
+  const file = new File(['png'], 'pile-ou-crash.png', { type: 'image/png' });
+  const v2r = (height: number, score: number, continues: 0 | 1 = 0) => ({
+    seed: 7, rulesVersion: 2 as const, score, height, perfectCount: 1, bestPerfectStreak: 1, bonusCount: 1,
+    continues, durationTicks: 900, inputTicks: [1, 2, 3], continueTicks: continues ? [2] : [],
+  });
+
+  it('téléchargement impossible : image affichée avec consigne d’appui long', async () => {
+    const createObjectURL = vi.fn(() => 'blob:image');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    const { button, end, text, root } = setup({ resultImage: async () => file, saveFile: () => false });
+    button('Jouer').click();
+    await end(4);
+    button('Enregistrer l’image').click();
+    await flush();
+    expect(text('share-status')).toBe('Téléchargement impossible : image affichée ci-dessous.');
+    expect(root.querySelector('[data-testid="result-image"]')?.getAttribute('src')).toBe('blob:image');
+    expect(createObjectURL).toHaveBeenCalledWith(file);
+  });
+
+  it.each([
+    ['carte absente', async () => null],
+    ['carte en échec', async () => { throw new Error('canvas'); }],
+  ])('%s : message honnête, le lien reste partageable sans image', async (_name, resultImage) => {
+    const { button, end, text, share } = setup({ resultImage: resultImage as () => Promise<File | null> });
+    button('Jouer').click();
+    await end(4);
+    button('Enregistrer l’image').click();
+    await flush();
+    expect(text('share-status')).toContain('Image indisponible');
+    button('Défier un ami').click();
+    await flush();
+    expect(share).toHaveBeenCalledWith(expect.not.objectContaining({ files: expect.anything() }));
+  });
+
+  it('partage avec image annulé : pas de succès compté', async () => {
+    const { button, end, share, sink, text } = setup({ resultImage: async () => file });
+    share.mockResolvedValueOnce('cancelled');
+    button('Jouer').click();
+    await end(4);
+    button('Défier un ami').click();
+    await flush();
+    expect(text('share-status')).toBe('Partage annulé.');
+    expect(sink.events.map((e) => e.name)).not.toContain('share_success');
+  });
+
+  it('jauge Super pleine et compte à rebours annoncés', () => {
+    const { button, text, game } = setup();
+    button('Jouer').click();
+    const emit = game.mounts[0]!.options.onGameEvent!;
+    emit({ type: 'gauge', value: 4, max: 10, next: 'ralenti' });
+    expect(text('live')).toBe('Partie commencée.');
+    emit({ type: 'gauge', value: 10, max: 10, next: 'ralenti' });
+    expect(text('live')).toBe('Jauge Super pleine !');
+    emit({ type: 'continue-start', countdownTicks: 360 });
+    expect(text('live')).toBe('C’est reparti ! Prêt dans 3 secondes.');
+  });
+
+  it('partie reprise puis rappels onEnd répétés : étoiles, pièces et saison comptées une seule fois', async () => {
+    const storage = memoryStorage();
+    const { button, game, day } = setup({ meta: createMetaStore(storage) });
+    day.now = new Date('2026-12-01T10:00:00Z');
+    button('Jouer').click();
+    const onEnd = game.mounts[0]!.options.onEnd;
+    onEnd(v2r(9, 30, 1));
+    onEnd(v2r(9, 30, 1));
+    await flush();
+    onEnd(v2r(9, 30, 1));
+    await flush();
+    const saved = storage.dump('poc:meta:v1:progress') as { xp: number; coins: number; season: { stars: number } };
+    expect(saved.xp).toBe(9 + 2); // hauteur 9 + 2×1 parfait, une seule fois, jamais les 30 points
+    expect(saved.season.stars).toBe(saved.xp);
+  });
+
+  it('rechargement : inventaire, saison, pseudo et sélection survivent ensemble ; identité corrompue ignorée', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({
+      version: 3, coins: 50, xp: 30, inventory: ['graphite'], grants: ['v2-objectives-backfill'],
+      season: { id: 's1', stars: 25, claimed: [] }, selected: { theme: 'confiserie', skin: 'gomme' },
+    }));
+    const meta = createMetaStore(storage);
+    meta.writePlayer({ id: 'c'.repeat(32), pseudo: 'Alex' });
+    const first = setup({ meta });
+    first.day.now = new Date('2026-12-01T10:00:00Z');
+    first.button('Récompenses').click();
+    first.button('Voir le passe · cadeau à prendre').click();
+    first.button('Prendre').click();
+    await flush();
+    first.shell.destroy();
+
+    const again = setup({ meta: createMetaStore(storage) });
+    again.day.now = new Date('2026-12-01T10:00:00Z');
+    const doc = storage.dump('poc:meta:v1:progress') as Record<string, unknown>;
+    expect(doc).toMatchObject({ version: 3, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
+    expect(again.text('coins')).toBe('60 pièces');
+    expect(storage.dump('poc:meta:v1:player')).toEqual({ id: 'c'.repeat(32), pseudo: 'Alex' });
+    again.shell.destroy();
+
+    storage.setItem('poc:meta:v1:player', JSON.stringify({ id: 'pirate', pseudo: '<script>' }));
+    const svc = { available: true, issueTicket: vi.fn(), submit: vi.fn(), read: vi.fn(async () => ({ ok: true as const, value: { kind: 'global' as const, demo: false, total: 0, nextOffset: null, entries: [] } })) };
+    const third = setup({ meta: createMetaStore(storage), leaderboard: svc as unknown as LeaderboardService });
+    await flush();
+    expect(svc.issueTicket).not.toHaveBeenCalled(); // identité invalide : aucun envoi au nom d'un autre
+    third.button('Classement').click();
+    expect(third.root.querySelector('[data-testid="pseudo-input"]')).not.toBeNull();
+  });
+});
+
+describe('défis v1 et v2 (A6b, revue FLK M1)', () => {
+  it('lien ?v=2 : partie en règles v2 ; lien partagé après une partie v2 : ?v=2 et cible en étages', async () => {
+    const { game, button } = setup({ url: 'https://jeu.test/?v=2&seed=4242&target=6' });
+    button('Relever le défi').click();
+    expect(game.mounts[0]!.options.config).toEqual({ seed: 4242, rulesVersion: 2 });
+    game.mounts[0]!.options.onEnd({ seed: 4242, rulesVersion: 2, score: 30, height: 8, perfectCount: 1, bestPerfectStreak: 1, bonusCount: 1, continues: 0, durationTicks: 900, inputTicks: [1, 2], continueTicks: [] });
+    await flush();
+    await new Promise((r) => setTimeout(r, 0));
+    const shell = document.getElementById('app')!;
+    expect(shell.textContent).toContain('Défi relevé : 8 contre 6');
+  });
+});
+
+describe('vie rendue si la reprise n’a pas lieu (revue FLK A6, m4)', () => {
+  it('vie consommée puis continueRun refusé : vie rendue une fois, message honnête', async () => {
+    const mounts: { options: StartOptions; handle: { continueRun: ReturnType<typeof vi.fn>; declineContinue: ReturnType<typeof vi.fn> } }[] = [];
+    const startGame: StartGame = (options) => {
+      const handle = { pause: vi.fn(), resume: vi.fn(), destroy: vi.fn(), continueRun: vi.fn(() => false), declineContinue: vi.fn() };
+      mounts.push({ options, handle });
+      return handle;
+    };
+    const consume = vi.fn<LivesProvider['consume']>(async () => 'ok');
+    const refund = vi.fn<LivesProvider['refund']>(async () => undefined);
+    const { button, text } = setup({ startGame, revive: { lives: { count: () => 1, consume, refund } } });
+    button('Jouer').click();
+    mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    button('Utiliser une vie (1)').click();
+    await flush();
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect(refund).toHaveBeenCalledWith('run1:revive');
+    expect(text('revive-status')).toBe('Reprise impossible. Ta vie t’a été rendue.');
+  });
+
+  it('partie quittée pendant la consommation : vie rendue', async () => {
+    let resolve: (v: 'ok') => void = () => undefined;
+    const consume = vi.fn<LivesProvider['consume']>(() => new Promise((r) => (resolve = r)));
+    const refund = vi.fn<LivesProvider['refund']>(async () => undefined);
+    const mounts: StartOptions[] = [];
+    const startGame: StartGame = (options) => {
+      mounts.push(options);
+      return { pause: vi.fn(), resume: vi.fn(), destroy: vi.fn(), continueRun: vi.fn(() => true), declineContinue: vi.fn() };
+    };
+    const { button } = setup({ startGame, revive: { lives: { count: () => 1, consume, refund } } });
+    button('Jouer').click();
+    mounts[0]!.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    button('Utiliser une vie (1)').click();
+    shell?.destroy();
+    resolve('ok');
+    await flush();
+    expect(refund).toHaveBeenCalledWith('run1:revive');
+  });
+});
+
+describe('apparences V3 branchées (F8b, revue FLK A5 m1/m2, A6 m5)', () => {
+  it('Graphite acheté en pièces, mis, monté en partie et gardé au rechargement ; Pixel pris au passe puis choisi', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 100, grants: ['v2-objectives-backfill'], season: { id: 's1', stars: 70, claimed: [] } }));
+    const a = setup({ meta: createMetaStore(storage) });
+    a.day.now = new Date('2026-12-01T10:00:00Z');
+    a.button('Boutique').click();
+    expect(a.text('shop-graphite')).toContain('60 pièces');
+    expect(a.root.querySelector('[data-testid="shop-empty"]')).toBeNull();
+    a.root.querySelector<HTMLButtonElement>('[data-testid="shop-graphite"] button')!.click();
+    a.button('Oui, acheter').click();
+    await flush();
+    a.button('Mettre').click();
+    await flush();
+    a.button('Retour').click();
+    a.button('Jouer').click();
+    expect(a.game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'graphite' });
+    a.shell.destroy();
+
+    const b = setup({ meta: createMetaStore(storage) });
+    b.day.now = new Date('2026-12-01T10:00:00Z');
+    b.button('Jouer').click();
+    expect(b.game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'graphite' });
+    b.shell.destroy();
+
+    const c = setup({ meta: createMetaStore(storage) });
+    c.day.now = new Date('2026-12-01T10:00:00Z');
+    c.button('Récompenses').click();
+    c.button('Voir le passe · cadeau à prendre').click();
+    expect(c.text('tier-2-free')).not.toContain('Bientôt'); // Pixel dessinable : réclamable
+    c.root.querySelector<HTMLButtonElement>('[data-testid="claim-tier-2"]')!.click();
+    await flush();
+    expect(c.text('season-notice')).toBe('Pris : Apparence Pixel.');
+    c.button('Retour').click();
+    c.button('Ma collection 4/17').click();
+    c.root.querySelector<HTMLButtonElement>('[aria-label="Choisir Apparence Pixel"]')!.click();
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 40, inventory: ['graphite', 'pixel'], selected: { skin: 'pixel' } });
+  });
+
+  it('Or et Cristal (premium) : jamais sélectionnables même injectés dans une sauvegarde (y compris l’inventaire)', () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, grants: ['v2-objectives-backfill'], inventory: ['or', 'cristal'], selected: { theme: 'confiserie', skin: 'or' } }));
+    const { button, game } = setup({ meta: createMetaStore(storage) });
+    button('Jouer').click();
+    expect(game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'gomme' });
+  });
+});
+
+describe('carte : apparence choisie transmise (revue FLK A6b R1)', () => {
+  it('la carte reçoit l’apparence V3 sélectionnée, pas Gomme', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, grants: ['v2-objectives-backfill'], inventory: ['graphite'], selected: { theme: 'confiserie', skin: 'graphite' } }));
+    const resultImage = vi.fn(async () => null);
+    const { button, end } = setup({ meta: createMetaStore(storage), resultImage });
+    button('Jouer').click();
+    await end(4);
+    button('Enregistrer l’image').click();
+    await flush();
+    expect(resultImage).toHaveBeenCalledWith(expect.anything(), 'free', null, { theme: 'confiserie', skin: 'graphite' });
   });
 });

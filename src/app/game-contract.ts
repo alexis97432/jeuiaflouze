@@ -6,5 +6,10 @@ import type { RunConfig } from '../game';
 
 export type { Appearance, GameEvent, GameHandle, MountOptions, RunConfig, RunResult } from '../game';
 
-/** `src/game/index.ts` n'exporte pas RULES_VERSION ; le type ci-dessous l'aligne sur RunConfig. */
-export const RULES_VERSION: RunConfig['rulesVersion'] = 1;
+/**
+ * Règles des liens de défi `?v=1` : inchangées, un ancien lien rejoue toujours la même partie
+ * (C7 : « garder les anciens défis », records et liens v1 en étages).
+ */
+export const RULES_VERSION = 1 as const satisfies RunConfig['rulesVersion'];
+/** Règles des nouvelles parties libres et du Tour du jour (F6/F7 : jauge, bonus, reprise). */
+export const PLAY_RULES_VERSION = 2 as const satisfies RunConfig['rulesVersion'];

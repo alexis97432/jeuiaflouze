@@ -10,14 +10,14 @@ import {
   type Challenge,
   type InvalidReason,
 } from './challenge-url';
-import { RULES_VERSION, type GameHandle } from './game-contract';
+import { PLAY_RULES_VERSION, RULES_VERSION, type GameEvent, type GameHandle } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
-import { asShellEvent, BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult, type ContinueControls } from './run-result';
+import { BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult } from './run-result';
 import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
 import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
-import { isSkinId, renderAppearancePreview } from '../game';
+import { isAnySkinId, renderAppearancePreview, type AnyAppearance } from '../game';
 import {
   applyRunEconomy,
   calendarStatus,
@@ -35,6 +35,7 @@ import {
   rewardLabel,
   selectAppearance,
   SKIN_IDS,
+  OBTAINABLE_V3_SKINS,
   THEME_IDS,
   unlockedSkins,
   unlockedThemes,
@@ -107,7 +108,7 @@ export type ShellOptions = {
    * Image de résultat (F9, `renderResultCard`, convertie en PNG par main.ts). Absente ou null :
    * partage du lien seul, sans bouton d'image.
    */
-  resultImage?: (result: AnyRunResult, mode: Mode, day: string | null) => Promise<File | null>;
+  resultImage?: (result: AnyRunResult, mode: Mode, day: string | null, appearance?: AnyAppearance) => Promise<File | null>;
   /** Enregistre un fichier (téléchargement) ; injectable pour les tests. */
   saveFile?: (file: File) => boolean;
 };
@@ -117,8 +118,10 @@ export type LivesProvider = {
   count(): number;
   /** Consomme une vie pour `requestId` (idempotent côté serveur). */
   consume(requestId: string): Promise<'ok' | 'none' | 'error'>;
+  /** Rend la vie consommée par `requestId` si la reprise n'a pas eu lieu (idempotent). */
+  refund(requestId: string): Promise<void>;
 };
-const NO_LIVES: LivesProvider = { count: () => 0, consume: () => Promise.resolve('none') };
+const NO_LIVES: LivesProvider = { count: () => 0, consume: () => Promise.resolve('none'), refund: () => Promise.resolve() };
 
 /** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
 export const PROGRESS_LOCK = 'poc:meta:v1:progress';
@@ -245,9 +248,9 @@ export function createShell(options: ShellOptions): Shell {
     for (const mode of ['free', 'daily'] as const) {
       if (freshTicket(tickets[mode]) || ticketLoading[mode]) continue;
       ticketLoading[mode] = true;
-      void leaderboard.issueTicket(mode, RULES_VERSION).then((r) => {
+      void leaderboard.issueTicket(mode, PLAY_RULES_VERSION).then((r) => {
         ticketLoading[mode] = false;
-        if (r.ok && r.value.mode === mode && r.value.rulesVersion === RULES_VERSION) tickets[mode] = r.value;
+        if (r.ok && r.value.mode === mode && r.value.rulesVersion === PLAY_RULES_VERSION) tickets[mode] = r.value;
       });
     }
   };
@@ -388,7 +391,7 @@ export function createShell(options: ShellOptions): Shell {
 
   // --- Passe de saison (V3-A5) ---------------------------------------------------------------
   const season = options.season ?? SEASON_1;
-  const canDraw = (id: string) => isSkinId(id);
+  const canDraw = (id: string) => isAnySkinId(id);
   const formatSeasonDay = (key: string) =>
     new Date(`${key}T12:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
   const seasonClaimable = () => {
@@ -455,7 +458,7 @@ export function createShell(options: ShellOptions): Shell {
         const cell = el(doc, 'div', { class: `tier-cell ${track} ${st}`, 'data-testid': `tier-${t.tier}-${track}` });
         if (reward.kind === 'skin') {
           // Pas encore dessinée par le moteur : pastille « ? », jamais l'aperçu d'une autre apparence.
-          cell.append(isSkinId(reward.id)
+          cell.append(isAnySkinId(reward.id)
             ? previewOrSwatch(doc, reward.id, { theme: progress.selected.theme, skin: reward.id }, renderAppearancePreview)
             : el(doc, 'div', { class: 'swatch soon', 'aria-hidden': 'true' }, '?'));
         }
@@ -489,7 +492,7 @@ export function createShell(options: ShellOptions): Shell {
     show('settings', [header, soundToggle(), el(doc, 'p', { class: 'hint small' }, 'Le son démarre après ton premier toucher.')], title);
   };
 
-  const shopConfig = options.shop ?? { catalog: COIN_SHOP, isAvailable: (id: string) => isSkinId(id) };
+  const shopConfig = options.shop ?? { catalog: COIN_SHOP, isAvailable: (id: string) => isAnySkinId(id) };
   const shopPreview = shopConfig.preview ?? renderAppearancePreview;
 
   type ShopNotice = { text: string; testId: string };
@@ -515,7 +518,7 @@ export function createShell(options: ShellOptions): Shell {
         const st = itemState(progress, item);
         const li = el(doc, 'li', { class: `card ${st}`, 'data-testid': `shop-${item.id}`, tabindex: '-1' });
         li.append(
-          previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: isSkinId(item.id) ? item.id : progress.selected.skin }, shopPreview),
+          previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: isAnySkinId(item.id) ? item.id : progress.selected.skin }, shopPreview),
           el(doc, 'p', { class: 'card-name' }, item.name),
         );
         if (st === 'owned') {
@@ -566,7 +569,7 @@ export function createShell(options: ShellOptions): Shell {
 
   const wear = (item: ShopItem) => withProgressLock(() => {
     updateDoc((current) => {
-      if (!isSkinId(item.id)) return { doc: current, result: null };
+      if (!isAnySkinId(item.id)) return { doc: current, result: null };
       const updated = selectAppearance(current, { skin: item.id });
       return { doc: updated, result: null };
     });
@@ -574,8 +577,9 @@ export function createShell(options: ShellOptions): Shell {
   });
 
   const collectionButton = () => {
-    const owned = unlockedThemes(progress).length + unlockedSkins(progress).length + earnedBadges(progress).length;
-    const total = THEME_IDS.length + SKIN_IDS.length + BADGE_IDS.length;
+    const skins = unlockedSkins(progress).filter((id) => (SKIN_IDS as readonly string[]).includes(id) || (OBTAINABLE_V3_SKINS as readonly string[]).includes(id));
+    const owned = unlockedThemes(progress).length + skins.length + earnedBadges(progress).length;
+    const total = THEME_IDS.length + SKIN_IDS.length + OBTAINABLE_V3_SKINS.length + BADGE_IDS.length;
     const b = iconButton(doc, '🎨', `Ma collection ${owned}/${total}`, () => renderCollectionScreen(), 'secondary', 'open-collection');
     return b;
   };
@@ -751,7 +755,7 @@ export function createShell(options: ShellOptions): Shell {
     if (offset === 0) content.replaceChildren(loading);
     else content.append(loading);
     const r = await leaderboard.read(kind, {
-      rulesVersion: RULES_VERSION,
+      rulesVersion: PLAY_RULES_VERSION,
       offset,
       limit: 20,
       ...(player ? { player: player.id } : {}),
@@ -865,19 +869,14 @@ export function createShell(options: ShellOptions): Shell {
     try {
       current.handle = options.startGame({
         canvas,
-        config: { seed, rulesVersion: RULES_VERSION },
+        config: mode === 'challenge' && runChallenge?.rulesVersion === RULES_VERSION ? { seed, rulesVersion: RULES_VERSION } : { seed, rulesVersion: PLAY_RULES_VERSION },
         prefs,
         appearance: progress.selected,
         ...(allowContinue ? { allowContinue } : {}),
         onGameEvent: (event) => {
           if (run !== current) return;
           current.events.onEvent(event);
-          const e = asShellEvent(event);
-          if (!e) return;
-          if (e.type === 'continue-offer') showReviveOffer(current, stage, canvas);
-          else if (e.type === 'continue-start') announce('C’est reparti ! Prêt dans 3 secondes.');
-          else if (e.type === 'bonus-start') announce(`Bonus ${BONUS_NAMES[e.bonus]} pour ${e.floors} étages !`);
-          else announce(`Fin du bonus ${BONUS_NAMES[e.bonus]}.`);
+          onRunEvent(current, event, stage, canvas);
         },
         onFirstPlacement: () => {
           if (placed || destroyed || run !== current) return;
@@ -917,7 +916,7 @@ export function createShell(options: ShellOptions): Shell {
    * Un refus, une vidéo absente ou une erreur ne donnent jamais de reprise.
    */
   const showReviveOffer = (current: RunState, stage: HTMLElement, canvas: HTMLCanvasElement) => {
-    const handle = current.handle as (GameHandle & ContinueControls) | null;
+    const handle = current.handle;
     if (!handle?.continueRun || !handle.declineContinue || stage.querySelector('[data-testid="revive"]')) return;
     if (reviveLives.count() === 0 && reviveAds.kind === 'none') {
       handle.declineContinue(); // aucun moyen réel : fin normale, aucune offre vide
@@ -929,17 +928,18 @@ export function createShell(options: ShellOptions): Shell {
     const buttons: HTMLButtonElement[] = [];
     const busy = (on: boolean) => buttons.forEach((b) => (b.disabled = on));
     const close = () => box.remove();
-    const resumeWith = (how: string) => {
-      if (run !== current) return;
+    const resumeWith = (how: string): boolean => {
+      if (run !== current) return false;
       const accepted = handle.continueRun!();
       if (!accepted) {
         msg.textContent = 'Reprise impossible.';
         busy(false);
-        return;
+        return false;
       }
       current.revivedWith = how;
       close();
       canvas.focus();
+      return true;
     };
     const finish = () => {
       close();
@@ -951,12 +951,16 @@ export function createShell(options: ShellOptions): Shell {
         busy(true);
         msg.textContent = '';
         void reviveLives.consume(requestId).then((r) => {
-          if (run !== current || !box.isConnected) return;
-          if (r === 'ok') resumeWith('vie');
-          else {
-            msg.textContent = r === 'none' ? 'Plus de vie.' : 'La vie n’a pas pu être utilisée. Rien n’a été retiré.';
-            busy(false);
+          // Vie retirée mais reprise refusée (partie quittée, moteur hors attente) : elle est rendue
+          // (revue FLK A6, m4). Le registre serveur rend une seule fois par requestId.
+          if (r === 'ok' && (run !== current || !box.isConnected || !resumeWith('vie'))) {
+            void reviveLives.refund(requestId);
+            if (box.isConnected) msg.textContent = 'Reprise impossible. Ta vie t’a été rendue.';
+            return;
           }
+          if (run !== current || !box.isConnected || r === 'ok') return;
+          msg.textContent = r === 'none' ? 'Plus de vie.' : 'La vie n’a pas pu être utilisée. Rien n’a été retiré.';
+          busy(false);
         });
       }, 'primary', 'revive-life');
       buttons.push(b);
@@ -982,6 +986,30 @@ export function createShell(options: ShellOptions): Shell {
     stage.append(box);
     buttons[0]!.focus();
     announce('Oups ! Encore une chance ? Choisis, ou Terminer.');
+  };
+
+  /** Événements v2 du moteur (F7) : offre de reprise, compte à rebours, bonus, jauge. */
+  const onRunEvent = (current: RunState, event: GameEvent, stage: HTMLElement, canvas: HTMLCanvasElement) => {
+    switch (event.type) {
+      case 'continue-offer':
+        showReviveOffer(current, stage, canvas);
+        break;
+      case 'continue-start':
+        announce(`C’est reparti ! Prêt dans ${Math.round(event.countdownTicks / 120)} secondes.`);
+        break;
+      case 'bonus-start':
+        announce(`Bonus ${BONUS_NAMES[event.bonus]} pour ${event.floors} étages !`);
+        break;
+      case 'bonus-end':
+        announce(`Fin du bonus ${BONUS_NAMES[event.bonus]}.`);
+        break;
+      case 'gauge':
+        // Jauge « Super » dessinée dans le canvas ; on n'annonce que la jauge pleine (pas de bruit).
+        if (event.value >= event.max) announce('Jauge Super pleine !');
+        break;
+      default:
+        break;
+    }
   };
 
   const finishRun = (current: RunState, result: AnyRunResult) => {
@@ -1124,18 +1152,34 @@ export function createShell(options: ShellOptions): Shell {
     let imagePromise: Promise<File | null> | null = null;
     const resultImage = () => {
       if (!options.resultImage) return Promise.resolve(null);
-      imagePromise ??= options.resultImage(result, current.mode, current.day).catch(() => null);
+      imagePromise ??= options.resultImage(result, current.mode, current.day, progress.selected).catch(() => null);
       return imagePromise;
     };
     const saveImage = domButton(doc, 'Enregistrer l’image', guarded(() => {
       void resultImage().then((file) => {
         if (destroyed || screen !== 'result') return;
-        const ok = file ? (options.saveFile ?? ((f: File) => downloadFile(f, doc)))(file) : false;
-        status.textContent = ok ? 'Image enregistrée.' : 'Image indisponible sur cet appareil.';
+        if (!file) {
+          status.textContent = 'Image indisponible sur cet appareil. Le lien du défi reste partageable.';
+          return;
+        }
+        if ((options.saveFile ?? ((f: File) => downloadFile(f, doc)))(file)) {
+          status.textContent = 'Image enregistrée.';
+          return;
+        }
+        // Dernier secours : l'image affichée, à garder par un appui long (navigateurs sans téléchargement).
+        try {
+          const img = el(doc, 'img', { alt: 'Image du résultat', class: 'result-image', 'data-testid': 'result-image' });
+          img.setAttribute('src', URL.createObjectURL(file));
+          fallback.replaceChildren(img, el(doc, 'p', { class: 'hint small' }, 'Appuie longtemps sur l’image pour l’enregistrer.'));
+          fallback.hidden = false;
+          status.textContent = 'Téléchargement impossible : image affichée ci-dessous.';
+        } catch {
+          status.textContent = 'Image indisponible sur cet appareil. Le lien du défi reste partageable.';
+        }
       });
     }), 'ghost', 'save-image');
     const doShare = async () => {
-      const url = buildChallengeUrl(options.url, current.seed, height);
+      const url = buildChallengeUrl(options.url, current.seed, height, result.rulesVersion);
       shareButton.disabled = true;
       tracker.track('share_attempt', { mode: current.mode, runId: current.runId });
       let outcome: ShareOutcome;

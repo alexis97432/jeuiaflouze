@@ -1,15 +1,20 @@
 /**
- * URL de défi amical `?v=1&seed=<uint32>&target=<entier>` (docs/CONTRACTS.md § Shell).
+ * URL de défi amical `?v=<1|2>&seed=<uint32>&target=<entier>` (docs/CONTRACTS.md § Shell).
+ * `v=1` : anciens liens, rejoués en règles v1. `v=2` (V3) : même règles que la partie d'origine.
+ * `target` est toujours une hauteur en étages (jamais des points ×2).
  * Validation stricte : entiers décimaux sans signe, sans zéro initial, sans espace.
  * `target` est une déclaration amicale, jamais un score vérifié.
  * Les autres paramètres (ex. utm_*) sont ignorés ; un paramètre du défi répété est refusé.
  */
-import { RULES_VERSION } from './game-contract';
+import { PLAY_RULES_VERSION, RULES_VERSION } from './game-contract';
+
+export type ChallengeRules = typeof RULES_VERSION | typeof PLAY_RULES_VERSION;
+const ACCEPTED: readonly ChallengeRules[] = [RULES_VERSION, PLAY_RULES_VERSION];
 
 export const MAX_SEED = 0xffffffff;
 export const MAX_TARGET = 10_000;
 
-export type Challenge = { seed: number; target: number; rulesVersion: typeof RULES_VERSION };
+export type Challenge = { seed: number; target: number; rulesVersion: ChallengeRules };
 
 export type ChallengeParse =
   | { kind: 'none' }
@@ -37,20 +42,21 @@ export function parseChallenge(search: string): ChallengeParse {
   if (KEYS.every((k) => !params.has(k))) return { kind: 'none' };
   if (KEYS.some((k) => params.getAll(k).length !== 1)) return { kind: 'invalid', reason: 'malformed' };
 
-  if (params.get('v') !== String(RULES_VERSION)) return { kind: 'invalid', reason: 'version' };
+  const rulesVersion = ACCEPTED.find((v) => params.get('v') === String(v));
+  if (rulesVersion === undefined) return { kind: 'invalid', reason: 'version' };
   const seed = parseInteger(params.get('seed') ?? '', 1, MAX_SEED);
   if (seed === null) return { kind: 'invalid', reason: 'seed' };
   const target = parseInteger(params.get('target') ?? '', 0, MAX_TARGET);
   if (target === null) return { kind: 'invalid', reason: 'target' };
-  return { kind: 'challenge', challenge: { seed, target, rulesVersion: RULES_VERSION } };
+  return { kind: 'challenge', challenge: { seed, target, rulesVersion } };
 }
 
 /** Construit le lien de défi à partir de l'origine et du chemin courants, sans autre paramètre. */
-export function buildChallengeUrl(base: string, seed: number, score: number): string {
+export function buildChallengeUrl(base: string, seed: number, score: number, rulesVersion: ChallengeRules = RULES_VERSION): string {
   const url = new URL(base);
   url.search = '';
   url.hash = '';
-  url.searchParams.set('v', String(RULES_VERSION));
+  url.searchParams.set('v', String(rulesVersion));
   url.searchParams.set('seed', String(seed));
   url.searchParams.set('target', String(Math.min(Math.max(0, Math.trunc(score)), MAX_TARGET)));
   return url.toString();
