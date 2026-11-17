@@ -4,6 +4,7 @@ import { loadGame } from './app/game-loader';
 import { createShell } from './app/shell';
 import { combineSinks, consoleSink, createTracker, memorySink } from './platform/metrics';
 import { randomId, randomSeed } from './platform/random';
+import { createLeaderboardService } from './platform/services/leaderboard';
 import { shareLink } from './platform/share';
 import { createLocalStore, createMetaStore, getBrowserStorage } from './platform/storage';
 
@@ -33,6 +34,10 @@ createShell({
   share: (data) => shareLink(data),
   newSeed: () => randomSeed(),
   newRunId: () => randomId(),
+  newPlayerId: () => randomId() + randomId(),
+  // Adresse du serveur de classement au build (server/README.md). Vide (GitHub Pages actuel) :
+  // l'écran Classement affiche « Indisponible » et le jeu reste entier.
+  leaderboard: createLeaderboardService(import.meta.env.VITE_LEADERBOARD_URL as string | undefined),
 });
 
 // Point d'inspection réservé au dev et au build e2e (VITE_EXPOSE_METRICS=1), absent en production.

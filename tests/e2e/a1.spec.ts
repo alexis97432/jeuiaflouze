@@ -363,7 +363,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }
     const page = await context.newPage();
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Jouer', exact: true })).toBeInViewport({ ratio: 1 });
-    for (const name of ['Défi du jour', 'Boutique', 'Récompenses', 'Réglages']) {
+    for (const name of ['Défi du jour', 'Boutique', 'Classement', 'Récompenses', 'Réglages']) {
       await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
     }
     await noHorizontalOverflow(page);
@@ -380,4 +380,21 @@ test('boutique : état réel tant que le moteur n’a pas les apparences de bout
   const sellable = await page.locator('.cards.shop li').count();
   if (sellable === 0) await expect(page.getByTestId('shop-empty')).toBeVisible();
   await noHorizontalOverflow(page);
+});
+
+test('classement : sans serveur configuré (build Pages), « Indisponible » et jeu entier', async ({ page }) => {
+  const requests: string[] = [];
+  page.on('request', (r) => {
+    if (!r.url().startsWith('http://localhost') && !r.url().startsWith('http://127.0.0.1')) requests.push(r.url());
+  });
+  await page.goto('/');
+  await page.getByTestId('nav-leaderboard').tap();
+  await expect(page.getByRole('heading', { name: 'Classement' })).toBeFocused();
+  await expect(page.getByTestId('board-unavailable')).toContainText('indisponible');
+  await noHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Retour' }).tap();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  await tapUntilResult(page);
+  await expect(page.getByTestId('rank-status')).toHaveText('Score local, non vérifié.');
+  expect(requests).toEqual([]);
 });
