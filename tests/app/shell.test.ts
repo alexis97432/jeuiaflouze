@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunResult } from '../../src/app/game-contract';
 import type { StartGame, StartOptions } from '../../src/app/game-loader';
-import { createShell, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
+import { createShell, PROGRESS_LOCK, RESULT_INPUT_GUARD_MS, type Shell, type ShellOptions } from '../../src/app/shell';
 import { createTracker, memorySink } from '../../src/platform/metrics';
 import type { ShareOutcome } from '../../src/platform/share';
 import { createLocalStore, createMetaStore } from '../../src/platform/storage';
@@ -494,5 +494,241 @@ describe('modalité de saisie', () => {
     expect(root.dataset.input).toBe('keyboard');
     document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     expect(root.dataset.input).toBe('pointer');
+  });
+});
+
+/** Stockage navigateur simulé : tout passe par JSON, comme un vrai rechargement. */
+function memoryStorage(): Storage & { dump(key: string): unknown } {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear: () => data.clear(),
+    key: (i: number) => [...data.keys()][i] ?? null,
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, String(v)),
+    removeItem: (k: string) => void data.delete(k),
+    dump: (k: string) => JSON.parse(data.get(k) ?? 'null') as unknown,
+  };
+}
+
+describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)', () => {
+  it('XP, pièces, calendrier et sélection survivent à chaque chemin d’écriture puis au rechargement', async () => {
+    const storage = memoryStorage();
+    const first = setup({ meta: createMetaStore(storage), store: createLocalStore(storage) });
+    // 1. Fin de partie : 12 étages ; le faux moteur rapporte perfectCount = 1 (série de 2 via
+    //    les événements) → 12 + 2 = 14 XP ; 4 + 1 + 3 objectifs × 10 = 35 pièces.
+    first.button('Jouer').click();
+    first.place([false, true, true, false, true, false, false, false, false, false, false, false]);
+    await first.end(12);
+    expect(first.text('gains')).toBe('+14 XP · +35 pièces');
+    // 2. Réclamation du calendrier.
+    first.button('Accueil').click();
+    expect(first.text('coins')).toBe('35 pièces');
+    first.button('Récupérer +5').click();
+    expect(first.text('coins')).toBe('40 pièces');
+    expect(first.text('calendar')).toContain('déjà récupérée');
+    // 3. Choix d'apparence.
+    first.button('Collection 5/11').click();
+    first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
+    first.shell.destroy();
+
+    const saved = storage.dump('poc:meta:v1:progress');
+    expect(saved).toMatchObject({
+      version: 2,
+      xp: 14,
+      coins: 40,
+      selected: { skin: 'marbre' },
+      calendar: { lastClaimDate: '2026-11-16', index: 1 },
+      completed: ['floors-5', 'streak-2', 'floors-12'],
+    });
+
+    // Rechargement : nouveau shell, nouveaux magasins, même stockage.
+    document.body.innerHTML = '<main id="app"></main>';
+    const second = setup({ meta: createMetaStore(storage), store: createLocalStore(storage) });
+    expect(second.text('coins')).toBe('40 pièces');
+    expect(second.text('xp')).toBe('14 XP · encore 26 XP pour le niveau 2');
+    expect(second.text('calendar')).toContain('déjà récupérée');
+    second.button('Collection 5/11').click();
+    expect(second.text('card-skin-marbre')).toContain('Sélectionné');
+    expect(storage.dump('poc:meta:v1:progress')).toEqual(saved); // la lecture seule ne réécrit rien
+  });
+
+  it('une sauvegarde v1 (A3a) est migrée au chargement : prime unique de 10 pièces par objectif', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ completed: ['floors-5', 'streak-2'], selected: { theme: 'confiserie', skin: 'gomme' }, evaluatedRuns: [] }));
+    const { text, button, end } = setup({ meta: createMetaStore(storage) });
+    expect(text('coins')).toBe('20 pièces');
+    button('Jouer').click();
+    await end(3); // perfectCount 1 : 1 + 1 = 2 pièces, 3 + 2 = 5 XP
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 2, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
+  });
+
+  it('sauvegarde d’une version future : lue, jamais réécrite', async () => {
+    const storage = memoryStorage();
+    const future = { version: 3, completed: [], xp: 900, coins: 400, champInconnu: true };
+    storage.setItem('poc:meta:v1:progress', JSON.stringify(future));
+    const { text, button, end } = setup({ meta: createMetaStore(storage) });
+    expect(text('coins')).toBe('400 pièces');
+    expect(text('profile')).toContain('version plus récente');
+    button('Jouer').click();
+    await end(8);
+    expect(storage.dump('poc:meta:v1:progress')).toEqual(future);
+  });
+});
+
+describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () => {
+  function tab(storage: Storage, id: string) {
+    const root = document.createElement('main');
+    root.id = id;
+    document.body.append(root);
+    const game = fakeGame();
+    const tracker = createTracker({ buildId: 'b', rulesVersion: 1, sessionId: id, sink: memorySink() });
+    let run = 0;
+    const shellTab = createShell({
+      root,
+      startGame: game.startGame,
+      tracker,
+      store: createLocalStore(storage),
+      meta: createMetaStore(storage),
+      today: () => new Date('2026-11-16T22:30:00Z'),
+      url: 'https://jeu.test/',
+      replaceUrl: () => {},
+      share: async () => 'shared',
+      newSeed: () => 7,
+      newRunId: () => `${id}-run${++run}`,
+      now: (() => {
+        let t = 0;
+        return () => (t += 1000); // chaque lecture avance d'1 s : le délai de garde s'écoule
+      })(),
+    });
+    const button = (label: string) => [...root.querySelectorAll('button')].find((b) => b.textContent === label)!;
+    const text = (t: string) => root.querySelector(`[data-testid="${t}"]`)?.textContent ?? null;
+    return { root, game, shell: shellTab, button, text };
+  }
+
+  it('une réclamation dans A et une partie dans B se cumulent ; pas de seconde réclamation le même jour', async () => {
+    document.body.innerHTML = '';
+    const storage = memoryStorage();
+    const a = tab(storage, 'a');
+    const b = tab(storage, 'b'); // ouvert avant la réclamation : son écran propose encore « Récupérer »
+    a.button('Récupérer +5').click();
+    expect(a.text('coins')).toBe('5 pièces');
+
+    b.button('Jouer').click();
+    b.game.mounts[0]!.options.onEnd(result(3)); // 3 étages, 1 parfait → 2 pièces, 5 XP
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 7, xp: 5, calendar: { lastClaimDate: '2026-11-16' } });
+
+    b.button('Accueil').click();
+    expect(b.text('coins')).toBe('7 pièces');
+    expect(b.text('calendar')).toContain('déjà récupérée');
+
+    // A affiche encore un état ancien : sa partie relit d'abord le stockage.
+    a.button('Jouer').click();
+    a.game.mounts[0]!.options.onEnd(result(6)); // 2 + 1 = 3 pièces + 10 (objectif 5 étages), 6 + 2 = 8 XP
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 20, xp: 13, completed: ['floors-5'] });
+    a.shell.destroy();
+    b.shell.destroy();
+  });
+
+  it('un bouton « Récupérer » resté affiché dans un onglet ne permet pas de réclamer deux fois', () => {
+    document.body.innerHTML = '';
+    const storage = memoryStorage();
+    const a = tab(storage, 'a');
+    const b = tab(storage, 'b');
+    a.button('Récupérer +5').click();
+    b.button('Récupérer +5').click(); // écran de B périmé
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 5, calendar: { index: 1 } });
+    expect(b.text('calendar')).toContain('déjà récupérée');
+    a.shell.destroy();
+    b.shell.destroy();
+  });
+
+  it("l'événement storage d'un autre onglet rafraîchit l'accueil", () => {
+    document.body.innerHTML = '';
+    const storage = memoryStorage();
+    const a = tab(storage, 'a');
+    const b = tab(storage, 'b');
+    a.button('Récupérer +5').click();
+    expect(b.text('coins')).toBe('0 pièce');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'poc:meta:v1:progress' }));
+    expect(b.text('coins')).toBe('5 pièces');
+    a.shell.destroy();
+    b.shell.destroy();
+  });
+});
+
+describe('passage de niveau (revue FLK, m1)', () => {
+  it("n'annonce un titre que s'il est nouveau", async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, xp: 100, grants: ['v2-objectives-backfill'] })); // niveau 2
+    const { button, end, text } = setup({ meta: createMetaStore(storage) });
+    button('Jouer').click();
+    await end(30); // +32 XP → 132 : niveau 3, sans titre propre
+    expect(text('level-up')).toBe('Niveau 3 atteint !');
+  });
+});
+
+/**
+ * Gestionnaire Web Locks fidèle : un seul détenteur par nom, file d'attente FIFO, et le verrou
+ * reste tenu tant que la promesse renvoyée par le détenteur n'est pas résolue.
+ */
+function fakeLocks() {
+  const tails = new Map<string, Promise<unknown>>();
+  const requested: string[] = [];
+  return {
+    requested,
+    request(name: string, callback: () => unknown): Promise<unknown> {
+      requested.push(name);
+      const previous = tails.get(name) ?? Promise.resolve();
+      const run = previous.then(() => callback());
+      tails.set(name, run.catch(() => undefined));
+      return run;
+    },
+  } as unknown as Pick<LockManager, 'request'> & { requested: string[] };
+}
+
+describe('E1 branché : onglets réellement concurrents sous verrou Web Locks (revue C6 Codex)', () => {
+  it("un onglet qui tient le verrou pendant sa lecture-écriture ne perd pas la réclamation de l'autre", async () => {
+    document.body.innerHTML = '<main id="app"></main>';
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 0, xp: 0, grants: ['v2-objectives-backfill'] }));
+    const locks = fakeLocks();
+    const { button, text } = setup({ meta: createMetaStore(storage), store: createLocalStore(storage), locks });
+
+    // Onglet B (simulé) : lit, attend (traitement en cours), puis écrit +100 — tout sous le verrou.
+    let releaseB!: () => void;
+    const bDone = locks.request(PROGRESS_LOCK, async () => {
+      const docB = storage.dump('poc:meta:v1:progress') as { coins: number };
+      await new Promise<void>((r) => (releaseB = r));
+      storage.setItem('poc:meta:v1:progress', JSON.stringify({ ...docB, coins: docB.coins + 100 }));
+    });
+
+    // Onglet A réclame PENDANT que B tient le verrou : sa section attend.
+    button('Récupérer +5').click();
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 0 }); // A n'a pas écrit
+    releaseB();
+    await bDone;
+    await flush();
+    // A a relu APRÈS l'écriture de B : 100 + 5, réclamation conservée.
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 105, calendar: { lastClaimDate: '2026-11-16' } });
+    expect(text('coins')).toBe('105 pièces');
+    expect(locks.requested.filter((n) => n === PROGRESS_LOCK)).toHaveLength(2);
+  });
+
+  it('la fin de partie (record, progression, record du jour) passe sous le même verrou', async () => {
+    const locks = fakeLocks();
+    const storage = memoryStorage();
+    const { button, end, text } = setup({ meta: createMetaStore(storage), store: createLocalStore(storage), locks });
+    button('Jouer la tour du jour').click();
+    await end(6);
+    await flush();
+    expect(locks.requested).toEqual([PROGRESS_LOCK]);
+    expect(text('gains')).toContain('XP');
+    expect(storage.dump('poc:meta:v1:daily')).toEqual({ '2026-11-16': 6 });
   });
 });

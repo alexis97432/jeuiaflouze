@@ -13,14 +13,21 @@ import {
 import { RULES_VERSION, type GameHandle, type RunResult } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { renderCollection } from './collection-view';
+import {
+  applyRunEconomy,
+  calendarStatus,
+  claimCalendar,
+  LEVEL_TITLES,
+  levelInfo,
+  readProgressDoc,
+  type ProgressDoc,
+} from './economy';
 import { button as domButton, el, floors } from './dom';
 import {
   activeObjectives,
-  applyRun,
   BADGE_IDS,
   earnedBadges,
   rewardLabel,
-  sanitizeProgress,
   selectAppearance,
   SKIN_IDS,
   THEME_IDS,
@@ -28,7 +35,6 @@ import {
   unlockedThemes,
   type Objective,
   type ObjectiveId,
-  type ProgressState,
 } from './progression';
 import { createRunTracker, type RunTracker } from './run-tracker';
 import { dailySeed, nextDailyChange, utcDateKey } from '../platform/daily';
@@ -63,7 +69,15 @@ export type ShellOptions = {
   doc?: Document;
   /** Horloge monotone (ms) ; injectable pour les tests. */
   now?: () => number;
+  /**
+   * Verrou entre onglets (Web Locks). Par défaut `navigator.locks` ; `null` force le repli
+   * sans verrou (navigateur sans Web Locks). Injectable pour les tests.
+   */
+  locks?: Pick<LockManager, 'request'> | null;
 };
+
+/** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
+export const PROGRESS_LOCK = 'poc:meta:v1:progress';
 
 export type Shell = {
   readonly screen: Screen;
@@ -97,7 +111,52 @@ export function createShell(options: ShellOptions): Shell {
   let guardTimer: ReturnType<typeof setTimeout> | undefined;
   const { root, tracker, store, meta } = options;
   const today = options.today ?? (() => new Date());
-  let progress: ProgressState = sanitizeProgress(meta.readProgress());
+  // Une seule lecture (document v2 migré) et toujours le document complet en écriture :
+  // XP, pièces et calendrier ne peuvent pas être perdus par un chemin qui ne connaîtrait que A3
+  // (revue E1 FLK, M1).
+  const loaded = readProgressDoc(meta.readProgress());
+  let progress: ProgressDoc = loaded.doc;
+  let writable = loaded.writable;
+  /** Relit le document stocké (un autre onglet a pu écrire depuis) et met l'état à jour. */
+  const refreshDoc = () => {
+    const fresh = readProgressDoc(meta.readProgress());
+    progress = fresh.doc;
+    writable = writable && fresh.writable;
+  };
+  /**
+   * Toute modification relit d'abord le document stocké, applique `change`, puis écrit le
+   * document complet : avec deux onglets, aucun ne peut effacer les gains de l'autre ni
+   * permettre une seconde réclamation du même jour (revue E1 branché FLK, M2). Synchrone :
+   * rien ne peut s'intercaler entre la relecture et l'écriture dans un même onglet.
+   */
+  const locks = options.locks !== undefined ? options.locks : (doc.defaultView?.navigator.locks ?? null);
+  /**
+   * Exécute `section` (lecture → modification → écriture, synchrone) sous un verrou Web Locks
+   * commun à tous les onglets du jeu : deux onglets réellement concurrents ne peuvent plus lire
+   * tous deux avant d'écrire (revue C6 Codex, revue E1 branché FLK M2). Sans Web Locks
+   * (navigateurs anciens), repli : relecture juste avant l'écriture, sans exclusion entre onglets.
+   */
+  const withProgressLock = (section: () => void): void => {
+    if (!locks) {
+      section();
+      return;
+    }
+    void locks.request(PROGRESS_LOCK, () => {
+      if (!destroyed) section();
+    }).catch((error: unknown) => {
+      console.error('[shell] verrou de progression indisponible, repli sans verrou', error);
+      if (!destroyed) section();
+    });
+  };
+  const updateDoc = <R>(change: (current: ProgressDoc) => { doc: ProgressDoc; result: R }): R => {
+    refreshDoc();
+    const { doc: next, result } = change(progress);
+    if (next !== progress) {
+      progress = next;
+      if (writable) meta.writeProgress(progress);
+    }
+    return result;
+  };
   let screen: Screen = 'home';
   let run: RunState | null = null;
   let destroyed = false;
@@ -154,6 +213,51 @@ export function createShell(options: ShellOptions): Shell {
     return b;
   };
 
+  /** Niveau, XP, pièces et récompense de connexion (E1b–E1d), progression locale. */
+  const profilePanel = (day: string) => {
+    const info = levelInfo(progress.xp);
+    const panel = el(doc, 'section', { class: 'panel profile', 'aria-labelledby': 'profile-title', 'data-testid': 'profile' });
+    const head = el(doc, 'div', { class: 'profile-head' });
+    head.append(
+      el(doc, 'h2', { id: 'profile-title', 'data-testid': 'level' }, `Niveau ${info.level}${info.title ? ` · ${info.title}` : ''}`),
+      el(doc, 'p', { class: 'coins', 'data-testid': 'coins' }, `${progress.coins} pièce${progress.coins > 1 ? 's' : ''}`),
+    );
+    panel.append(head);
+    if (info.toNext !== null) {
+      const total = info.intoLevel + info.toNext;
+      const bar = el(doc, 'progress', { max: String(total), value: String(info.intoLevel), 'aria-label': 'Progression vers le niveau suivant' });
+      panel.append(bar, el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, `${progress.xp} XP · encore ${info.toNext} XP pour le niveau ${info.level + 1}`));
+    } else {
+      panel.append(el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, `${progress.xp} XP · niveau maximal`));
+    }
+    const status = calendarStatus(progress, day);
+    const calendarLine = el(doc, 'p', { class: 'hint', 'data-testid': 'calendar' },
+      status.canClaim
+        ? `Récompense de connexion : +${status.reward} pièces (jour ${status.dayInCycle}/7)`
+        : 'Récompense de connexion déjà récupérée aujourd’hui.');
+    panel.append(calendarLine);
+    if (status.canClaim) {
+      const claim = domButton(doc, `Récupérer +${status.reward}`, () => withProgressLock(() => {
+        const result = updateDoc((current) => {
+          const r = claimCalendar(current, utcDateKey(today()));
+          return { doc: r.doc, result: r };
+        });
+        if (result.claimed) announce(`+${result.reward} pièces récupérées.`);
+        else announce('Récompense du jour déjà récupérée.');
+        if (screen !== 'home') return;
+        renderHome();
+        view.querySelector<HTMLElement>('[data-testid="calendar"]')?.setAttribute('tabindex', '-1');
+        view.querySelector<HTMLElement>('[data-testid="calendar"]')?.focus();
+      }), 'ghost', 'claim');
+      panel.append(claim);
+    }
+    panel.append(el(doc, 'p', { class: 'hint small' },
+      writable
+        ? 'Progression locale, sur cet appareil.'
+        : 'Sauvegarde d’une version plus récente du jeu : progression de cette session non enregistrée.'));
+    return panel;
+  };
+
   const collectionButton = () => {
     const owned = unlockedThemes(progress).length + unlockedSkins(progress).length + earnedBadges(progress).length;
     const total = THEME_IDS.length + SKIN_IDS.length + BADGE_IDS.length;
@@ -163,15 +267,17 @@ export function createShell(options: ShellOptions): Shell {
 
   const renderCollectionScreen = (focusCard?: string) => {
     const { nodes, focus } = renderCollection(doc, progress, {
-      onSelect: (next) => {
-        const updated = selectAppearance(progress, next);
-        if (updated.selected.theme === progress.selected.theme && updated.selected.skin === progress.selected.skin) return;
-        progress = updated;
-        meta.writeProgress(progress);
+      onSelect: (next) => withProgressLock(() => {
+        const changed = updateDoc((current) => {
+          const updated = selectAppearance(current, next);
+          const same = updated.selected.theme === current.selected.theme && updated.selected.skin === current.selected.skin;
+          return { doc: same ? current : updated, result: !same };
+        });
+        if (!changed || screen !== 'collection') return;
         // Le focus reste sur la carte choisie, pas sur le titre.
         renderCollectionScreen(next.theme ? `card-theme-${next.theme}` : `card-skin-${next.skin}`);
         announce('Sélection enregistrée.');
-      },
+      }),
       onBack: () => {
         renderHome();
         view.querySelector<HTMLButtonElement>('[data-testid="open-collection"]')?.focus();
@@ -231,6 +337,7 @@ export function createShell(options: ShellOptions): Shell {
     const now = today();
     const day = utcDateKey(now);
     const dailyBest = meta.readDailyBest(day);
+    const profile = profilePanel(day);
     const dailyPanel = el(doc, 'section', { class: 'panel daily', 'aria-labelledby': 'daily-title', 'data-testid': 'daily-panel' });
     dailyPanel.append(
       el(doc, 'h2', { id: 'daily-title' }, 'Tour du jour'),
@@ -254,7 +361,7 @@ export function createShell(options: ShellOptions): Shell {
 
     const footer = el(doc, 'nav', { class: 'footer-row', 'aria-label': 'Options' });
     footer.append(collectionButton(), soundToggle());
-    show('home', [brand, play, dailyPanel, goalsPanel, footer, recordLine()], play);
+    show('home', [brand, play, profile, dailyPanel, goalsPanel, footer, recordLine()], play);
   };
 
   const stopRun = () => {
@@ -364,27 +471,39 @@ export function createShell(options: ShellOptions): Shell {
       perfectCount: result.perfectCount,
     });
     stopRun();
-    const isRecord = store.submitScore({
-      score: result.score,
-      perfectCount: result.perfectCount,
-      mode: current.mode,
+    // Record, progression et record du jour : une seule section exclusive entre onglets.
+    withProgressLock(() => {
+      const isRecord = store.submitScore({
+        score: result.score,
+        perfectCount: result.perfectCount,
+        mode: current.mode,
+      });
+      const economy = updateDoc((doc) => {
+        const e = applyRunEconomy(doc, current.activeAtStart, {
+          runId: current.runId,
+          mode: current.mode,
+          score: result.score,
+          perfectCount: result.perfectCount,
+          longestStreak: current.events.longestStreak,
+        });
+        return { doc: e.doc, result: e };
+      });
+      const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
+      renderResult(current, result, {
+        isRecord,
+        isDailyRecord,
+        completedNow: economy.completedNow,
+        gained: economy.gained,
+      });
     });
-    const evaluation = applyRun(progress, current.activeAtStart, {
-      runId: current.runId,
-      mode: current.mode,
-      score: result.score,
-      perfectCount: result.perfectCount,
-      longestStreak: current.events.longestStreak,
-    });
-    if (evaluation.state !== progress) {
-      progress = evaluation.state;
-      meta.writeProgress(progress);
-    }
-    const isDailyRecord = current.day ? meta.submitDaily(current.day, result.score) : false;
-    renderResult(current, result, { isRecord, isDailyRecord, completedNow: evaluation.completedNow });
   };
 
-  type Outcome = { isRecord: boolean; isDailyRecord: boolean; completedNow: Objective[] };
+  type Outcome = {
+    isRecord: boolean;
+    isDailyRecord: boolean;
+    completedNow: Objective[];
+    gained: { xp: number; coins: number; levelUp: { from: number; to: number } | null };
+  };
 
   const renderResult = (current: RunState, result: RunResult, outcome: Outcome) => {
     const { isRecord } = outcome;
@@ -414,6 +533,18 @@ export function createShell(options: ShellOptions): Shell {
         ? `Nouveau record du jour (${current.day}) !`
         : `Record du jour (${current.day}) : ${floors(best)}`;
       parts.push(el(doc, 'p', { 'data-testid': 'daily-outcome' }, text));
+      summary += ` ${text}`;
+    }
+    if (outcome.gained.xp > 0 || outcome.gained.coins > 0) {
+      const gains = `+${outcome.gained.xp} XP · +${outcome.gained.coins} pièce${outcome.gained.coins > 1 ? 's' : ''}`;
+      parts.push(el(doc, 'p', { class: 'gains', 'data-testid': 'gains' }, gains));
+      summary += ` ${gains}.`;
+    }
+    if (outcome.gained.levelUp) {
+      const newTitle = LEVEL_TITLES[outcome.gained.levelUp.to];
+      // Le titre n'est annoncé que s'il est nouveau (niveaux 2, 5, 10) — revue FLK, m1.
+      const text = `Niveau ${outcome.gained.levelUp.to} atteint${newTitle ? ` : ${newTitle}` : ''} !`;
+      parts.push(el(doc, 'p', { class: 'record', 'data-testid': 'level-up' }, text));
       summary += ` ${text}`;
     }
     if (outcome.completedNow.length > 0) {
@@ -505,6 +636,13 @@ export function createShell(options: ShellOptions): Shell {
       root.dataset.input = 'keyboard';
     }
   };
+  const win = doc.defaultView;
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== null && !event.key.startsWith('poc:')) return;
+    refreshDoc();
+    if (screen === 'home') renderHome();
+  };
+  win?.addEventListener('storage', onStorage);
   doc.addEventListener('pointerdown', onPointer, true);
   doc.addEventListener('keydown', onKey, true);
 
@@ -534,6 +672,7 @@ export function createShell(options: ShellOptions): Shell {
       stopRun();
       doc.removeEventListener('visibilitychange', onVisibility);
       doc.removeEventListener('pointerdown', onPointer, true);
+      win?.removeEventListener('storage', onStorage);
       doc.removeEventListener('keydown', onKey, true);
       delete root.dataset.screen;
       delete root.dataset.input;

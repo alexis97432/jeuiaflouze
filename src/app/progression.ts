@@ -168,7 +168,7 @@ export function applyRun(
 }
 
 /** Change l'apparence ; refuse silencieusement ce qui n'est pas débloqué. */
-export function selectAppearance(state: ProgressState, next: Partial<Appearance>): ProgressState {
+export function selectAppearance<T extends ProgressState>(state: T, next: Partial<Appearance>): T {
   const theme = next.theme && unlockedThemes(state).includes(next.theme) ? next.theme : state.selected.theme;
   const skin = next.skin && unlockedSkins(state).includes(next.skin) ? next.skin : state.selected.skin;
   return { ...state, selected: { theme, skin } };

@@ -206,3 +206,8 @@ h1 { font-size: clamp(2.2rem, 11vw, 3.1rem); line-height: 1; letter-spacing: -0.
   .btn:active { transform: none; }
 }
 .card:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.profile-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.coins { font-weight: 900; color: var(--violet-deep); }
+.profile progress { width: 100%; height: 12px; accent-color: var(--mint); }
+.gains { font-weight: 800; color: var(--violet-deep); }
+.hint.small { font-size: 0.85rem; }
