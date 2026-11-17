@@ -14,7 +14,6 @@ import { RULES_VERSION, type GameHandle, type RunResult } from './game-contract'
 import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
-import type { SkinId } from './progression';
 import { isSkinId, renderAppearancePreview } from '../game';
 import {
   applyRunEconomy,
@@ -44,8 +43,19 @@ import { dailySeed, nextDailyChange, utcDateKey } from '../platform/daily';
 import type { Mode, Tracker } from '../platform/metrics';
 import type { ShareData, ShareOutcome } from '../platform/share';
 import type { LocalStore, MetaStore } from '../platform/storage';
+import {
+  cleanPseudo,
+  isPlayerIdentity,
+  unavailableLeaderboard,
+  type BoardEntry,
+  type BoardKind,
+  type LeaderboardService,
+  type PlayerIdentity,
+  type RankTicket,
+  type ServiceError,
+} from '../platform/services/leaderboard';
 
-export type Screen = 'home' | 'game' | 'result' | 'collection' | 'rewards' | 'settings' | 'shop';
+export type Screen = 'home' | 'game' | 'result' | 'collection' | 'rewards' | 'settings' | 'shop' | 'leaderboard';
 
 /**
  * Délai pendant lequel les boutons du résultat ignorent les activations : un joueur qui tape
@@ -79,6 +89,10 @@ export type ShellOptions = {
   locks?: Pick<LockManager, 'request'> | null;
   /** Boutique en pièces : catalogue et test « le moteur sait dessiner ». Injectables (tests). */
   shop?: { catalog: readonly ShopItem[]; isAvailable: (id: string) => boolean; preview?: PreviewFn };
+  /** Service de classement (V3-A3). Absent : « Indisponible », le jeu reste entier. */
+  leaderboard?: LeaderboardService;
+  /** Identifiant pseudonyme de l'appareil pour le classement (32 hex). */
+  newPlayerId?: () => string;
 };
 
 /** Nom du verrou Web Locks qui sérialise toute écriture de progression entre onglets. */
@@ -100,7 +114,27 @@ type RunState = {
   activeAtStart: ObjectiveId[];
   events: RunTracker;
   handle: GameHandle | null;
+  /** Ticket du serveur de classement : seule une partie lancée avec un ticket peut être classée. */
+  ticket: RankTicket | null;
 };
+
+const BOARD_LABELS: Record<BoardKind, string> = { global: 'Monde', weekly: 'Semaine', daily: 'Aujourd’hui' };
+const ordinal = (n: number) => (n === 1 ? '1er' : `${n}e`);
+const SERVICE_MESSAGES: Record<ServiceError, string> = {
+  unavailable: 'Classement indisponible pour cette version du jeu.',
+  offline: 'Pas de connexion. Vérifie Internet, puis réessaie.',
+  busy: 'Beaucoup de monde en ce moment. Réessaie dans une minute.',
+  rejected: 'Le classement a refusé la demande.',
+  server: 'Le classement ne répond pas. Réessaie plus tard.',
+};
+/** Marge avant expiration pour qu'une partie lancée avec ce ticket ait le temps de finir. */
+const TICKET_MARGIN_MS = 15 * 60_000;
+
+function defaultPlayerId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 /** Heure locale du prochain changement de tour (minuit UTC), calculée par le navigateur. */
 const formatLocalTime = (at: Date) =>
@@ -163,6 +197,42 @@ export function createShell(options: ShellOptions): Shell {
   let destroyed = false;
   let pausedByVisibility = false;
   let prefs: ShellPrefs = store.readPrefs();
+
+  // --- Classement (V3-A3) : identité pseudonyme et tickets préchargés -------------------------
+  const leaderboard = options.leaderboard ?? unavailableLeaderboard;
+  const storedPlayer = meta.readPlayer();
+  let player: PlayerIdentity | null = isPlayerIdentity(storedPlayer) ? storedPlayer : null;
+  const tickets: { free?: RankTicket; daily?: RankTicket } = {};
+  const ticketLoading = { free: false, daily: false };
+  const freshTicket = (t: RankTicket | undefined): t is RankTicket => {
+    if (!t) return false;
+    const at = today();
+    return t.expiresAt - at.getTime() > TICKET_MARGIN_MS && (t.mode !== 'daily' || t.day === utcDateKey(at));
+  };
+  /**
+   * Demande à l'avance un ticket par mode : la partie démarre sans attendre le réseau. Sans
+   * pseudo, sans serveur ou hors ligne, la partie se joue quand même, simplement non classée.
+   */
+  const prefetchTickets = () => {
+    if (!leaderboard.available || !player?.pseudo || destroyed) return;
+    for (const mode of ['free', 'daily'] as const) {
+      if (freshTicket(tickets[mode]) || ticketLoading[mode]) continue;
+      ticketLoading[mode] = true;
+      void leaderboard.issueTicket(mode, RULES_VERSION).then((r) => {
+        ticketLoading[mode] = false;
+        if (r.ok && r.value.mode === mode && r.value.rulesVersion === RULES_VERSION) tickets[mode] = r.value;
+      });
+    }
+  };
+  const takeTicket = (mode: Mode, day: string | null): RankTicket | null => {
+    const key = mode === 'daily' ? 'daily' : mode === 'free' ? 'free' : null;
+    if (!key) return null; // défi d'un ami : séquence imposée par le lien, jamais classée
+    const t = tickets[key];
+    if (!freshTicket(t)) return null;
+    if (key === 'daily' && (t.day !== day || t.seed !== dailySeed(t.day))) return null;
+    delete tickets[key];
+    return t;
+  };
 
   const parsed = parseChallenge(new URL(options.url).search);
   let challenge: Challenge | null = parsed.kind === 'challenge' ? parsed.challenge : null;
@@ -324,7 +394,7 @@ export function createShell(options: ShellOptions): Shell {
         const st = itemState(progress, item);
         const li = el(doc, 'li', { class: `card ${st}`, 'data-testid': `shop-${item.id}`, tabindex: '-1' });
         li.append(
-          previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: item.id as SkinId }, shopPreview),
+          previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: isSkinId(item.id) ? item.id : progress.selected.skin }, shopPreview),
           el(doc, 'p', { class: 'card-name' }, item.name),
         );
         if (st === 'owned') {
@@ -375,7 +445,8 @@ export function createShell(options: ShellOptions): Shell {
 
   const wear = (item: ShopItem) => withProgressLock(() => {
     updateDoc((current) => {
-      const updated = selectAppearance(current, { skin: item.id as SkinId });
+      if (!isSkinId(item.id)) return { doc: current, result: null };
+      const updated = selectAppearance(current, { skin: item.id });
       return { doc: updated, result: null };
     });
     if (screen === 'shop') renderShop({ notice: { text: `${item.name} est mis pour ta prochaine partie.`, testId: 'shop-worn' }, focus: 'shop-worn' });
@@ -472,10 +543,134 @@ export function createShell(options: ShellOptions): Shell {
     const tabbar = el(doc, 'nav', { class: 'tabbar', 'aria-label': 'Menu' });
     tabbar.append(
       iconButton(doc, '🛍️', 'Boutique', () => renderShop(), 'tab', 'nav-shop'),
+      iconButton(doc, '🏆', 'Classement', () => renderLeaderboard(), 'tab', 'nav-leaderboard'),
       rewardsTab,
       iconButton(doc, '⚙️', 'Réglages', () => renderSettings(), 'tab', 'nav-settings'),
     );
     show('home', [statusChips(), brand, play, daily, dailyHint, recordLine(), tabbar], play);
+    prefetchTickets();
+  };
+
+  /** Choix du pseudo : jamais le vrai nom, validé comme sur le serveur. */
+  const pseudoBlock = (editing: boolean, kind: BoardKind) => {
+    const box = el(doc, 'div', { class: 'pseudo', 'data-testid': 'pseudo-block' });
+    if (player?.pseudo && !editing) {
+      box.append(
+        el(doc, 'p', { 'data-testid': 'pseudo' }, `Ton pseudo : ${player.pseudo}`),
+        domButton(doc, 'Changer', () => renderLeaderboard(kind, true), 'ghost', 'pseudo-change'),
+      );
+      return box;
+    }
+    const form = el(doc, 'form', { class: 'pseudo-form' });
+    const input = el(doc, 'input', {
+      id: 'pseudo-input', type: 'text', maxlength: '16', autocomplete: 'off', 'data-testid': 'pseudo-input',
+    });
+    input.value = player?.pseudo ?? '';
+    const error = el(doc, 'p', { class: 'hint small', role: 'alert', 'data-testid': 'pseudo-error' });
+    form.append(
+      el(doc, 'label', { for: 'pseudo-input' }, 'Choisis un pseudo pour être classé'),
+      el(doc, 'p', { class: 'hint small' }, 'Pas ton vrai nom. 3 à 16 lettres ou chiffres.'),
+      input,
+      domButton(doc, 'Valider', () => undefined, 'primary', 'pseudo-save'),
+      error,
+    );
+    form.querySelector('button')!.type = 'submit';
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const pseudo = cleanPseudo(input.value);
+      if (!pseudo) {
+        error.textContent = 'Ce pseudo ne va pas : 3 à 16 lettres ou chiffres.';
+        input.focus();
+        return;
+      }
+      player = { id: player?.id ?? (options.newPlayerId ?? defaultPlayerId)(), pseudo };
+      meta.writePlayer(player);
+      announce(`Pseudo enregistré : ${pseudo}.`);
+      prefetchTickets();
+      renderLeaderboard(kind);
+    });
+    box.append(form);
+    return box;
+  };
+
+  let boardRequest = 0;
+  /** Écran Classement : Monde, Semaine, Aujourd'hui ; chargement, erreurs, démo, pagination. */
+  const renderLeaderboard = (kind: BoardKind = 'global', editingPseudo = false) => {
+    const { header, title } = screenHeader('Classement', () => {
+      renderHome();
+      view.querySelector<HTMLElement>('[data-testid="nav-leaderboard"]')?.focus();
+    });
+    const parts: HTMLElement[] = [header];
+    if (!leaderboard.available) {
+      parts.push(
+        el(doc, 'p', { class: 'notice', 'data-testid': 'board-unavailable' },
+          'Classement indisponible : cette version du jeu n’est reliée à aucun serveur.'),
+        el(doc, 'p', { class: 'hint' }, 'Tu peux jouer quand même. Ton record reste sur cet appareil.'),
+        recordLine(),
+      );
+      show('leaderboard', parts, title);
+      return;
+    }
+    const tabs = el(doc, 'div', { class: 'segmented', role: 'group', 'aria-label': 'Tableau' });
+    for (const k of ['global', 'weekly', 'daily'] as const) {
+      const b = domButton(doc, BOARD_LABELS[k], () => renderLeaderboard(k), 'ghost', `board-${k}`);
+      b.setAttribute('aria-pressed', String(k === kind));
+      tabs.append(b);
+    }
+    const content = el(doc, 'div', { class: 'board', 'data-testid': 'board' });
+    parts.push(pseudoBlock(editingPseudo, kind), tabs, content);
+    show('leaderboard', parts, title);
+    if (editingPseudo) view.querySelector<HTMLElement>('#pseudo-input')?.focus();
+    void loadBoard(kind, content, 0, []);
+  };
+
+  const loadBoard = async (kind: BoardKind, content: HTMLElement, offset: number, shown: BoardEntry[]) => {
+    const request = ++boardRequest;
+    const loading = el(doc, 'p', { role: 'status', 'data-testid': 'board-loading' }, 'Chargement…');
+    if (offset === 0) content.replaceChildren(loading);
+    else content.append(loading);
+    const r = await leaderboard.read(kind, {
+      rulesVersion: RULES_VERSION,
+      offset,
+      limit: 20,
+      ...(player ? { player: player.id } : {}),
+    });
+    if (destroyed || screen !== 'leaderboard' || request !== boardRequest) return; // réponse périmée
+    loading.remove();
+    if (!r.ok) {
+      const retry = domButton(doc, 'Réessayer', () => void loadBoard(kind, content, offset, shown), 'secondary', 'board-retry');
+      content.append(el(doc, 'p', { role: 'alert', 'data-testid': 'board-error' }, SERVICE_MESSAGES[r.error]), retry);
+      return;
+    }
+    const pageData = r.value;
+    const entries = [...shown, ...pageData.entries];
+    const nodes: HTMLElement[] = [];
+    if (pageData.demo) {
+      nodes.push(el(doc, 'p', { class: 'notice', 'data-testid': 'board-demo' }, 'Mode démo : ces joueurs sont inventés pour l’essai.'));
+    }
+    if (pageData.you) {
+      nodes.push(el(doc, 'p', { 'data-testid': 'board-you' }, `Ta place : ${ordinal(pageData.you.rank)} sur ${pageData.total}`));
+    }
+    if (entries.length === 0) {
+      nodes.push(el(doc, 'p', { 'data-testid': 'board-empty' }, 'Personne pour l’instant. Sois le premier !'));
+    } else {
+      const list = el(doc, 'ol', { class: 'board-list', 'aria-label': `Classement ${BOARD_LABELS[kind]}` });
+      for (const e of entries) {
+        const li = el(doc, 'li', { class: e.you ? 'you' : '' });
+        li.append(
+          el(doc, 'span', { class: 'board-rank' }, ordinal(e.rank)),
+          el(doc, 'span', { class: 'board-name' }, e.you ? `${e.pseudo} (toi)` : e.pseudo),
+          el(doc, 'span', { class: 'board-score' }, floors(e.score)),
+        );
+        list.append(li);
+      }
+      nodes.push(list);
+    }
+    if (pageData.nextOffset !== null) {
+      const next = pageData.nextOffset;
+      nodes.push(domButton(doc, 'Voir plus', () => void loadBoard(kind, content, next, entries), 'ghost', 'board-more'));
+    }
+    content.replaceChildren(...nodes);
   };
 
   const stopRun = () => {
@@ -490,8 +685,10 @@ export function createShell(options: ShellOptions): Shell {
     // Défi : même séquence. Tour du jour : seed de la date UTC, figée au lancement de cette partie.
     // Libre : nouvelle seed.
     const day = mode === 'daily' ? utcDateKey(today()) : null;
-    const seed =
-      mode === 'daily' && day ? dailySeed(day) : mode === 'challenge' && challenge ? challenge.seed : options.newSeed();
+    const ticket = takeTicket(mode, day);
+    const seed = ticket
+      ? ticket.seed
+      : mode === 'daily' && day ? dailySeed(day) : mode === 'challenge' && challenge ? challenge.seed : options.newSeed();
     const runId = options.newRunId();
     run = {
       runId,
@@ -502,6 +699,7 @@ export function createShell(options: ShellOptions): Shell {
       activeAtStart: activeObjectives(progress).map((o) => o.id),
       events: createRunTracker(),
       handle: null,
+      ticket,
     };
 
     const runChallenge = run.challenge;
@@ -586,6 +784,7 @@ export function createShell(options: ShellOptions): Shell {
       perfectCount: result.perfectCount,
     });
     stopRun();
+    prefetchTickets();
     // Record, progression et record du jour : une seule section exclusive entre onglets.
     withProgressLock(() => {
       const isRecord = store.submitScore({
@@ -671,7 +870,20 @@ export function createShell(options: ShellOptions): Shell {
       summary += ` ${outcome.completedNow.length} objectif(s) accompli(s).`;
     }
     const rewardShortcut = outcome.completedNow.length > 0;
-    parts.push(el(doc, 'p', { class: 'hint' }, 'Score local, non vérifié.'), recordLine());
+    const rankStatus = el(doc, 'p', { class: 'hint', role: 'status', 'data-testid': 'rank-status' });
+    const rankRetry = domButton(doc, 'Envoyer encore', () => void sendRank(current, result, rankStatus, rankRetry), 'ghost', 'rank-retry');
+    rankRetry.hidden = true;
+    if (current.ticket && player?.pseudo) {
+      rankStatus.textContent = 'Envoi au classement…';
+    } else {
+      rankStatus.textContent = 'Score local, non vérifié.';
+      if (leaderboard.available && current.mode !== 'challenge') {
+        rankStatus.textContent += player?.pseudo
+          ? ' Partie non classée : pas de connexion au départ.'
+          : ' Choisis un pseudo dans Classement pour être classé.';
+      }
+    }
+    parts.push(rankStatus, rankRetry, recordLine());
 
     const status = el(doc, 'p', { class: 'hint', role: 'status', 'data-testid': 'share-status' });
     const fallback = el(doc, 'div', { class: 'fallback', hidden: '' });
@@ -732,11 +944,45 @@ export function createShell(options: ShellOptions): Shell {
     const info = el(doc, 'div', { class: 'result-info' });
     info.append(...parts.filter((p): p is HTMLElement => p !== null));
     show('result', [info, actions, status, fallback], retry);
+    if (current.ticket && player?.pseudo) void sendRank(current, result, rankStatus, rankRetry);
     // Marqueur observable (tests, styles) de la fin du délai de garde.
     guardTimer = setTimeout(() => {
       if (screen === 'result') view.dataset.inputReady = 'true';
     }, RESULT_INPUT_GUARD_MS);
     announce(summary);
+  };
+
+  /**
+   * Envoie la partie (ticket + entrées) : le serveur rejoue et calcule lui-même le score.
+   * Idempotent côté serveur : « Envoyer encore » après une coupure ne compte jamais deux fois.
+   */
+  const sendRank = async (current: RunState, result: RunResult, status: HTMLElement, retry: HTMLButtonElement) => {
+    if (!current.ticket || !player?.pseudo) return;
+    retry.hidden = true;
+    status.textContent = 'Envoi au classement…';
+    const r = await leaderboard.submit({
+      ticket: current.ticket.ticket,
+      playerId: player.id,
+      pseudo: player.pseudo,
+      inputTicks: result.inputTicks,
+    });
+    if (destroyed || !status.isConnected) return;
+    let text: string;
+    if (r.ok && r.value.ranked) {
+      const kind: BoardKind = current.ticket.mode === 'daily' ? 'daily' : 'global';
+      const p = r.value.placements[kind];
+      text = p ? `Classement ${BOARD_LABELS[kind]} : ${ordinal(p.rank)} sur ${p.total}.` : 'Partie classée.';
+      if (p && !p.improved) text += ' Ton meilleur score reste celui d’avant.';
+    } else if (r.ok) {
+      text = 'Partie avec reprise : elle n’entre pas au classement.';
+    } else if (r.error === 'rejected') {
+      text = r.code === 'unknown_ticket' ? 'Partie non classée : trop ancienne.' : 'Partie non classée : refusée par le serveur.';
+    } else {
+      text = `Pas envoyé. ${SERVICE_MESSAGES[r.error]}`;
+      retry.hidden = false;
+    }
+    status.textContent = text;
+    announce(text);
   };
 
   // Modalité de la dernière interaction : l'anneau de focus du canvas n'apparaît qu'au clavier
