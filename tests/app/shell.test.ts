@@ -732,3 +732,27 @@ describe('E1 branché : onglets réellement concurrents sous verrou Web Locks (r
     expect(storage.dump('poc:meta:v1:daily')).toEqual({ '2026-11-16': 6 });
   });
 });
+
+describe('apparences branchées (A4)', () => {
+  it('la partie suivante est montée avec la sélection, y compris après rechargement', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, completed: ['floors-5', 'floors-12'], grants: ['v2-objectives-backfill'] }));
+    const first = setup({ meta: createMetaStore(storage) });
+    first.button('Jouer').click();
+    expect(first.game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'gomme' });
+    await first.end(1);
+    first.button('Accueil').click();
+    first.button('Collection 4/11').click();
+    first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
+    first.root.querySelector<HTMLButtonElement>('[data-testid="card-theme-orbital"] button')!.click();
+    first.button('← Retour').click();
+    first.button('Jouer').click();
+    expect(first.game.mounts[1]!.options.appearance).toEqual({ theme: 'orbital', skin: 'marbre' });
+    first.shell.destroy();
+
+    document.body.innerHTML = '<main id="app"></main>';
+    const second = setup({ meta: createMetaStore(storage) });
+    second.button('Jouer').click();
+    expect(second.game.mounts[0]!.options.appearance).toEqual({ theme: 'orbital', skin: 'marbre' });
+  });
+});

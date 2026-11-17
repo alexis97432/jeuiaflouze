@@ -314,3 +314,30 @@ test('E1 : sous le vrai verrou Web Locks, un onglet concurrent ne perd pas la r�
   expect(saved.calendar.lastClaimDate).not.toBeNull();
   await other.close();
 });
+
+test('A4 : aperçus de collection dessinés par le moteur, apparence appliquée à la partie', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, completed: ['floors-5', 'floors-12'], selected: { theme: 'orbital', skin: 'marbre' }, grants: ['v2-objectives-backfill'] }));
+      sessionStorage.setItem('seeded', '1');
+    }
+  });
+  await page.goto('/');
+  await page.getByTestId('open-collection').tap();
+  const previews = page.locator('canvas.swatch.preview');
+  await expect(previews).toHaveCount(9);
+  const colorsPerPreview = await previews.evaluateAll((canvases) =>
+    (canvases as HTMLCanvasElement[]).map((c) => {
+      const { data } = c.getContext('2d')!.getImageData(0, 0, c.width, c.height);
+      const set = new Set<number>();
+      for (let i = 0; i < data.length; i += 4 * 13) set.add((data[i]! << 16) | (data[i + 1]! << 8) | data[i + 2]!);
+      return set.size;
+    }),
+  );
+  expect(colorsPerPreview.every((n) => n > 4)).toBe(true); // vrais dessins, pas des cadres vides
+  await expect(page.getByTestId('card-theme-orbital')).toContainText('Sélectionné');
+  await page.getByTestId('collection-back').tap();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  await tapUntilResult(page);
+  await expect(page.getByTestId('score')).toBeVisible();
+});

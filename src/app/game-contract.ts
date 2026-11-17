@@ -4,7 +4,7 @@
  */
 import type { RunConfig } from '../game';
 
-export type { GameEvent, GameHandle, MountOptions, RunConfig, RunResult } from '../game';
+export type { Appearance, GameEvent, GameHandle, MountOptions, RunConfig, RunResult } from '../game';
 
 /** `src/game/index.ts` n'exporte pas RULES_VERSION ; le type ci-dessous l'aligne sur RunConfig. */
 export const RULES_VERSION: RunConfig['rulesVersion'] = 1;

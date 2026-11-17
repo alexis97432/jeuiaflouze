@@ -51,3 +51,14 @@ describe('createStartGame', () => {
     expect(onFirstPlacement).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('apparence (A4)', () => {
+  it("transmet l'apparence choisie au montage, et rien quand elle est absente", () => {
+    const { calls, mount } = fakeMount();
+    const start = createStartGame(mount);
+    start({ canvas, config, onEnd: vi.fn(), prefs: { muted: false }, appearance: { theme: 'orbital', skin: 'marbre' } });
+    start({ canvas, config, onEnd: vi.fn(), prefs: { muted: false } });
+    expect(calls[0]?.appearance).toEqual({ theme: 'orbital', skin: 'marbre' });
+    expect(calls[1]).not.toHaveProperty('appearance');
+  });
+});

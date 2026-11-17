@@ -1,9 +1,12 @@
 /**
  * Écran Collection (coordination/V2.md § Collection) : univers, apparences et badges.
  * Chaque carte verrouillée dit exactement comment l'obtenir ; seules les cartes débloquées
- * se sélectionnent. Les aperçus sont dessinés en CSS côté shell (classe `swatch-<id>`) :
+ * se sélectionnent. Les aperçus d'univers et d'apparence sont dessinés par le moteur
+ * (`renderAppearancePreview`, F4) avec le même dessin que le jeu ; repli CSS (`swatch-<id>`)
+ * si Canvas 2D est indisponible. Les badges gardent leur pictogramme CSS. Anciennement :
  * ils seront alignés sur le rendu FLK (F3/F4) au branchement A4.
  */
+import { renderAppearancePreview } from '../game';
 import { button, el } from './dom';
 import {
   BADGE_IDS,
@@ -19,6 +22,15 @@ import {
   type Reward,
 } from './progression';
 
+/** Dessine un aperçu ; false si Canvas indisponible (contrat C6). Injectable pour les tests. */
+export type PreviewFn = (
+  canvas: HTMLCanvasElement,
+  appearance: Appearance,
+  options: { width: number; height: number },
+) => boolean;
+
+const PREVIEW_SIZE = { width: 160, height: 72 } as const;
+
 export type CollectionCallbacks = {
   onSelect(next: Partial<Appearance>): void;
   onBack(): void;
@@ -26,10 +38,29 @@ export type CollectionCallbacks = {
 
 const NAMES = (reward: Reward) => rewardLabel(reward).replace(/^(Apparence|Univers|Badge) /, '');
 
+function cssSwatch(doc: Document, id: string): HTMLElement {
+  const swatch = el(doc, 'div', { class: `swatch swatch-${id}`, 'aria-hidden': 'true' });
+  for (let i = 0; i < 3; i++) swatch.append(el(doc, 'span', { class: 'swatch-block' }));
+  return swatch;
+}
+
+function previewOrSwatch(doc: Document, id: string, appearance: Appearance | null, preview: PreviewFn): HTMLElement {
+  if (!appearance) return cssSwatch(doc, id);
+  const canvas = el(doc, 'canvas', { class: 'swatch preview', 'aria-hidden': 'true', 'data-preview': id });
+  let drawn = false;
+  try {
+    drawn = preview(canvas, appearance, PREVIEW_SIZE);
+  } catch {
+    drawn = false; // un aperçu en échec ne doit jamais casser la collection
+  }
+  return drawn ? canvas : cssSwatch(doc, id);
+}
+
 function card(
   doc: Document,
   reward: Reward,
   state: 'selected' | 'available' | 'locked' | 'earned',
+  visual: HTMLElement,
   onChoose?: () => void,
 ): HTMLElement {
   const item = el(doc, 'li', {
@@ -37,10 +68,8 @@ function card(
     'data-testid': `card-${reward.kind}-${reward.id}`,
     tabindex: '-1', // cible du focus après un choix (revue A3b FLK, m2)
   });
-  const swatch = el(doc, 'div', { class: `swatch swatch-${reward.id}`, 'aria-hidden': 'true' });
-  for (let i = 0; i < 3; i++) swatch.append(el(doc, 'span', { class: 'swatch-block' }));
   const name = el(doc, 'p', { class: 'card-name' }, NAMES(reward));
-  item.append(swatch, name);
+  item.append(visual, name);
   if (state === 'selected') {
     item.append(el(doc, 'p', { class: 'card-state' }, 'Sélectionné'));
   } else if (state === 'available' && onChoose) {
@@ -61,6 +90,7 @@ export function renderCollection(
   progress: ProgressState,
   callbacks: CollectionCallbacks,
   focusCard?: string,
+  preview: PreviewFn = renderAppearancePreview,
 ): { nodes: HTMLElement[]; focus: HTMLElement } {
   const back = button(doc, '← Retour', callbacks.onBack, 'ghost', 'collection-back');
   const title = el(doc, 'h1', { tabindex: '-1', class: 'screen-title' }, 'Collection');
@@ -84,6 +114,7 @@ export function renderCollection(
       doc,
       { kind: 'theme', id },
       progress.selected.theme === id ? 'selected' : themes.includes(id) ? 'available' : 'locked',
+      previewOrSwatch(doc, id, { theme: id, skin: progress.selected.skin }, preview),
       () => callbacks.onSelect({ theme: id }),
     ),
   );
@@ -92,16 +123,19 @@ export function renderCollection(
       doc,
       { kind: 'skin', id },
       progress.selected.skin === id ? 'selected' : skins.includes(id) ? 'available' : 'locked',
+      previewOrSwatch(doc, id, { theme: progress.selected.theme, skin: id }, preview),
       () => callbacks.onSelect({ skin: id }),
     ),
   );
-  const badgeCards = BADGE_IDS.map((id) => card(doc, { kind: 'badge', id }, badges.includes(id) ? 'earned' : 'locked'));
+  const badgeCards = BADGE_IDS.map((id) =>
+    card(doc, { kind: 'badge', id }, badges.includes(id) ? 'earned' : 'locked', previewOrSwatch(doc, id, null, preview)),
+  );
 
   const note = el(
     doc,
     'p',
     { class: 'hint', 'data-testid': 'collection-note' },
-    'Les univers et apparences choisis s’appliqueront au jeu avec la prochaine version du rendu.',
+    'L’univers et l’apparence choisis s’appliquent à la prochaine partie. Purement visuels : les règles ne changent pas.',
   );
   const header = el(doc, 'div', { class: 'screen-header' });
   header.append(back, title);
