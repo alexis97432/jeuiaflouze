@@ -1,21 +1,33 @@
 # Claude Code Alexis
 
-## V3 — en cours (17 novembre 2026)
+## V3 — publiée (17 novembre 2026)
 
-| Lot | PR | SHA | État |
-|---|---|---|---|
-| Plan + accord sur le plan FLK (#27) | #25 | `6271754` | ouvert |
-| V3-A1 menu simplifié | #26 | `e02f2f6` | **PASS FLK** (#31), fusion par FLK attendue |
-| V3-A2 boutique en pièces | #29 (empilée sur #26) | `bd461e1` | **PASS FLK** (#31), fusion par FLK attendue |
-| V3-A3 serveur de classement | #32 | `100828c` | revue FLK demandée |
-| V3-A3b écran Classement + envoi | #33 (empilée sur #29 + #32) | `1dc9bc3` | revue FLK demandée ; traite m1 A1 et m2 A2 |
-| V3-A4 adaptateurs pub/paiement + registre serveur | #34 (empilée sur #32) | `fa44b5b` | revue FLK demandée |
-| V3-A5 passe de saison 1 | #35 (empilée sur #33) | `640f8c0` | revue FLK demandée |
+**En ligne :** https://alexis97432.github.io/jeuiaflouze/. `source-commit.txt` = `f411a95b5edc77f685506fc718889995a921c2fc`, vérifié en ligne. CI d'intégration verte (run 44137593024), workflow Pages vert (run 44139088363).
+Contrôle de la page publiée dans Chromium à 390×844 : menu à 6 boutons, boutique (Graphite, Nacré, Holographique), classement « indisponible », premium « indisponible », partie v2 (étages et points), bouton d'image présent. Aucune mention de démo, aucune erreur console, aucune requête externe. Captures : `coordination/captures/v3-en-ligne/`.
 
-Ordre d'intégration : #26 → #29 → #32 → #33 → #34 → #35.
-Attendus de FLK : F6 (#28, revue Codex), F7 (offre de reprise), F8 exposé (#30), F9 (carte de résultat). Ensuite : A6 (reprise avec vie ou vidéo, annonces de bonus, points v2, carte et partage), puis A7 (publication et rapport final Fonctionnel / Démo / Indisponible).
-Bloqueurs externes (docs/SERVICES.md, #34) : hébergement du serveur, fournisseur de paiement et comptes, régie vidéo.
-V2 : intégrée et publiée sur `31575e4`, vérifiée en ligne.
+| Fonction | État |
+|---|---|
+| Parties libres et Tour du jour (règles v2 : jauge Super, bonus Ralenti/×2, points et hauteur) | **Fonctionnel** |
+| Anciens défis `?v=1` et nouveaux défis `?v=2` (cible en étages) | **Fonctionnel** |
+| Menu simplifié, Récompenses, collection (17 objets obtenables) | **Fonctionnel** |
+| Étoiles, niveaux, pièces, calendrier, sauvegarde v3 avec migration V2 et verrou entre onglets | **Fonctionnel** (local à l'appareil) |
+| Boutique en pièces (Graphite, Nacré, Holographique) | **Fonctionnel** |
+| Passe de saison 1, piste gratuite (pièces, Pixel, Galaxie, Lave) | **Fonctionnel** |
+| Passe premium (Or, Cristal) | **Indisponible** : ni paiement ni comptes |
+| Carte de résultat en image, partage avec secours (lien, copie, téléchargement, appui long) | **Fonctionnel** |
+| Annonces accessibles (bonus, jauge, compte à rebours) | **Fonctionnel** |
+| Classement mondial, semaine, jour | **Indisponible** en ligne : serveur `server/` prêt et testé, mais pas hébergé. **Démo** en local (`npm run server:dev`, joueurs « Démo … ») |
+| Reprise par vidéo récompensée | **Indisponible** en production (aucune régie, aucune offre affichée). **Démo** seulement dans un build `VITE_DEMO_SERVICES=1` |
+| Vies (consommables de reprise), achats en argent réel | **Indisponible** : registre serveur prêt et testé, mais il faut un fournisseur de paiement et des comptes |
+
+Bloqueurs externes (décision du propriétaire du projet, voir `docs/SERVICES.md`) :
+- hébergement HTTPS du serveur et base de données ;
+- fournisseur de paiement et comptes joueurs ;
+- régie vidéo adaptée à un public sans ciblage des enfants.
+
+Non testé :
+- téléphones physiques ;
+- avis de joueurs sur les réglages de la jauge.
 
 ## Tâches
 
