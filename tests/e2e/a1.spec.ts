@@ -477,3 +477,49 @@ test('ancien lien de défi ?v=1 : toujours accepté et joué en règles v1', asy
   await expect(page.getByTestId('challenge-outcome')).toBeVisible();
   await expect(page.getByTestId('points')).toHaveCount(0); // v1 : pas de points ×2
 });
+
+test('vie de reprise (build de production, vrai moteur) : achat en pièces, offre après la chute, décompte, vidéo indisponible', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    localStorage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 40, grants: ['v2-objectives-backfill'] }));
+  });
+  await page.goto('/');
+  await expect(page.getByTestId('lives')).toHaveText('0');
+  await page.getByTestId('nav-shop').tap();
+  await page.getByTestId('buy-life').tap();
+  await page.getByTestId('confirm-life').tap();
+  await expect(page.getByTestId('life-success')).toContainText('1 vie');
+  await page.getByRole('button', { name: 'Retour' }).tap();
+  await expect(page.getByTestId('lives')).toHaveText('1');
+  await expect(page.getByTestId('coins')).toHaveText('10 pièces');
+
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  const box = (await page.getByTestId('game-canvas').boundingBox())!;
+  const offer = page.getByTestId('revive');
+  for (let i = 0; i < 400 && !(await offer.isVisible()); i++) {
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForTimeout(i % 4 ? 90 : 400);
+  }
+  await expect(offer).toBeVisible();
+  const life = page.getByTestId('revive-life');
+  await expect(life).toHaveText('Utiliser une vie (1)');
+  await expect(life).toBeInViewport({ ratio: 1 });
+  await expect(page.getByTestId('revive-ad-unavailable')).toHaveText('Vidéo indisponible');
+  await expect(page.getByTestId('revive-ad-unavailable')).toBeDisabled();
+  await expect(page.getByText('Mode démo')).toHaveCount(0);
+  await noHorizontalOverflow(page);
+  await life.tap();
+  await expect(offer).toHaveCount(0);
+  await expect(page.getByTestId('live')).toContainText('C’est reparti');
+  // Après le compte à rebours, jouer jusqu'au second raté (définitif).
+  await page.waitForTimeout(3200);
+  await tapUntilResult(page);
+  await expect(page.getByTestId('revived')).toContainText('reprise');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
+  expect(saved.lives ?? 0).toBe(0); // 0 vie : champ omis
+  expect(saved.livesSpent).toHaveLength(1);
+  expect(saved.coins).toBeGreaterThanOrEqual(10); // 40 − 30 + gains de la partie
+  await page.reload();
+  await expect(page.getByTestId('lives')).toHaveText('0');
+});

@@ -23,8 +23,9 @@ Le jeu gratuit ne dépend d'**aucun** service. Chaque service manquant a un éta
 | --- | --- | --- |
 | Parties, Défi du jour, progression, boutique en pièces | Fonctionnel | — |
 | Classement global / semaine / jour | Indisponible sur Pages ; fonctionnel avec `server/` hébergé | Héberger `server/` en HTTPS et builder avec `VITE_LEADERBOARD_URL` (voir `server/README.md`). |
-| Vidéo récompensée pour la reprise | Indisponible (aucune régie) ; Démo en dev | Choisir une régie compatible web et un public sans ciblage d'enfants, écrire l'adaptateur `real`. |
-| Vies (consommables de reprise), passe premium | Indisponible ; Démo en dev | Fournisseur de paiement, **comptes joueurs** (relier un droit à une personne), endpoint de vérification de reçus et de remboursements branché sur `server/payments.ts`. |
+| Vidéo récompensée pour la reprise | Indisponible : bouton « Vidéo indisponible » affiché et désactivé dans l'offre ; Démo en dev | Choisir une régie compatible web et un public sans ciblage d'enfants, écrire l'adaptateur `real`. |
+| Vies de reprise gagnées en jeu (30 pièces, 5 au maximum) | Fonctionnel (local à l'appareil) | — |
+| Vies en argent réel, passe premium | Indisponible ; Démo en dev | Fournisseur de paiement, **comptes joueurs** (relier un droit à une personne), endpoint de vérification de reçus et de remboursements branché sur `server/payments.ts`. |
 
 ## Règles tenues dans le code
 

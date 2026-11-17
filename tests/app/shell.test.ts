@@ -1489,3 +1489,107 @@ describe('carte : apparence choisie transmise (revue FLK A6b R1)', () => {
     expect(resultImage).toHaveBeenCalledWith(expect.anything(), 'free', null, { theme: 'confiserie', skin: 'graphite' });
   });
 });
+
+describe('vies de reprise en partie libre (correction après publication)', () => {
+  type H = { continueRun: ReturnType<typeof vi.fn>; declineContinue: ReturnType<typeof vi.fn> };
+  function engine(accept = true) {
+    const mounts: { options: StartOptions; handle: H }[] = [];
+    const startGame: StartGame = (options) => {
+      const handle = { pause: vi.fn(), resume: vi.fn(), destroy: vi.fn(), continueRun: vi.fn(() => accept), declineContinue: vi.fn() };
+      mounts.push({ options, handle });
+      return handle;
+    };
+    return { startGame, mounts };
+  }
+  const seeded = (coins: number, lives = 0) => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins, lives, grants: ['v2-objectives-backfill'] }));
+    return storage;
+  };
+
+  it('achat d’une vie en pièces, compteur à l’accueil, offre « Utiliser une vie (1) », vidéo indisponible, vie décomptée une fois', async () => {
+    const storage = seeded(40);
+    const g = engine();
+    const { button, text, root } = setup({ startGame: g.startGame, meta: createMetaStore(storage) });
+    expect(text('lives')).toBe('0');
+    button('Boutique').click();
+    expect(text('lives-count')).toBe('Tu as 0 vie (maximum 5).');
+    button('Acheter 1 vie').click();
+    button('Oui, acheter').click();
+    await flush();
+    expect(text('life-success')).toBe('C’est à toi ! Tu as maintenant 1 vie.');
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, lives: 1 });
+    button('Retour').click();
+    expect(text('lives')).toBe('1');
+    expect(root.querySelector('[data-testid="lives"]')!.getAttribute('aria-label')).toBe('1 vie');
+
+    button('Jouer').click();
+    const m = g.mounts[0]!;
+    expect(m.options.allowContinue).toBe(true);
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    const life = root.querySelector<HTMLButtonElement>('[data-testid="revive-life"]')!;
+    expect(life.textContent).toBe('Utiliser une vie (1)');
+    expect(document.activeElement).toBe(life);
+    const video = root.querySelector<HTMLButtonElement>('[data-testid="revive-ad-unavailable"]')!;
+    expect(video.textContent).toBe('Vidéo indisponible');
+    expect(video.disabled).toBe(true);
+    expect(root.querySelector('[data-testid="revive-demo"]')).toBeNull();
+    life.click();
+    life.click(); // double appui
+    await flush();
+    expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ lives: 0, livesSpent: ['run1:revive'] });
+  });
+
+  it('sans vie et sans régie : pas d’offre (fin normale) et astuce affichée au résultat', async () => {
+    const g = engine();
+    const { button, text } = setup({ startGame: g.startGame, meta: createMetaStore(seeded(0)) });
+    button('Jouer').click();
+    expect(g.mounts[0]!.options.allowContinue).toBeUndefined();
+    g.mounts[0]!.options.onEnd({ seed: 1, rulesVersion: 2, score: 3, height: 3, perfectCount: 0, bestPerfectStreak: 0, bonusCount: 0, continues: 0, durationTicks: 300, inputTicks: [1, 2], continueTicks: [] });
+    await flush();
+    expect(text('lives-tip')).toContain('Boutique');
+  });
+
+  it('reprise refusée par le moteur : la vie est rendue', async () => {
+    const storage = seeded(0, 1);
+    const g = engine(false);
+    const { button, text } = setup({ startGame: g.startGame, meta: createMetaStore(storage) });
+    button('Jouer').click();
+    g.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    button('Utiliser une vie (1)').click();
+    await flush();
+    await flush();
+    expect(text('revive-status')).toBe('Reprise impossible. Ta vie t’a été rendue.');
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ lives: 1 });
+  });
+
+  it('deux onglets avec la même dernière vie : une seule reprise payée, l’autre refusée sans débit', async () => {
+    const storage = seeded(0, 1);
+    const g1 = engine();
+    const a = setup({ startGame: g1.startGame, meta: createMetaStore(storage) });
+    a.button('Jouer').click();
+    g1.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    const lifeA = a.root.querySelector<HTMLButtonElement>('[data-testid="revive-life"]')!;
+    // Second onglet : même stockage, autre partie.
+    const root2 = document.createElement('main');
+    document.body.append(root2);
+    const g2 = engine();
+    const tracker = createTracker({ buildId: 'b', rulesVersion: 1, sessionId: 's2', sink: memorySink() });
+    const b = createShell({
+      root: root2, startGame: g2.startGame, tracker, store: createLocalStore(null), meta: createMetaStore(storage),
+      url: 'https://jeu.test/', replaceUrl: () => undefined, share: async () => 'shared', newSeed: () => 9, newRunId: () => 'runB', now: () => 0,
+    });
+    root2.querySelector<HTMLButtonElement>('[data-testid="play"]')!.click();
+    g2.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
+    lifeA.click();
+    await flush();
+    root2.querySelector<HTMLButtonElement>('[data-testid="revive-life"]')!.click();
+    await flush();
+    expect(g1.mounts[0]!.handle.continueRun).toHaveBeenCalledTimes(1);
+    expect(g2.mounts[0]!.handle.continueRun).not.toHaveBeenCalled();
+    expect(root2.querySelector('[data-testid="revive-status"]')!.textContent).toBe('Plus de vie.');
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ lives: 0 });
+    b.destroy();
+  });
+});
