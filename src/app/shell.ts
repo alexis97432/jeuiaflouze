@@ -431,6 +431,7 @@ export function createShell(options: ShellOptions): Shell {
         canvas,
         config: { seed, rulesVersion: RULES_VERSION },
         prefs,
+        appearance: progress.selected,
         onGameEvent: (event) => {
           if (run === current) current.events.onEvent(event);
         },

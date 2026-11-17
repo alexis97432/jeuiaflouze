@@ -9,14 +9,14 @@
  * Identifiants d'apparence : proposition Alexis (revue C3), à convenir avec FLK (F3/F4).
  */
 
-export const THEME_IDS = ['confiserie', 'orbital', 'jardin'] as const;
-export const SKIN_IDS = ['gomme', 'marbre', 'bonbon', 'verre', 'strie', 'ceramique'] as const;
+import { SKIN_IDS, THEME_IDS, type Appearance, type SkinId, type ThemeId } from '../game';
+
+// Identifiants et types d'apparence : API publique du moteur (F4, contrat C6), jamais redéclarés.
+export { SKIN_IDS, THEME_IDS };
+export type { Appearance, SkinId, ThemeId };
 export const BADGE_IDS = ['touriste-des-nuages', 'precision'] as const;
 
-export type ThemeId = (typeof THEME_IDS)[number];
-export type SkinId = (typeof SKIN_IDS)[number];
 export type BadgeId = (typeof BADGE_IDS)[number];
-export type Appearance = { theme: ThemeId; skin: SkinId };
 
 export const DEFAULT_APPEARANCE: Appearance = { theme: 'confiserie', skin: 'gomme' };
 
