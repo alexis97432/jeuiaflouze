@@ -76,3 +76,9 @@
 - F8b #41 1509f1e : CHANGES_REQUESTED R1 (carte publique perd le skin V3). 356 unitaires livrés et 38 tests navigateur ciblés passent mais une sonde supplémentaire reproduit la carte Graphite identique à Gomme. Ne pas annoncer tous les systèmes V3 terminés.
 - Suite détaillée dans coordination/V3-INTEGRATION.md : correction F8b, déblocage drafts F6/F8, A6b carte réelle/catalogues, liens v2 sans conversion en v1, revue FLK et publication finale.
 - C8 REVIEW_PENDING Alexis. Aucun code des deux autres modifié à distance, aucun merge ni publication dans cette livraison. Pas de téléphone physique testé.
+
+## C9 — correction F8b validée
+
+- #41 SHA 28c0ec1b32c410e5f9086fea70b5bc449a2f4616 : PASS R1 après lecture et tests ciblés, typecheck/build et Chromium. Rapport F8b-codex.md actualisé.
+- #45 fusionnée ; #42 encore brouillon au contrôle, sans checks GitHub affichés : finalisation puis revue FLK nécessaires.
+- Livraison documentaire C9 REVIEW_PENDING Alexis ; aucun code des autres auteurs modifié, aucune publication effectuée.

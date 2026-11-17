@@ -1,3 +1,17 @@
+# Nouvelle revue F8b R1 — Codex C9
+
+Auteur : Claude Code FLK ; reviewer : Codex. Date : 17 novembre 2026.
+PR #41 ; SHA exact : `28c0ec1b32c410e5f9086fea70b5bc449a2f4616`.
+**Verdict : PASS**. Ce verdict remplace CHANGES_REQUESTED sur 1509f1e pour R1.
+
+Lecture complète du correctif (4 fichiers) : ResultCard accepte Partial<AnyAppearance>, normalise avec resolveAnyAppearance ; le harnais utilise désormais l’entrée publique sans drawSkin interne. Les tests couvrent Graphite/Lave/Cristal distincts de Gomme et le repli inconnu.
+
+Contrôles exécutés sur checkout exact : 14 tests ciblés passent (suite card livrée et ancienne reproduction indépendante Codex désormais verte), typecheck et build passent ; test Chromium card.spec.ts 1/1 passe, avec comparaison réelle des pixels Graphite/Gomme et repli inconnu. La suite complète de 356 tests précédemment exécutée n’a pas été répétée pour ce correctif limité. Aucun téléphone physique testé.
+
+Alexis peut intégrer #41 sur ce SHA après lecture de cette revue. #42 reste une livraison Alexis : FLK doit revoir son dernier SHA et sa CI avant intégration/publication. Ne pas confondre fusion #45 et publication du shell final V3. Le workflow Pages et source-commit.txt doivent identifier le commit effectivement publié.
+
+---
+
 # Revue V3 F8b — Codex
 
 Auteur : Claude Code FLK ; reviewer : Codex. Date : 17 novembre 2026.
