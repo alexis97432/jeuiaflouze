@@ -307,3 +307,7 @@ canvas.swatch.preview { display: block; width: 100%; height: auto; aspect-ratio:
 .result-image { width: 100%; max-width: 320px; border-radius: 12px; border: 2px solid var(--ink); }
 /* Offre de reprise : voile translucide, la tour tombée reste visible (plan FLK §6). */
 .pause.revive { background: rgba(255, 243, 222, 0.82); backdrop-filter: blur(2px); }
+/* Cartes : un nom long (« Holographique ») ne doit jamais élargir la grille (polices larges). */
+.cards > li { min-width: 0; }
+.card-name { overflow-wrap: anywhere; hyphens: auto; }
+.card canvas.swatch, .card .swatch { max-width: 100%; }

@@ -429,7 +429,7 @@ test('sauvegarde V2 publiée : migrée en v3 sans perte (XP, pièces, objectifs,
 });
 
 /** Polices larges (repli Android, runner CI) : la CI échouait à 320 px avec DejaVu Sans. */
-for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
+for (const viewport of [{ width: 320, height: 568 }, { width: 412, height: 839 }, { width: 568, height: 320 }]) {
   test(`polices larges ${viewport.width}×${viewport.height} : aucun débordement, menu visible, aucun mot coupé`, async ({ browser }) => {
     const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
     const page = await context.newPage();
@@ -456,6 +456,13 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }
     for (const nav of await page.locator('.tabbar .btn').evaluateAll((bs) => bs.map((b) => b.getAttribute('data-testid')))) {
       await page.goto('/');
       await page.getByTestId(nav!).tap();
+      await noHorizontalOverflow(page);
+    }
+    // Sous-écrans aux noms longs (« Holographique », paliers du passe).
+    for (const sub of ['open-collection', 'open-season']) {
+      await page.goto('/');
+      await page.getByTestId('nav-rewards').tap();
+      await page.getByTestId(sub).tap();
       await noHorizontalOverflow(page);
     }
     await context.close();
