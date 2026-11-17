@@ -63,7 +63,7 @@ Fichier de reprise : si une session s'interrompt, repartir d'ici. Mis à jour à
 | S4 | Écrans : accueil, récompenses, passe, boutique, collection, classement, réglages, aide, résultat, partie et pause, reprise (`src/app/shell.ts`, `src/app/collection-view.ts`) | fait, typecheck propre |
 | S5 | Moteur : qualité d'effets, volume, police (`src/game/render/`) | fait |
 | S6 | Tests : mise à jour, régressions, exploration de tous les boutons, contrastes, thèmes, petits écrans | fait (501 unitaires, 92 e2e, 39 moteur ; exploration 36 boutons ; contrastes clair/sombre) |
-| S7 | Documentation, statut, PR, fusion, publication Pages, vérification en ligne | fait : PR #48 fusionnée (`7c4c671`), publiée et vérifiée en ligne ; libellés de lien invalide en PR de suivi |
+| S7 | Documentation, statut, PR, fusion, publication Pages, vérification en ligne | fait : PR #48 (`7c4c671`) et PR #49 (`a3f9484`) fusionnées, publiées et vérifiées en ligne |
 
 ## Publication V4 (auto-vérification)
 
@@ -91,13 +91,17 @@ Fichier de reprise : si une session s'interrompt, repartir d'ici. Mis à jour à
    - aucune erreur console.
 
    Contrôles en ligne en plus : liens `?v=1` et `?v=2` acceptés, lien invalide signalé, thème sombre suivi depuis l'appareil.
-5. **Suivi :** les messages de lien invalide contenaient encore « séquence invalide », « score invalide » et « mal formé ». Ils sont réécrits pour un enfant, avec un test, dans une PR de suivi qui contient aussi cet état. Après sa fusion, elle est republiée avec le même workflow. Le SHA en ligne final se lit dans `source-commit.txt`.
+5. **Suivi, PR [#49](https://github.com/alexis97432/jeuiaflouze/pull/49) :**
+   - les messages de lien invalide ne disent plus « séquence invalide », « score invalide » ni « mal formé » ; un test le vérifie ;
+   - head `44c4ed7`, CI en succès (run 44189144733) ;
+   - fusionnée en `a3f9484`, publiée par le run Pages 44189923102 (succès) ;
+   - en ligne depuis 22 h 30 UTC ; les 23 contrôles passent à nouveau, et les trois messages de lien invalide ont été vérifiés sur le site.
+6. **Relevé final :** cet état est publié à son tour, pour que le commit servi (`source-commit.txt`) soit la tête de `claude/youthful-mayer-n4f7oy`.
 
 ## Reprise
 
-- **Fait :** la V4 est fusionnée, publiée et vérifiée en ligne (`7c4c671`).
-- **Si la session s'interrompt :** reprendre la PR de suivi (libellés de lien invalide et état de publication) :
-  1. CI verte ;
-  2. fusion ;
-  3. `pages.yml` avec le SHA exact de la fusion ;
-  4. `source-commit.txt` en ligne et un lien invalide ouvert sur le site.
+- **V4 terminée : publiée et vérifiée en ligne.** Aucune action en attente.
+- **Publications successives :**
+  - `7c4c671` (run Pages 44187918060) ;
+  - `a3f9484` (run 44189923102) ;
+  - ce relevé final. Son SHA se lit dans `source-commit.txt`.
