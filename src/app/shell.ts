@@ -22,7 +22,7 @@ import {
   readProgressDoc,
   type ProgressDoc,
 } from './economy';
-import { button as domButton, el, floors } from './dom';
+import { button as domButton, el, floors, iconButton } from './dom';
 import {
   activeObjectives,
   BADGE_IDS,
@@ -42,7 +42,7 @@ import type { Mode, Tracker } from '../platform/metrics';
 import type { ShareData, ShareOutcome } from '../platform/share';
 import type { LocalStore, MetaStore } from '../platform/storage';
 
-export type Screen = 'home' | 'game' | 'result' | 'collection';
+export type Screen = 'home' | 'game' | 'result' | 'collection' | 'rewards' | 'settings' | 'shop';
 
 /**
  * Délai pendant lequel les boutons du résultat ignorent les activations : un joueur qui tape
@@ -96,10 +96,6 @@ type RunState = {
   events: RunTracker;
   handle: GameHandle | null;
 };
-
-/** Date UTC lisible (« 16 novembre ») ; la clé ISO reste en attribut pour les tests. */
-const formatDay = (day: string) =>
-  new Date(`${day}T12:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 
 /** Heure locale du prochain changement de tour (minuit UTC), calculée par le navigateur. */
 const formatLocalTime = (at: Date) =>
@@ -191,10 +187,8 @@ export function createShell(options: ShellOptions): Shell {
 
   const recordLine = () => {
     const best = store.readBest();
-    const text = store.persistent
-      ? `Record sur cet appareil : ${floors(best)}`
-      : `Record de cette session : ${floors(best)} (sauvegarde indisponible)`;
-    return el(doc, 'p', { class: 'hint', 'data-testid': 'record' }, text);
+    const text = store.persistent ? `Record : ${floors(best)}` : `Record : ${floors(best)} (non sauvegardé)`;
+    return el(doc, 'p', { class: 'hint record-line', 'data-testid': 'record', 'data-icon': '🏆' }, text);
   };
 
   const soundToggle = () => {
@@ -204,64 +198,114 @@ export function createShell(options: ShellOptions): Shell {
       'aria-pressed': String(!prefs.muted),
       'data-testid': 'sound-toggle',
     }, prefs.muted ? 'Son : coupé' : 'Son : activé');
+    b.dataset.icon = prefs.muted ? '🔇' : '🔊';
     b.addEventListener('click', () => {
       prefs = { muted: !prefs.muted };
       store.writePrefs(prefs);
       b.setAttribute('aria-pressed', String(!prefs.muted));
       b.textContent = prefs.muted ? 'Son : coupé' : 'Son : activé';
+      b.dataset.icon = prefs.muted ? '🔇' : '🔊';
     });
     return b;
   };
 
-  /** Niveau, XP, pièces et récompense de connexion (E1b–E1d), progression locale. */
-  const profilePanel = (day: string) => {
+  const coinsText = () => `${progress.coins} pièce${progress.coins > 1 ? 's' : ''}`;
+
+  /** Pastilles du haut de l'accueil : niveau et pièces, sans détail. */
+  const statusChips = () => {
     const info = levelInfo(progress.xp);
-    const panel = el(doc, 'section', { class: 'panel profile', 'aria-labelledby': 'profile-title', 'data-testid': 'profile' });
-    const head = el(doc, 'div', { class: 'profile-head' });
-    head.append(
-      el(doc, 'h2', { id: 'profile-title', 'data-testid': 'level' }, `Niveau ${info.level}${info.title ? ` · ${info.title}` : ''}`),
-      el(doc, 'p', { class: 'coins', 'data-testid': 'coins' }, `${progress.coins} pièce${progress.coins > 1 ? 's' : ''}`),
+    const bar = el(doc, 'div', { class: 'chips' });
+    bar.append(
+      el(doc, 'p', { class: 'chip', 'data-icon': '⭐', 'data-testid': 'level' }, `Niveau ${info.level}`),
+      el(doc, 'p', { class: 'chip', 'data-icon': '🪙', 'data-testid': 'coins' }, coinsText()),
     );
-    panel.append(head);
-    if (info.toNext !== null) {
-      const total = info.intoLevel + info.toNext;
-      const bar = el(doc, 'progress', { max: String(total), value: String(info.intoLevel), 'aria-label': 'Progression vers le niveau suivant' });
-      panel.append(bar, el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, `${progress.xp} XP · encore ${info.toNext} XP pour le niveau ${info.level + 1}`));
-    } else {
-      panel.append(el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, `${progress.xp} XP · niveau maximal`));
-    }
+    return bar;
+  };
+
+  const screenHeader = (titleText: string, onBack: () => void) => {
+    const back = iconButton(doc, '←', 'Retour', onBack, 'ghost', 'back');
+    const h = el(doc, 'h1', { tabindex: '-1', class: 'screen-title' }, titleText);
+    const header = el(doc, 'div', { class: 'screen-header' });
+    header.append(back, h);
+    return { header, title: h };
+  };
+
+  /** Écran Récompenses : cadeau du jour, niveau, objectifs, collection (progression locale). */
+  const renderRewards = (focusTestId?: string) => {
+    const { header, title } = screenHeader('Récompenses', () => {
+      renderHome();
+      view.querySelector<HTMLElement>('[data-testid="nav-rewards"]')?.focus();
+    });
+    const day = utcDateKey(today());
+
+    const gift = el(doc, 'section', { class: 'panel', 'aria-labelledby': 'gift-title' });
     const status = calendarStatus(progress, day);
-    const calendarLine = el(doc, 'p', { class: 'hint', 'data-testid': 'calendar' },
-      status.canClaim
-        ? `Récompense de connexion : +${status.reward} pièces (jour ${status.dayInCycle}/7)`
-        : 'Récompense de connexion déjà récupérée aujourd’hui.');
-    panel.append(calendarLine);
+    gift.append(el(doc, 'h2', { id: 'gift-title', 'data-icon': '🎁' }, 'Cadeau du jour'));
+    gift.append(el(doc, 'p', { 'data-testid': 'calendar', tabindex: '-1' },
+      status.canClaim ? `+${status.reward} pièces (jour ${status.dayInCycle} sur 7)` : 'Déjà pris aujourd’hui. Reviens demain !'));
     if (status.canClaim) {
-      const claim = domButton(doc, `Récupérer +${status.reward}`, () => withProgressLock(() => {
+      gift.append(domButton(doc, `Prendre +${status.reward}`, () => withProgressLock(() => {
         const result = updateDoc((current) => {
           const r = claimCalendar(current, utcDateKey(today()));
           return { doc: r.doc, result: r };
         });
         if (result.claimed) announce(`+${result.reward} pièces récupérées.`);
-        else announce('Récompense du jour déjà récupérée.');
-        if (screen !== 'home') return;
-        renderHome();
-        view.querySelector<HTMLElement>('[data-testid="calendar"]')?.setAttribute('tabindex', '-1');
-        view.querySelector<HTMLElement>('[data-testid="calendar"]')?.focus();
-      }), 'ghost', 'claim');
-      panel.append(claim);
+        else announce('Cadeau du jour déjà pris.');
+        if (screen === 'rewards') renderRewards('calendar');
+      }), 'secondary', 'claim'));
     }
-    panel.append(el(doc, 'p', { class: 'hint small' },
-      writable
-        ? 'Progression locale, sur cet appareil.'
-        : 'Sauvegarde d’une version plus récente du jeu : progression de cette session non enregistrée.'));
-    return panel;
+
+    const info = levelInfo(progress.xp);
+    const level = el(doc, 'section', { class: 'panel', 'aria-labelledby': 'level-title' });
+    level.append(el(doc, 'h2', { id: 'level-title', 'data-icon': '⭐' }, `Niveau ${info.level}${info.title ? ` · ${info.title}` : ''}`));
+    if (info.toNext !== null) {
+      level.append(
+        el(doc, 'progress', { max: String(info.intoLevel + info.toNext), value: String(info.intoLevel), 'aria-label': 'Vers le niveau suivant' }),
+        el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, `Encore ${info.toNext} étoile${info.toNext > 1 ? 's' : ''} pour le niveau ${info.level + 1}`),
+      );
+    } else {
+      level.append(el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, 'Niveau maximal, bravo !'));
+    }
+
+    const goalsPanel = el(doc, 'section', { class: 'panel', 'aria-labelledby': 'goals-title' });
+    const goals = el(doc, 'ul', { class: 'goals', 'data-testid': 'goals' });
+    for (const o of activeObjectives(progress)) {
+      const li = el(doc, 'li', {}, o.label);
+      li.append(el(doc, 'span', { class: 'reward' }, ` → ${rewardLabel(o.reward)}`));
+      goals.append(li);
+    }
+    if (goals.childElementCount === 0) goals.append(el(doc, 'li', {}, 'Tous les défis sont réussis. Bravo !'));
+    goalsPanel.append(el(doc, 'h2', { id: 'goals-title', 'data-icon': '🎯' }, 'Défis à réussir'), goals);
+
+    const note = el(doc, 'p', { class: 'hint small' }, writable
+      ? 'Ta progression est gardée sur cet appareil.'
+      : 'Sauvegarde d’une version plus récente du jeu : progression de cette session non enregistrée.');
+    show('rewards', [header, statusChips(), gift, level, goalsPanel, collectionButton(), note], title);
+    if (focusTestId) view.querySelector<HTMLElement>(`[data-testid="${focusTestId}"]`)?.focus();
+  };
+
+  /** Réglages discrets : son. */
+  const renderSettings = () => {
+    const { header, title } = screenHeader('Réglages', () => {
+      renderHome();
+      view.querySelector<HTMLElement>('[data-testid="nav-settings"]')?.focus();
+    });
+    show('settings', [header, soundToggle(), el(doc, 'p', { class: 'hint small' }, 'Le son démarre après ton premier toucher.')], title);
+  };
+
+  /** Boutique : contenu livré par le lot V3-A2 (achats en pièces). */
+  const renderShop = () => {
+    const { header, title } = screenHeader('Boutique', () => {
+      renderHome();
+      view.querySelector<HTMLElement>('[data-testid="nav-shop"]')?.focus();
+    });
+    show('shop', [header, statusChips(), el(doc, 'p', { 'data-testid': 'shop-empty' }, 'La boutique ouvre bientôt.')], title);
   };
 
   const collectionButton = () => {
     const owned = unlockedThemes(progress).length + unlockedSkins(progress).length + earnedBadges(progress).length;
     const total = THEME_IDS.length + SKIN_IDS.length + BADGE_IDS.length;
-    const b = domButton(doc, `Collection ${owned}/${total}`, () => renderCollectionScreen(), 'ghost', 'open-collection');
+    const b = iconButton(doc, '🎨', `Ma collection ${owned}/${total}`, () => renderCollectionScreen(), 'secondary', 'open-collection');
     return b;
   };
 
@@ -279,8 +323,7 @@ export function createShell(options: ShellOptions): Shell {
         announce('Sélection enregistrée.');
       }),
       onBack: () => {
-        renderHome();
-        view.querySelector<HTMLButtonElement>('[data-testid="open-collection"]')?.focus();
+        renderRewards('open-collection');
       },
     }, focusCard);
     show('collection', nodes, focus);
@@ -329,39 +372,31 @@ export function createShell(options: ShellOptions): Shell {
     const logo = el(doc, 'div', { class: 'logo', 'aria-hidden': 'true' });
     for (let i = 0; i < 3; i++) logo.append(el(doc, 'span', {}));
     const brand = el(doc, 'header', { class: 'brand' });
-    brand.append(logo, title, el(doc, 'p', { class: 'tagline' },
-      'Touchez pour poser le bloc. Ce qui dépasse tombe.'));
-    const play = button('Jouer', () => startRun(null), true);
+    brand.append(logo, title, el(doc, 'p', { class: 'tagline' }, 'Touche pour poser le bloc !'));
+
+    // Une seule action principale, toujours visible sans défiler (320×568, paysage).
+    const play = iconButton(doc, '▶', 'Jouer', () => startRun(null), 'primary', 'play');
     play.classList.add('big');
 
     const now = today();
     const day = utcDateKey(now);
-    const dailyBest = meta.readDailyBest(day);
-    const profile = profilePanel(day);
-    const dailyPanel = el(doc, 'section', { class: 'panel daily', 'aria-labelledby': 'daily-title', 'data-testid': 'daily-panel' });
-    dailyPanel.append(
-      el(doc, 'h2', { id: 'daily-title' }, 'Tour du jour'),
-      el(doc, 'p', { 'data-testid': 'daily-hint', 'data-day': day },
-        `Même tour pour tous · ${formatDay(day)} (UTC)`),
-      el(doc, 'p', { class: 'hint', 'data-testid': 'daily-next' },
-        `Nouvelle tour à ${formatLocalTime(nextDailyChange(now))} (heure locale)` +
-          (dailyBest > 0 ? ` · record du jour : ${floors(dailyBest)}` : '')),
-      button('Jouer la tour du jour', () => startRun(null, 'daily'), false, 'daily'),
-    );
+    const daily = iconButton(doc, '📅', 'Défi du jour', () => startRun(null, 'daily'), 'secondary', 'daily');
+    const dailyHint = el(doc, 'p', { class: 'hint small', 'data-testid': 'daily-hint', 'data-day': day },
+      `Le même pour tous · nouveau à ${formatLocalTime(nextDailyChange(now))}`);
 
-    const goalsPanel = el(doc, 'section', { class: 'panel', 'aria-labelledby': 'goals-title' });
-    const goals = el(doc, 'ul', { class: 'goals', 'data-testid': 'goals' });
-    for (const o of activeObjectives(progress)) {
-      const li = el(doc, 'li', {}, o.label);
-      li.append(el(doc, 'span', { class: 'reward' }, ` → ${rewardLabel(o.reward)}`));
-      goals.append(li);
+    const giftReady = calendarStatus(progress, day).canClaim;
+    const rewardsTab = iconButton(doc, '🎁', 'Récompenses', () => renderRewards(), 'tab', 'nav-rewards');
+    if (giftReady) {
+      rewardsTab.classList.add('has-dot');
+      rewardsTab.setAttribute('aria-label', 'Récompenses, un cadeau t’attend');
     }
-    if (goals.childElementCount === 0) goals.append(el(doc, 'li', {}, 'Tous les objectifs sont accomplis. Bravo !'));
-    goalsPanel.append(el(doc, 'h2', { id: 'goals-title' }, 'Objectifs'), goals);
-
-    const footer = el(doc, 'nav', { class: 'footer-row', 'aria-label': 'Options' });
-    footer.append(collectionButton(), soundToggle());
-    show('home', [brand, play, profile, dailyPanel, goalsPanel, footer, recordLine()], play);
+    const tabbar = el(doc, 'nav', { class: 'tabbar', 'aria-label': 'Menu' });
+    tabbar.append(
+      iconButton(doc, '🛍️', 'Boutique', () => renderShop(), 'tab', 'nav-shop'),
+      rewardsTab,
+      iconButton(doc, '⚙️', 'Réglages', () => renderSettings(), 'tab', 'nav-settings'),
+    );
+    show('home', [statusChips(), brand, play, daily, dailyHint, recordLine(), tabbar], play);
   };
 
   const stopRun = () => {
@@ -537,7 +572,7 @@ export function createShell(options: ShellOptions): Shell {
       summary += ` ${text}`;
     }
     if (outcome.gained.xp > 0 || outcome.gained.coins > 0) {
-      const gains = `+${outcome.gained.xp} XP · +${outcome.gained.coins} pièce${outcome.gained.coins > 1 ? 's' : ''}`;
+      const gains = `+${outcome.gained.xp} étoile${outcome.gained.xp > 1 ? 's' : ''} · +${outcome.gained.coins} pièce${outcome.gained.coins > 1 ? 's' : ''}`;
       parts.push(el(doc, 'p', { class: 'gains', 'data-testid': 'gains' }, gains));
       summary += ` ${gains}.`;
     }

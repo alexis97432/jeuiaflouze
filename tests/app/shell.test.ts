@@ -207,18 +207,21 @@ describe('record et préférences', () => {
 
   it('signale une sauvegarde indisponible sans bloquer', () => {
     const { text } = setup();
-    expect(text('record')).toMatch(/sauvegarde indisponible/);
+    expect(text('record')).toMatch(/non sauvegardé/);
   });
 
   it('le réglage du son est mémorisé et transmis au moteur', () => {
     const store = createLocalStore(null);
     const { game, button, root } = setup({ store });
+    button('Réglages').click();
     const toggle = root.querySelector<HTMLButtonElement>('[data-testid="sound-toggle"]')!;
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
     toggle.click();
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     expect(toggle.textContent).toBe('Son : coupé');
     expect(store.readPrefs()).toEqual({ muted: true });
+    button('Retour').click();
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('nav-settings');
     button('Jouer').click();
     expect(game.mounts[0]!.options.prefs).toEqual({ muted: true });
   });
@@ -389,10 +392,9 @@ describe('robustesse', () => {
 describe('Tour du jour (V2)', () => {
   it('joue la seed de la date UTC, figée au lancement, et tient un record du jour', async () => {
     const { game, sink, button, text, end, day, meta } = setup();
-    expect(text('daily-hint')).toBe('Même tour pour tous · 16 novembre (UTC)');
-    // Tests en UTC+14 (Kiritimati) : minuit UTC = 14:00 locales.
-    expect(text('daily-next')).toBe('Nouvelle tour à 14:00 (heure locale)');
-    button('Jouer la tour du jour').click();
+    expect(text('daily-hint')).toBe('Le même pour tous · nouveau à 14:00');
+    // Tests en UTC+14 (Kiritimati) : minuit UTC = 14:00 locales (ci-dessus).
+    button('Défi du jour').click();
     expect(game.mounts[0]!.options.config.seed).toBe(630742688); // vecteur de référence (Python)
     expect(sink.events.at(-1)).toMatchObject({ name: 'run_start', mode: 'daily', day: '2026-11-16' });
     day.now = new Date('2026-11-17T00:00:01Z'); // minuit UTC passe pendant la partie
@@ -409,11 +411,13 @@ describe('Tour du jour (V2)', () => {
 describe('objectifs (V2)', () => {
   it('valide les objectifs actifs au lancement, une seule fois, et persiste la progression', async () => {
     const { button, text, end, place, meta, root } = setup();
+    button('Récompenses').click();
     expect([...root.querySelectorAll('[data-testid="goals"] li')].map((li) => li.textContent)).toEqual([
       'Poser au moins 5 étages dans une partie → Apparence Marbré',
       'Faire 2 parfaits consécutifs dans une partie → Apparence Bonbon',
       'Poser au moins 12 étages dans une partie → Univers Orbital',
     ]);
+    button('Retour').click();
     button('Jouer').click();
     place([false, true, true, false, false]);
     await end(5);
@@ -452,14 +456,17 @@ describe('accueil V2 et collection', () => {
 
   it('collection : verrous explicites, choix persistant, retour avec focus rendu', async () => {
     const { button, root, text, end, place, meta } = setup();
-    expect(text('open-collection')).toBe('Collection 2/11');
-    button('Collection 2/11').click();
+    button('Récompenses').click();
+    expect(text('open-collection')).toBe('Ma collection 2/11');
+    button('Ma collection 2/11').click();
     expect(text('card-skin-marbre')).toContain('À débloquer : poser au moins 5 étages dans une partie');
     expect(text('card-theme-jardin')).toContain('À débloquer : terminer une tour du jour avec au moins 8 étages');
     expect(text('card-skin-gomme')).toContain('Sélectionné');
     expect(root.querySelector('[data-testid="card-skin-marbre"] button')).toBeNull(); // verrouillé : pas de choix
-    button('← Retour').click();
+    button('← Retour').click(); // retour à l'écran Récompenses
     expect(document.activeElement?.getAttribute('data-testid')).toBe('open-collection');
+    button('Retour').click();
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('nav-rewards');
 
     button('Jouer').click();
     place([false, false, false, false, false]);
@@ -522,15 +529,16 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     first.button('Jouer').click();
     first.place([false, true, true, false, true, false, false, false, false, false, false, false]);
     await first.end(12);
-    expect(first.text('gains')).toBe('+14 XP · +35 pièces');
+    expect(first.text('gains')).toBe('+14 étoiles · +35 pièces');
     // 2. Réclamation du calendrier.
     first.button('Accueil').click();
     expect(first.text('coins')).toBe('35 pièces');
-    first.button('Récupérer +5').click();
+    first.button('Récompenses').click();
+    first.button('Prendre +5').click();
     expect(first.text('coins')).toBe('40 pièces');
-    expect(first.text('calendar')).toContain('déjà récupérée');
+    expect(first.text('calendar')).toContain('Déjà pris');
     // 3. Choix d'apparence.
-    first.button('Collection 5/11').click();
+    first.button('Ma collection 5/11').click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
     first.shell.destroy();
 
@@ -548,9 +556,10 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     document.body.innerHTML = '<main id="app"></main>';
     const second = setup({ meta: createMetaStore(storage), store: createLocalStore(storage) });
     expect(second.text('coins')).toBe('40 pièces');
-    expect(second.text('xp')).toBe('14 XP · encore 26 XP pour le niveau 2');
-    expect(second.text('calendar')).toContain('déjà récupérée');
-    second.button('Collection 5/11').click();
+    second.button('Récompenses').click();
+    expect(second.text('xp')).toBe('Encore 26 étoiles pour le niveau 2');
+    expect(second.text('calendar')).toContain('Déjà pris');
+    second.button('Ma collection 5/11').click();
     expect(second.text('card-skin-marbre')).toContain('Sélectionné');
     expect(storage.dump('poc:meta:v1:progress')).toEqual(saved); // la lecture seule ne réécrit rien
   });
@@ -571,7 +580,9 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     storage.setItem('poc:meta:v1:progress', JSON.stringify(future));
     const { text, button, end } = setup({ meta: createMetaStore(storage) });
     expect(text('coins')).toBe('400 pièces');
-    expect(text('profile')).toContain('version plus récente');
+    button('Récompenses').click();
+    expect(document.body.textContent).toContain('version plus récente');
+    button('Retour').click();
     button('Jouer').click();
     await end(8);
     expect(storage.dump('poc:meta:v1:progress')).toEqual(future);
@@ -612,9 +623,11 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
     document.body.innerHTML = '';
     const storage = memoryStorage();
     const a = tab(storage, 'a');
-    const b = tab(storage, 'b'); // ouvert avant la réclamation : son écran propose encore « Récupérer »
-    a.button('Récupérer +5').click();
+    const b = tab(storage, 'b'); // ouvert avant la réclamation : son écran propose encore « Prendre »
+    a.button('Récompenses').click();
+    a.button('Prendre +5').click();
     expect(a.text('coins')).toBe('5 pièces');
+    a.button('Retour').click();
 
     b.button('Jouer').click();
     b.game.mounts[0]!.options.onEnd(result(3)); // 3 étages, 1 parfait → 2 pièces, 5 XP
@@ -623,7 +636,8 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
 
     b.button('Accueil').click();
     expect(b.text('coins')).toBe('7 pièces');
-    expect(b.text('calendar')).toContain('déjà récupérée');
+    b.button('Récompenses').click();
+    expect(b.text('calendar')).toContain('Déjà pris');
 
     // A affiche encore un état ancien : sa partie relit d'abord le stockage.
     a.button('Jouer').click();
@@ -639,10 +653,12 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
     const storage = memoryStorage();
     const a = tab(storage, 'a');
     const b = tab(storage, 'b');
-    a.button('Récupérer +5').click();
-    b.button('Récupérer +5').click(); // écran de B périmé
+    b.button('Récompenses').click(); // B affiche « Prendre +5 »
+    a.button('Récompenses').click();
+    a.button('Prendre +5').click();
+    b.button('Prendre +5').click(); // écran de B périmé
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 5, calendar: { index: 1 } });
-    expect(b.text('calendar')).toContain('déjà récupérée');
+    expect(b.text('calendar')).toContain('Déjà pris');
     a.shell.destroy();
     b.shell.destroy();
   });
@@ -652,7 +668,8 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
     const storage = memoryStorage();
     const a = tab(storage, 'a');
     const b = tab(storage, 'b');
-    a.button('Récupérer +5').click();
+    a.button('Récompenses').click();
+    a.button('Prendre +5').click();
     expect(b.text('coins')).toBe('0 pièce');
     window.dispatchEvent(new StorageEvent('storage', { key: 'poc:meta:v1:progress' }));
     expect(b.text('coins')).toBe('5 pièces');
@@ -708,7 +725,8 @@ describe('E1 branché : onglets réellement concurrents sous verrou Web Locks (r
     });
 
     // Onglet A réclame PENDANT que B tient le verrou : sa section attend.
-    button('Récupérer +5').click();
+    button('Récompenses').click();
+    button('Prendre +5').click();
     await flush();
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 0 }); // A n'a pas écrit
     releaseB();
@@ -724,11 +742,11 @@ describe('E1 branché : onglets réellement concurrents sous verrou Web Locks (r
     const locks = fakeLocks();
     const storage = memoryStorage();
     const { button, end, text } = setup({ meta: createMetaStore(storage), store: createLocalStore(storage), locks });
-    button('Jouer la tour du jour').click();
+    button('Défi du jour').click();
     await end(6);
     await flush();
     expect(locks.requested).toEqual([PROGRESS_LOCK]);
-    expect(text('gains')).toContain('XP');
+    expect(text('gains')).toContain('étoile');
     expect(storage.dump('poc:meta:v1:daily')).toEqual({ '2026-11-16': 6 });
   });
 });
@@ -742,10 +760,12 @@ describe('apparences branchées (A4)', () => {
     expect(first.game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'gomme' });
     await first.end(1);
     first.button('Accueil').click();
-    first.button('Collection 4/11').click();
+    first.button('Récompenses').click();
+    first.button('Ma collection 4/11').click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-theme-orbital"] button')!.click();
     first.button('← Retour').click();
+    first.button('Retour').click();
     first.button('Jouer').click();
     expect(first.game.mounts[1]!.options.appearance).toEqual({ theme: 'orbital', skin: 'marbre' });
     first.shell.destroy();
@@ -754,5 +774,39 @@ describe('apparences branchées (A4)', () => {
     const second = setup({ meta: createMetaStore(storage) });
     second.button('Jouer').click();
     expect(second.game.mounts[0]!.options.appearance).toEqual({ theme: 'orbital', skin: 'marbre' });
+  });
+});
+
+describe('menu V3 (lisible par un enfant de 8 ans)', () => {
+  it("accueil : Jouer, Défi du jour, record, et une barre Boutique / Récompenses / Réglages — rien d'autre", () => {
+    const { root } = setup();
+    const buttons = [...root.querySelectorAll('button')].map((b) => b.textContent);
+    expect(buttons).toEqual(['Jouer', 'Défi du jour', 'Boutique', 'Récompenses', 'Réglages']);
+    expect(root.querySelectorAll('.btn.primary')).toHaveLength(1);
+    expect(root.querySelector('[data-testid="play"]')?.getAttribute('data-icon')).toBe('▶');
+    // Aucun panneau empilé ni explication technique sur l'accueil.
+    expect(root.querySelectorAll('.panel')).toHaveLength(0);
+    expect(root.textContent).not.toMatch(/UTC|XP|progression locale/i);
+  });
+
+  it('signale un cadeau du jour à prendre sur l’onglet Récompenses, puis plus après l’avoir pris', () => {
+    const { root, button } = setup();
+    const tab = () => root.querySelector('[data-testid="nav-rewards"]')!;
+    expect(tab().classList.contains('has-dot')).toBe(true);
+    expect(tab().getAttribute('aria-label')).toBe('Récompenses, un cadeau t’attend');
+    button('Récompenses').click();
+    button('Prendre +5').click();
+    button('Retour').click();
+    expect(tab().classList.contains('has-dot')).toBe(false);
+  });
+
+  it('chaque écran secondaire a un titre focalisé et un retour qui rend le focus à son onglet', () => {
+    const { button } = setup();
+    for (const [tab, title, testId] of [['Boutique', 'Boutique', 'nav-shop'], ['Récompenses', 'Récompenses', 'nav-rewards'], ['Réglages', 'Réglages', 'nav-settings']] as const) {
+      button(tab).click();
+      expect(document.activeElement?.textContent).toBe(title);
+      button('Retour').click();
+      expect(document.activeElement?.getAttribute('data-testid')).toBe(testId);
+    }
   });
 });

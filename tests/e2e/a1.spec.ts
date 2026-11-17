@@ -31,7 +31,7 @@ test('défi par lien : même seed, comparaison, record persistant', async ({ pag
   expect((await metrics(page)).find((e) => e.name === 'run_end')).toMatchObject({ mode: 'challenge' });
 
   await page.goto('/');
-  await expect(page.getByTestId('record')).toHaveText(`Record sur cet appareil : ${floors}`);
+  await expect(page.getByTestId('record')).toHaveText(`Record : ${floors}`);
 });
 
 test('le lien partagé ouvre le même défi dans un autre navigateur', async ({ page, browser }) => {
@@ -122,7 +122,7 @@ test('stockage bloqué : le jeu reste jouable', async ({ page }) => {
     });
   });
   await page.goto('/');
-  await expect(page.getByTestId('record')).toContainText('sauvegarde indisponible');
+  await expect(page.getByTestId('record')).toContainText('non sauvegardé');
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   await page.getByRole('button', { name: 'Rejouer' }).tap();
@@ -143,16 +143,18 @@ test('stockage corrompu ou plein : le jeu reste jouable', async ({ page }) => {
   await tapUntilResult(page);
   await expect(page.getByTestId('new-record')).toBeVisible();
   await expect(page.getByTestId('record')).toContainText(`${await lastScore(page)} étage`);
-  await expect(page.getByTestId('record')).toContainText('(sauvegarde indisponible)');
+  await expect(page.getByTestId('record')).toContainText('(non sauvegardé)');
 });
 
 test('le réglage du son survit au rechargement', async ({ page }) => {
   await page.goto('/');
+  await page.getByTestId('nav-settings').tap();
   const toggle = page.getByTestId('sound-toggle');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await toggle.tap();
   await expect(toggle).toHaveText('Son : coupé');
   await page.reload();
+  await page.getByTestId('nav-settings').tap();
   await expect(page.getByTestId('sound-toggle')).toHaveAttribute('aria-pressed', 'false');
 });
 
@@ -179,9 +181,11 @@ test('Tour du jour : seed de la date UTC, record du jour, objectifs affichés', 
   await page.goto('/');
   const day = utcDateKey(new Date());
   await expect(page.getByTestId('daily-hint')).toHaveAttribute('data-day', day);
-  await expect(page.getByTestId('daily-next')).toContainText('heure locale');
+  await expect(page.getByTestId('daily-hint')).toContainText('nouveau à');
+  await page.getByTestId('nav-rewards').tap();
   await expect(page.getByTestId('goals').locator('li')).toHaveCount(3);
-  await page.getByRole('button', { name: 'Jouer la tour du jour' }).tap();
+  await page.getByTestId('back').tap();
+  await page.getByRole('button', { name: 'Défi du jour' }).tap();
   await expect(page.getByTestId('target')).toContainText(`Tour du jour · ${day}`);
   await tapUntilResult(page);
   const score = await lastScore(page);
@@ -199,6 +203,7 @@ test('Tour du jour : seed de la date UTC, record du jour, objectifs affichés', 
 
 test('collection : ouverture, verrous lisibles, retour, sans débordement', async ({ page }) => {
   await page.goto('/');
+  await page.getByTestId('nav-rewards').tap();
   await page.getByTestId('open-collection').tap();
   await expect(page.getByRole('heading', { name: 'Collection' })).toBeFocused();
   await expect(page.getByTestId('card-theme-orbital')).toContainText('À débloquer');
@@ -218,10 +223,12 @@ test('progression : un objectif rempli débloque une apparence choisie et persis
     }
   });
   await page.goto('/');
+  await page.getByTestId('nav-rewards').tap();
   await page.getByTestId('open-collection').tap();
   await page.getByRole('button', { name: 'Choisir Apparence Marbré' }).tap();
   await expect(page.getByTestId('card-skin-marbre')).toContainText('Sélectionné');
   await page.reload();
+  await page.getByTestId('nav-rewards').tap();
   await page.getByTestId('open-collection').tap();
   await expect(page.getByTestId('card-skin-marbre')).toContainText('Sélectionné');
 });
@@ -231,7 +238,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }
     const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
     const page = await context.newPage();
     await page.goto('/');
-    await page.getByRole('button', { name: 'Jouer la tour du jour' }).tap();
+    await page.getByRole('button', { name: 'Défi du jour' }).tap();
     const pill = page.getByTestId('target');
     const canvas = page.getByTestId('game-canvas');
     await expect(pill).toBeVisible();
@@ -252,10 +259,11 @@ test('E1 : XP, pièces et récompense de connexion conservées après rechargeme
   await expect(page.getByTestId('coins')).toHaveText('0 pièce');
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
-  await expect(page.getByTestId('gains')).toContainText('XP');
+  await expect(page.getByTestId('gains')).toContainText('étoile');
   await page.getByRole('button', { name: 'Accueil' }).tap();
-  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap();
-  await expect(page.getByTestId('calendar')).toContainText('déjà récupérée');
+  await page.getByTestId('nav-rewards').tap();
+  await page.getByRole('button', { name: /^Prendre \+5$/ }).tap();
+  await expect(page.getByTestId('calendar')).toContainText('Déjà pris');
   const before = {
     coins: await page.getByTestId('coins').textContent(),
     xp: await page.getByTestId('xp').textContent(),
@@ -264,9 +272,10 @@ test('E1 : XP, pièces et récompense de connexion conservées après rechargeme
   expect(before.coins).not.toBe('0 pièce');
   await page.reload();
   await expect(page.getByTestId('coins')).toHaveText(before.coins!);
-  await expect(page.getByTestId('xp')).toHaveText(before.xp!);
   await expect(page.getByTestId('level')).toHaveText(before.level!);
-  await expect(page.getByTestId('calendar')).toContainText('déjà récupérée');
+  await page.getByTestId('nav-rewards').tap();
+  await expect(page.getByTestId('xp')).toHaveText(before.xp!);
+  await expect(page.getByTestId('calendar')).toContainText('Déjà pris');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
   expect(saved).toMatchObject({ version: 2, grants: ['v2-objectives-backfill'] });
 });
@@ -275,11 +284,14 @@ test('E1 : deux onglets du même navigateur ne perdent ni gains ni réclamation'
   await page.goto('/');
   const other = await context.newPage();
   await other.goto('/');
-  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap();
+  await page.getByTestId('nav-rewards').tap();
+  await page.getByRole('button', { name: /^Prendre \+5$/ }).tap();
   await expect(page.getByTestId('coins')).toHaveText('5 pièces');
   // Vrai événement storage : l'autre onglet se met à jour sans rechargement.
-  await expect(other.getByTestId('coins')).toHaveText('5 pièces');
-  await expect(other.getByTestId('calendar')).toContainText('déjà récupérée');
+  await expect(other.getByTestId('coins')).toHaveText('5 pièces'); // accueil mis à jour par l'événement storage
+  await other.getByTestId('nav-rewards').tap();
+  await expect(other.getByTestId('calendar')).toContainText('Déjà pris');
+  await other.getByTestId('back').tap();
   // Partie dans l'autre onglet : la réclamation du premier est conservée.
   await other.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(other);
@@ -307,7 +319,8 @@ test('E1 : sous le vrai verrou Web Locks, un onglet concurrent ne perd pas la r�
       localStorage.setItem('poc:meta:v1:progress', JSON.stringify({ ...doc, coins: doc.coins + 100 }));
     });
   });
-  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap(); // pendant que l'autre tient le verrou
+  await page.getByTestId('nav-rewards').tap();
+  await page.getByRole('button', { name: /^Prendre \+5$/ }).tap(); // pendant que l'autre tient le verrou
   await expect(page.getByTestId('coins')).toHaveText('105 pièces');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress')!));
   expect(saved).toMatchObject({ coins: 105 });
@@ -323,6 +336,7 @@ test('A4 : aperçus de collection dessinés par le moteur, apparence appliquée 
     }
   });
   await page.goto('/');
+  await page.getByTestId('nav-rewards').tap();
   await page.getByTestId('open-collection').tap();
   const previews = page.locator('canvas.swatch.preview');
   await expect(previews).toHaveCount(9);
@@ -337,7 +351,22 @@ test('A4 : aperçus de collection dessinés par le moteur, apparence appliquée 
   expect(colorsPerPreview.every((n) => n > 4)).toBe(true); // vrais dessins, pas des cadres vides
   await expect(page.getByTestId('card-theme-orbital')).toContainText('Sélectionné');
   await page.getByTestId('collection-back').tap();
+  await page.getByTestId('back').tap();
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   await expect(page.getByTestId('score')).toBeVisible();
 });
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }, { width: 844, height: 390 }]) {
+  test(`menu V3 ${viewport.width}×${viewport.height} : Jouer et le menu visibles sans défiler`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Jouer', exact: true })).toBeInViewport({ ratio: 1 });
+    for (const name of ['Défi du jour', 'Boutique', 'Récompenses', 'Réglages']) {
+      await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
+    }
+    await noHorizontalOverflow(page);
+    await context.close();
+  });
+}
