@@ -14,12 +14,17 @@
   #nav a:focus-visible { outline: 3px solid #FF665E; outline-offset: 2px; }
   #game { display: block; width: 100%; flex: 1; min-height: 0; }
   #end { position: fixed; inset: auto 0 10% 0; text-align: center; }
-  #end[hidden] { display: none; }
+  #end[hidden], #offer[hidden] { display: none; }
+  #offer { position: fixed; inset: auto 16px 18% 16px; text-align: center; background: rgb(32 33 61 / 0.92); color: #FFF4DB; border-radius: 16px; padding: 14px; font: 600 16px system-ui; }
+  #offer .offer-title { font-size: 1.5rem; font-weight: 800; margin: 0 0 4px; }
+  #offer .offer-note { font-size: 0.8rem; opacity: 0.85; margin: 0 0 10px; }
+  #offer button { font: 800 1.1rem system-ui; padding: 12px 20px; border-radius: 12px; border: 2px solid #20213D; margin: 4px; min-height: 48px; }
+  #cont { background: #5EDDB6; } #stop { background: #FFF4DB; }
   #msg { background: rgb(32 33 61 / 0.85); display: inline-block; padding: 6px 12px; border-radius: 8px; }
   button { font: inherit; font-weight: 700; padding: .8em 1.6em; min-height: 44px; border-radius: 999px; border: 0; background: #FF665E; color: #20213D; }
   button:focus-visible { outline: 3px solid #FFF4DB; outline-offset: 2px; }
   #grid { display: none; }
-  .compare #game, .compare #end { display: none; }
+  .compare #game, .compare #end, .compare #offer { display: none; }
   .compare #grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 8px 8px; flex: 1; min-height: 0; box-sizing: border-box; }
   #grid figure { margin: 0; display: flex; flex-direction: column; min-height: 0; }
   #grid canvas { flex: 1; width: 100%; min-height: 0; border-radius: 12px; }
@@ -34,6 +39,7 @@
 <nav id="nav" aria-label="Univers"></nav>
 <canvas id="game" aria-label="Zone de jeu : touchez ou appuyez sur Espace pour poser le bloc"></canvas>
 <div id="end" hidden><p id="msg" role="status"></p><button id="again" type="button">Rejouer</button></div>
+<div id="offer" hidden><p class="offer-title">Oups ! Continuer ?</p><p class="offer-note">Démo : reprise sans vidéo ni vie (l’application réelle exige une autorisation).</p><button id="cont" type="button">Continuer</button> <button id="stop" type="button">Terminer</button></div>
 <div id="grid"></div>
 <script type="module" src="./demo.ts"></script>
 </body>

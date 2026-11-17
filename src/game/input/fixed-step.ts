@@ -1,5 +1,20 @@
 import { TICK_RATE, type Simulation, type StepEvent } from '../core';
 
+/**
+ * Simulation pilotable (v1 `Simulation` ou v2 `SimulationV2`).
+ * - `running` : le temps passe, les appuis comptent ;
+ * - `countdown` (v2) : le temps passe, les appuis sont refusés dès leur arrivée ;
+ * - `fallen` (v2) : attente d'une décision de reprise, le temps logique est gelé ;
+ * - `ended` : définitif.
+ */
+export interface SteppableSim<E> {
+  readonly tick: number;
+  readonly status: 'running' | 'countdown' | 'fallen' | 'ended';
+  step(press: boolean): E | null;
+}
+
+const ticking = (status: SteppableSim<unknown>['status']) => status === 'running' || status === 'countdown';
+
 /** Durée d'un tick logique, ms. */
 export const TICK_MS = 1000 / TICK_RATE;
 
@@ -21,7 +36,7 @@ export const MAX_CATCHUP_TICKS = 30;
  *
  * Aucune dépendance DOM : `now` est fourni par l'appelant.
  */
-export class FixedStepDriver {
+export class FixedStepDriver<E = StepEvent> {
   /** Instant réel de la dernière (re)prise ou du dernier recalage. */
   private anchor = 0;
   /** Tick de la simulation à l'instant `anchor`. */
@@ -31,8 +46,8 @@ export class FixedStepDriver {
   private pending: number[] = [];
 
   constructor(
-    private readonly sim: Simulation,
-    private readonly onEvent: (event: StepEvent) => void = () => {},
+    private readonly sim: SteppableSim<E> | Simulation,
+    private readonly onEvent: (event: E) => void = () => {},
   ) {}
 
   get isRunning(): boolean { return this.running; }
@@ -50,7 +65,7 @@ export class FixedStepDriver {
 
   /** Démarre ou reprend : le tick courant est ancré à `now`, sans rattrapage. */
   resume(now: number): void {
-    if (this.running || this.sim.status === 'ended') return;
+    if (this.running || !ticking(this.sim.status)) return;
     this.anchor = now;
     this.baseTick = this.sim.tick;
     this.running = true;
@@ -64,10 +79,12 @@ export class FixedStepDriver {
 
   /**
    * Enregistre un appui. Renvoie le tick attribué, ou null si l'appui est ignoré
-   * (pause, partie finie, doublon du même tick).
+   * (pause, partie finie, attente de reprise, compte à rebours, doublon du même tick).
+   * Un appui pendant le compte à rebours est refusé ici : il ne peut pas rester en file
+   * et déclencher une pose fantôme au premier tick jouable.
    */
   press(timeStamp: number): number | null {
-    if (!this.running || this.sim.status === 'ended') return null;
+    if (!this.running || this.sim.status !== 'running') return null;
     const tick = Math.max(this.sim.tick + 1, Math.ceil(this.ticksAt(timeStamp)));
     const last = this.pending[this.pending.length - 1];
     // Même tick (ou horodatage antérieur) que le dernier appui en attente : fusion.
@@ -92,18 +109,21 @@ export class FixedStepDriver {
       this.rebasePending(dropped);
     }
     let steps = 0;
-    while (this.sim.tick < target && this.sim.status === 'running') {
+    while (this.sim.tick < target && ticking(this.sim.status)) {
       const next = this.sim.tick + 1;
       let press = false;
       while (this.pending.length > 0 && this.pending[0]! <= next) {
         this.pending.shift();
         press = true;
       }
-      const event = this.sim.step(press);
+      // En compte à rebours, un appui (impossible en principe : refusé par press) est jeté.
+      const event = (this.sim as SteppableSim<E>).step(press && this.sim.status === 'running');
       steps++;
       if (event) this.onEvent(event);
     }
-    if (this.sim.status === 'ended') {
+    if (!ticking(this.sim.status)) {
+      // Fin ou attente de décision : le temps logique s'arrête et les appuis en file sont
+      // oubliés (aucune pose fantôme au retour d'une vidéo ou d'un écran d'offre).
       this.running = false;
       this.pending = [];
     }

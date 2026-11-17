@@ -96,6 +96,6 @@ Points d'une pose : `(parfait ? 2 : 1) × (double ? 2 : 1)`. `score` = somme des
 - `finish()` : fin sans reprise. Un second raté termine toujours.
 
 ## Rejeu v2
-`{ seed, rulesVersion: 2, inputTicks, continueTicks? }`. En plus des règles v1 : `continueTicks` absent ou tableau d'au plus 1 entier ≥ 1, égal au tick du premier raté (`bad_continue_ticks`) ; aucune entrée dans `]t, t+360]` (`input_during_countdown`) ; `continueTicks` refusé en v1. `verifyRunResult` compare score, hauteur, parfaits, reprises et durée. `durationTicks` exclut l'attente de décision et inclut le compte à rebours.
+`{ seed, rulesVersion: 2, inputTicks, continueTicks? }`. En plus des règles v1 : `continueTicks` absent ou tableau d'au plus 1 entier ≥ 1, égal au tick du premier raté (`bad_continue_ticks`) ; aucune entrée dans `]t, t+360]` (`input_during_countdown`) ; `continueTicks` refusé en v1. `verifyRunResult` compare score, hauteur, parfaits, meilleure série, nombre de bonus, reprises et durée (égalité intégrale, revue Codex F6). `durationTicks` exclut l'attente de décision et inclut le compte à rebours.
 
 Golden : `tests/game/golden-v2.json` (changer une valeur exige rulesVersion 3).

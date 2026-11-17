@@ -269,6 +269,9 @@ describe('v2 : rejeu', () => {
     expect(verifyRunResult({ ...r, score: r.score + 1 })).toMatchObject({ ok: false, error: 'mismatch' });
     expect(verifyRunResult({ ...r, height: r.height + 1 })).toMatchObject({ ok: false, error: 'mismatch' });
     expect(verifyRunResult({ ...r, continues: 0 })).toMatchObject({ ok: false, error: 'mismatch' });
+    // Revue Codex F6 : égalité intégrale des compteurs déclarés.
+    expect(verifyRunResult({ ...r, bestPerfectStreak: 99999 })).toMatchObject({ ok: false, error: 'mismatch' });
+    expect(verifyRunResult({ ...r, bonusCount: 99999 })).toMatchObject({ ok: false, error: 'mismatch' });
   });
 });
 

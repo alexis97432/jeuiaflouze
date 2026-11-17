@@ -76,6 +76,30 @@ export class Sfx {
     this.tone(140, 0.42, 'sawtooth', 0.5, 0.35);
   }
 
+  /** Bonus déclenché (V3) : Ralenti = glissando descendant doux ; ×2 = deux notes montantes vives. */
+  bonusStart(bonus: 'ralenti' | 'double'): void {
+    const { root, wave } = this.audio;
+    if (bonus === 'ralenti') {
+      this.tone(root * 2, 0.45, 'sine', 0.7, 0.5);
+      this.tone(root * 3, 0.3, 'sine', 0.25, 0.5, 0.05);
+    } else {
+      this.tone(root * 2, 0.12, wave, 0.7, 1);
+      this.tone(root * 3, 0.18, wave, 0.7, 1, 0.1);
+      this.tone(root * 4, 0.22, 'sine', 0.35, 1, 0.2);
+    }
+  }
+
+  /** Fin de bonus : petite note descendante. */
+  bonusEnd(): void {
+    this.tone(this.audio.root * 1.5, 0.2, 'triangle', 0.4, 0.6);
+  }
+
+  /** Compte à rebours de reprise : 3, 2, 1 graves, puis « partez » aigu (n = 0). */
+  countdown(n: number): void {
+    const f = this.audio.root * (n === 0 ? 2 : 1);
+    this.tone(f, n === 0 ? 0.25 : 0.12, 'triangle', 0.6, 1);
+  }
+
   close(): void {
     this.closed = true;
     const ctx = this.ctx;
