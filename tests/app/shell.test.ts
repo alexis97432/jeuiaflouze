@@ -459,8 +459,8 @@ describe('accueil V2 et collection', () => {
   it('collection : verrous explicites, choix persistant, retour avec focus rendu', async () => {
     const { button, root, text, end, place, meta } = setup();
     button('Récompenses').click();
-    expect(text('open-collection')).toBe('Ma collection 2/11');
-    button('Ma collection 2/11').click();
+    expect(text('open-collection')).toBe('Ma collection 2/17');
+    button('Ma collection 2/17').click();
     expect(text('card-skin-marbre')).toContain('À débloquer : poser au moins 5 étages dans une partie');
     expect(text('card-theme-jardin')).toContain('À débloquer : terminer une tour du jour avec au moins 8 étages');
     expect(text('card-skin-gomme')).toContain('Sélectionné');
@@ -474,7 +474,7 @@ describe('accueil V2 et collection', () => {
     place([false, false, false, false, false]);
     await end(5);
     button('Voir la collection').click();
-    expect(text('collection-count')).toBe('3 / 11 obtenus');
+    expect(text('collection-count')).toBe('3 / 17 obtenus');
     const choose = root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!;
     expect(choose.getAttribute('aria-label')).toBe('Choisir Apparence Marbré');
     choose.click();
@@ -540,7 +540,7 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     expect(first.text('coins')).toBe('40 pièces');
     expect(first.text('calendar')).toContain('Déjà pris');
     // 3. Choix d'apparence.
-    first.button('Ma collection 5/11').click();
+    first.button('Ma collection 5/17').click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
     first.shell.destroy();
 
@@ -561,7 +561,7 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     second.button('Récompenses').click();
     expect(second.text('xp')).toBe('Encore 26 étoiles pour le niveau 2');
     expect(second.text('calendar')).toContain('Déjà pris');
-    second.button('Ma collection 5/11').click();
+    second.button('Ma collection 5/17').click();
     expect(second.text('card-skin-marbre')).toContain('Sélectionné');
     expect(storage.dump('poc:meta:v1:progress')).toEqual(saved); // la lecture seule ne réécrit rien
   });
@@ -763,7 +763,7 @@ describe('apparences branchées (A4)', () => {
     await first.end(1);
     first.button('Accueil').click();
     first.button('Récompenses').click();
-    first.button('Ma collection 4/11').click();
+    first.button('Ma collection 4/17').click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-theme-orbital"] button')!.click();
     first.button('← Retour').click();
@@ -1424,5 +1424,54 @@ describe('vie rendue si la reprise n’a pas lieu (revue FLK A6, m4)', () => {
     resolve('ok');
     await flush();
     expect(refund).toHaveBeenCalledWith('run1:revive');
+  });
+});
+
+describe('apparences V3 branchées (F8b, revue FLK A5 m1/m2, A6 m5)', () => {
+  it('Graphite acheté en pièces, mis, monté en partie et gardé au rechargement ; Pixel pris au passe puis choisi', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 100, grants: ['v2-objectives-backfill'], season: { id: 's1', stars: 70, claimed: [] } }));
+    const a = setup({ meta: createMetaStore(storage) });
+    a.day.now = new Date('2026-12-01T10:00:00Z');
+    a.button('Boutique').click();
+    expect(a.text('shop-graphite')).toContain('60 pièces');
+    expect(a.root.querySelector('[data-testid="shop-empty"]')).toBeNull();
+    a.root.querySelector<HTMLButtonElement>('[data-testid="shop-graphite"] button')!.click();
+    a.button('Oui, acheter').click();
+    await flush();
+    a.button('Mettre').click();
+    await flush();
+    a.button('Retour').click();
+    a.button('Jouer').click();
+    expect(a.game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'graphite' });
+    a.shell.destroy();
+
+    const b = setup({ meta: createMetaStore(storage) });
+    b.day.now = new Date('2026-12-01T10:00:00Z');
+    b.button('Jouer').click();
+    expect(b.game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'graphite' });
+    b.shell.destroy();
+
+    const c = setup({ meta: createMetaStore(storage) });
+    c.day.now = new Date('2026-12-01T10:00:00Z');
+    c.button('Récompenses').click();
+    c.button('Voir le passe · cadeau à prendre').click();
+    expect(c.text('tier-2-free')).not.toContain('Bientôt'); // Pixel dessinable : réclamable
+    c.root.querySelector<HTMLButtonElement>('[data-testid="claim-tier-2"]')!.click();
+    await flush();
+    expect(c.text('season-notice')).toBe('Pris : Apparence Pixel.');
+    c.button('Retour').click();
+    c.button('Ma collection 4/17').click();
+    c.root.querySelector<HTMLButtonElement>('[aria-label="Choisir Apparence Pixel"]')!.click();
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 40, inventory: ['graphite', 'pixel'], selected: { skin: 'pixel' } });
+  });
+
+  it('Or et Cristal (premium) : jamais sélectionnables même injectés dans une sauvegarde', () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, grants: ['v2-objectives-backfill'], selected: { theme: 'confiserie', skin: 'or' } }));
+    const { button, game } = setup({ meta: createMetaStore(storage) });
+    button('Jouer').click();
+    expect(game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'gomme' });
   });
 });

@@ -21,9 +21,14 @@ describe('collection : aperçus du moteur (F4)', () => {
     expect(calls).toEqual([
       'confiserie/marbre', 'orbital/marbre', 'jardin/marbre',
       'confiserie/gomme', 'confiserie/marbre', 'confiserie/bonbon', 'confiserie/verre', 'confiserie/strie', 'confiserie/ceramique',
+      // V3 obtenables (F8b) : boutique puis piste gratuite du passe ; premium non affiché.
+      'confiserie/graphite', 'confiserie/nacre', 'confiserie/holographique', 'confiserie/pixel', 'confiserie/galaxie', 'confiserie/lave',
     ]);
     expect(preview.mock.calls[0]![2]).toEqual({ width: 160, height: 72 });
-    expect(body.querySelectorAll('canvas.swatch.preview')).toHaveLength(9);
+    expect(body.querySelectorAll('canvas.swatch.preview')).toHaveLength(15);
+    expect(body.querySelector('[data-testid="card-skin-graphite"]')?.textContent).toContain('En boutique');
+    expect(body.querySelector('[data-testid="card-skin-pixel"]')?.textContent).toContain('Passe de saison');
+    expect(body.querySelector('[data-testid="card-skin-or"]')).toBeNull();
     // Les badges gardent leur pictogramme CSS.
     expect(body.querySelector('[data-testid="card-badge-precision"] .swatch-precision')).not.toBeNull();
     // Verrou toujours explicite sur une carte dessinée par le moteur.

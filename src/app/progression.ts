@@ -9,11 +9,25 @@
  * Identifiants d'apparence : proposition Alexis (revue C3), à convenir avec FLK (F3/F4).
  */
 
-import { SKIN_IDS, THEME_IDS, type Appearance, type SkinId, type ThemeId } from '../game';
+import { ALL_SKIN_IDS, SKIN_IDS, THEME_IDS, type AnyAppearance, type AnySkinId, type SkinId, type ThemeId } from '../game';
 
-// Identifiants et types d'apparence : API publique du moteur (F4, contrat C6), jamais redéclarés.
-export { SKIN_IDS, THEME_IDS };
-export type { Appearance, SkinId, ThemeId };
+// Identifiants et types d'apparence : API publique du moteur (F4, contrat C6 ; F8b pour les
+// huit matières V3), jamais redéclarés.
+export { SKIN_IDS, THEME_IDS, ALL_SKIN_IDS };
+/** Apparence choisie par le joueur : matières V2 et V3 (F8b). */
+export type Appearance = AnyAppearance;
+export type { AnySkinId, SkinId, ThemeId };
+
+/**
+ * Apparences V3 que le joueur peut obtenir dans cette version : boutique en pièces et piste
+ * gratuite du passe. Or et Cristal (premium) restent hors du total : indisponibles à l'achat.
+ */
+export const OBTAINABLE_V3_SKINS = ['graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave'] as const satisfies readonly AnySkinId[];
+/** D'où vient une apparence V3 (pour expliquer comment l'obtenir). */
+export const V3_SKIN_SOURCE: Partial<Record<AnySkinId, string>> = {
+  graphite: 'En boutique', nacre: 'En boutique', holographique: 'En boutique',
+  pixel: 'Passe de saison', galaxie: 'Passe de saison', lave: 'Passe de saison',
+};
 export const BADGE_IDS = ['touriste-des-nuages', 'precision'] as const;
 
 export type BadgeId = (typeof BADGE_IDS)[number];
@@ -32,7 +46,7 @@ export type RunSummary = {
 };
 
 export type Reward =
-  | { kind: 'skin'; id: SkinId }
+  | { kind: 'skin'; id: AnySkinId }
   | { kind: 'theme'; id: ThemeId }
   | { kind: 'badge'; id: BadgeId };
 
@@ -69,7 +83,15 @@ export const OBJECTIVES: readonly Objective[] = [
   { id: 'perfects-10', label: 'Faire 10 parfaits dans une partie', reward: { kind: 'badge', id: 'precision' }, met: (r) => r.perfectCount >= 10 },
 ];
 
-const REWARD_LABELS: Record<SkinId | ThemeId | BadgeId, string> = {
+const REWARD_LABELS: Record<AnySkinId | ThemeId | BadgeId, string> = {
+  graphite: 'Graphite',
+  nacre: 'Nacré',
+  holographique: 'Holographique',
+  pixel: 'Pixel',
+  galaxie: 'Galaxie',
+  lave: 'Lave',
+  or: 'Or',
+  cristal: 'Cristal',
   gomme: 'Gomme',
   marbre: 'Marbré',
   bonbon: 'Bonbon',
@@ -124,10 +146,10 @@ export function unlockedThemes(state: ProgressState): ThemeId[] {
   return THEME_IDS.filter((id) => id === DEFAULT_APPEARANCE.theme || won.has(id));
 }
 
-export function unlockedSkins(state: ProgressState): SkinId[] {
+export function unlockedSkins(state: ProgressState): AnySkinId[] {
   const won = new Set<string>(rewardsOf(state).flatMap((r) => (r.kind === 'skin' ? [r.id] : [])));
-  for (const item of state.inventory ?? []) won.add(item); // achats en pièces
-  return SKIN_IDS.filter((id) => id === DEFAULT_APPEARANCE.skin || won.has(id));
+  for (const item of state.inventory ?? []) won.add(item); // achats en pièces, passe de saison
+  return ALL_SKIN_IDS.filter((id) => id === DEFAULT_APPEARANCE.skin || won.has(id));
 }
 
 export function earnedBadges(state: ProgressState): BadgeId[] {
@@ -206,6 +228,6 @@ export function sanitizeProgress(raw: unknown): ProgressState {
   };
   return selectAppearance(base, {
     ...(isIn(THEME_IDS, sel.theme) ? { theme: sel.theme } : {}),
-    ...(isIn(SKIN_IDS, sel.skin) ? { skin: sel.skin } : {}),
+    ...(isIn(ALL_SKIN_IDS, sel.skin) ? { skin: sel.skin } : {}),
   });
 }

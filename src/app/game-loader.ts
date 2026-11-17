@@ -6,12 +6,13 @@
  */
 import { mountGame } from '../game';
 import type { Appearance, GameEvent, GameHandle, MountOptions } from './game-contract';
+import type { AnyAppearance } from '../game';
 
 export type ShellPrefs = { muted: boolean };
 export type StartOptions = Pick<MountOptions, 'canvas' | 'config' | 'onEnd'> & {
   prefs: ShellPrefs;
   /** Apparence possédée et choisie par le joueur (validée par le shell) — cosmétique seule. */
-  appearance?: Appearance;
+  appearance?: AnyAppearance;
   /**
    * Reprise autorisée (F7, plan FLK §6) : seulement si une vie ou une vidéo réelle (ou démo
    * libellée en dev) peut l'autoriser. Ignorée par le moteur en v1.
@@ -34,7 +35,9 @@ export function createStartGame(mount: (options: MountOptions) => GameHandle): S
       config,
       onEnd,
       sound: !prefs.muted,
-      ...(appearance ? { appearance } : {}),
+      // F8b : `mountGame` accepte toute matière dessinable (resolveAnyAppearance) mais le type public
+      // `MountOptions.appearance` reste V2 ; élargissement demandé à FLK (remarque A6b).
+      ...(appearance ? { appearance: appearance as Appearance } : {}),
       onEvent: (event) => {
         onGameEvent?.(event);
         if (event.type !== 'placement' || placed) return; // un raté n'est pas une pose

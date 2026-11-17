@@ -3,8 +3,8 @@
  * Renvoie null si la carte ne peut pas être dessinée ou encodée : le shell partage alors le lien
  * seul et le dit (jamais d'image inventée).
  */
-import type { Appearance, RunResult } from './game-contract';
-import type { CardMode, ResultCard } from '../game';
+import type { RunResult } from './game-contract';
+import type { Appearance, AnyAppearance, CardMode, ResultCard } from '../game';
 
 export type RenderCard = (canvas: HTMLCanvasElement, card: ResultCard, options?: { scale?: number }) => boolean;
 
@@ -12,11 +12,11 @@ export type RenderCard = (canvas: HTMLCanvasElement, card: ResultCard, options?:
 export const CARD_SCALE = 0.5;
 
 export function createResultImage(render: RenderCard, doc: Document = document) {
-  return async (result: RunResult, mode: CardMode, day: string | null, appearance?: Appearance): Promise<File | null> => {
+  return async (result: RunResult, mode: CardMode, day: string | null, appearance?: AnyAppearance): Promise<File | null> => {
     const canvas = doc.createElement('canvas');
     let drawn = false;
     try {
-      drawn = render(canvas, { result, mode, ...(day ? { day } : {}), ...(appearance ? { appearance } : {}) }, { scale: CARD_SCALE });
+      drawn = render(canvas, { result, mode, ...(day ? { day } : {}), ...(appearance ? { appearance: appearance as Appearance } : {}) }, { scale: CARD_SCALE }); // F9 accepte une matière V3 au dessin ; type public V2 (à élargir par FLK)
     } catch {
       drawn = false;
     }

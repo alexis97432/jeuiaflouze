@@ -10,14 +10,14 @@ import {
   type Challenge,
   type InvalidReason,
 } from './challenge-url';
-import { PLAY_RULES_VERSION, RULES_VERSION, type Appearance, type GameEvent, type GameHandle } from './game-contract';
+import { PLAY_RULES_VERSION, RULES_VERSION, type GameEvent, type GameHandle } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
 import { BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult } from './run-result';
 import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
 import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
-import { isSkinId, renderAppearancePreview } from '../game';
+import { isAnySkinId, renderAppearancePreview, type AnyAppearance } from '../game';
 import {
   applyRunEconomy,
   calendarStatus,
@@ -35,6 +35,7 @@ import {
   rewardLabel,
   selectAppearance,
   SKIN_IDS,
+  OBTAINABLE_V3_SKINS,
   THEME_IDS,
   unlockedSkins,
   unlockedThemes,
@@ -107,7 +108,7 @@ export type ShellOptions = {
    * Image de résultat (F9, `renderResultCard`, convertie en PNG par main.ts). Absente ou null :
    * partage du lien seul, sans bouton d'image.
    */
-  resultImage?: (result: AnyRunResult, mode: Mode, day: string | null, appearance?: Appearance) => Promise<File | null>;
+  resultImage?: (result: AnyRunResult, mode: Mode, day: string | null, appearance?: AnyAppearance) => Promise<File | null>;
   /** Enregistre un fichier (téléchargement) ; injectable pour les tests. */
   saveFile?: (file: File) => boolean;
 };
@@ -390,7 +391,7 @@ export function createShell(options: ShellOptions): Shell {
 
   // --- Passe de saison (V3-A5) ---------------------------------------------------------------
   const season = options.season ?? SEASON_1;
-  const canDraw = (id: string) => isSkinId(id);
+  const canDraw = (id: string) => isAnySkinId(id);
   const formatSeasonDay = (key: string) =>
     new Date(`${key}T12:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
   const seasonClaimable = () => {
@@ -457,7 +458,7 @@ export function createShell(options: ShellOptions): Shell {
         const cell = el(doc, 'div', { class: `tier-cell ${track} ${st}`, 'data-testid': `tier-${t.tier}-${track}` });
         if (reward.kind === 'skin') {
           // Pas encore dessinée par le moteur : pastille « ? », jamais l'aperçu d'une autre apparence.
-          cell.append(isSkinId(reward.id)
+          cell.append(isAnySkinId(reward.id)
             ? previewOrSwatch(doc, reward.id, { theme: progress.selected.theme, skin: reward.id }, renderAppearancePreview)
             : el(doc, 'div', { class: 'swatch soon', 'aria-hidden': 'true' }, '?'));
         }
@@ -491,7 +492,7 @@ export function createShell(options: ShellOptions): Shell {
     show('settings', [header, soundToggle(), el(doc, 'p', { class: 'hint small' }, 'Le son démarre après ton premier toucher.')], title);
   };
 
-  const shopConfig = options.shop ?? { catalog: COIN_SHOP, isAvailable: (id: string) => isSkinId(id) };
+  const shopConfig = options.shop ?? { catalog: COIN_SHOP, isAvailable: (id: string) => isAnySkinId(id) };
   const shopPreview = shopConfig.preview ?? renderAppearancePreview;
 
   type ShopNotice = { text: string; testId: string };
@@ -517,7 +518,7 @@ export function createShell(options: ShellOptions): Shell {
         const st = itemState(progress, item);
         const li = el(doc, 'li', { class: `card ${st}`, 'data-testid': `shop-${item.id}`, tabindex: '-1' });
         li.append(
-          previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: isSkinId(item.id) ? item.id : progress.selected.skin }, shopPreview),
+          previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: isAnySkinId(item.id) ? item.id : progress.selected.skin }, shopPreview),
           el(doc, 'p', { class: 'card-name' }, item.name),
         );
         if (st === 'owned') {
@@ -568,7 +569,7 @@ export function createShell(options: ShellOptions): Shell {
 
   const wear = (item: ShopItem) => withProgressLock(() => {
     updateDoc((current) => {
-      if (!isSkinId(item.id)) return { doc: current, result: null };
+      if (!isAnySkinId(item.id)) return { doc: current, result: null };
       const updated = selectAppearance(current, { skin: item.id });
       return { doc: updated, result: null };
     });
@@ -576,8 +577,9 @@ export function createShell(options: ShellOptions): Shell {
   });
 
   const collectionButton = () => {
-    const owned = unlockedThemes(progress).length + unlockedSkins(progress).length + earnedBadges(progress).length;
-    const total = THEME_IDS.length + SKIN_IDS.length + BADGE_IDS.length;
+    const skins = unlockedSkins(progress).filter((id) => (SKIN_IDS as readonly string[]).includes(id) || (OBTAINABLE_V3_SKINS as readonly string[]).includes(id));
+    const owned = unlockedThemes(progress).length + skins.length + earnedBadges(progress).length;
+    const total = THEME_IDS.length + SKIN_IDS.length + OBTAINABLE_V3_SKINS.length + BADGE_IDS.length;
     const b = iconButton(doc, '🎨', `Ma collection ${owned}/${total}`, () => renderCollectionScreen(), 'secondary', 'open-collection');
     return b;
   };
