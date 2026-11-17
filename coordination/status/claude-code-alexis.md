@@ -1,5 +1,64 @@
 # Claude Code Alexis
 
+## V3 — vies de reprise (17 novembre 2026, PR #47)
+
+**Constat sur `f411a95` (version en ligne)** : aucune vie ne pouvait être obtenue (vies seulement en argent réel, indisponible). La reprise n'était donc jamais proposée.
+
+**Correctif #47 (`657f27c`), fusionné en `02037e8`, SANS revue FLK.** C'est une exception explicite de l'utilisateur, limitée à cette PR, et conditionnée à des tests verts sur le dernier commit. Vérifié avant fusion :
+- tête inchangée ;
+- CI `check` en succès (run 44146134019) ;
+- en local : typecheck 0, 464 tests unitaires, 73 tests e2e, 39 tests navigateur.
+
+L'absence de revue est consignée dans le message de fusion et sur la PR. FLK peut faire une revue *a posteriori*.
+
+**Republication** : CI d'intégration verte (run 44147188613), workflow Pages vert (run 44148262079). `source-commit.txt` en ligne = `02037e8dfc8ecef3b2f8023861866be149fb5b52`.
+
+**Vérification sur le site publié** (Chromium, 390×844, vrai moteur, vraie partie) :
+
+| Contrôle | Résultat |
+|---|---|
+| Acquisition | 70 pièces → achat d'1 vie → « Tu as maintenant 1 vie », 40 pièces, compteur ❤️ 1, sauvegarde `{coins: 40, lives: 1}` |
+| Offre après la première chute | Affichée. « Utiliser une vie (1) » entièrement visible, au moins 44 px de haut |
+| Vidéo | « Vidéo indisponible », désactivée ; aucune mention « Mode démo » |
+| Reprise | Annonce « C'est reparti ! Prêt dans 3 secondes. », compte à rebours, la partie continue |
+| Décompte unique (double appui) | 0 vie, `livesSpent` = une seule reprise |
+| Second raté | Fin définitive, sans seconde offre |
+| Résultat | 3 étages · 3 points · « Partie avec une reprise : hors classement » |
+| Sauvegarde après rechargement | Compteur 0, `livesSpent` conservé. Pièces 41 (40 + 1 gagnée), XP 150 → 153 et saison 30 → 33 : gains comptés une fois, sur la hauteur. Inventaire Graphite, sélection et palier pris intacts. Format v3. Rechargement sans changement de la sauvegarde |
+| Erreurs console | Aucune |
+
+Captures : `coordination/captures/v3-vies/en-ligne-offre.png`, `en-ligne-compte-a-rebours.png`, `en-ligne-resultat.png`.
+
+## V3 — publiée (17 novembre 2026)
+
+**En ligne :** https://alexis97432.github.io/jeuiaflouze/. `source-commit.txt` = `f411a95b5edc77f685506fc718889995a921c2fc`, vérifié en ligne. CI d'intégration verte (run 44137593024), workflow Pages vert (run 44139088363).
+Contrôle de la page publiée dans Chromium à 390×844 : menu à 6 boutons, boutique (Graphite, Nacré, Holographique), classement « indisponible », premium « indisponible », partie v2 (étages et points), bouton d'image présent. Aucune mention de démo, aucune erreur console, aucune requête externe. Captures : `coordination/captures/v3-en-ligne/`.
+
+| Fonction | État |
+|---|---|
+| Parties libres et Tour du jour (règles v2 : jauge Super, bonus Ralenti/×2, points et hauteur) | **Fonctionnel** |
+| Anciens défis `?v=1` et nouveaux défis `?v=2` (cible en étages) | **Fonctionnel** |
+| Menu simplifié, Récompenses, collection (17 objets obtenables) | **Fonctionnel** |
+| Étoiles, niveaux, pièces, calendrier, sauvegarde v3 avec migration V2 et verrou entre onglets | **Fonctionnel** (local à l'appareil) |
+| Boutique en pièces (Graphite, Nacré, Holographique) | **Fonctionnel** |
+| Passe de saison 1, piste gratuite (pièces, Pixel, Galaxie, Lave) | **Fonctionnel** |
+| Passe premium (Or, Cristal) | **Indisponible** : ni paiement ni comptes |
+| Carte de résultat en image, partage avec secours (lien, copie, téléchargement, appui long) | **Fonctionnel** |
+| Annonces accessibles (bonus, jauge, compte à rebours) | **Fonctionnel** |
+| Classement mondial, semaine, jour | **Indisponible** en ligne : serveur `server/` prêt et testé, mais pas hébergé. **Démo** en local (`npm run server:dev`, joueurs « Démo … ») |
+| Reprise avec une vie gagnée en jeu (30 pièces, 5 au maximum) | **Fonctionnel** depuis `02037e8` (local à l'appareil) |
+| Reprise par vidéo récompensée | **Indisponible** : bouton « Vidéo indisponible » affiché et désactivé. **Démo** seulement dans un build `VITE_DEMO_SERVICES=1` |
+| Vies en argent réel, achats en argent réel | **Indisponible** : registre serveur prêt et testé, mais il faut un fournisseur de paiement et des comptes |
+
+Bloqueurs externes (décision du propriétaire du projet, voir `docs/SERVICES.md`) :
+- hébergement HTTPS du serveur et base de données ;
+- fournisseur de paiement et comptes joueurs ;
+- régie vidéo adaptée à un public sans ciblage des enfants.
+
+Non testé :
+- téléphones physiques ;
+- avis de joueurs sur les réglages de la jauge.
+
 ## Tâches
 
 | Tâche | État | Branche | SHA / PR | Tests |
