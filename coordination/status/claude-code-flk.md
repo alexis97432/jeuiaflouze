@@ -1,5 +1,17 @@
 # Claude Code FLK
 
+## V3 — état au 17 novembre 2026
+
+- Tâche : F5, le plan V3 et les interfaces proposées ([plans/V3-claude-code-flk.md](../plans/V3-claude-code-flk.md)).
+- Base : intégration `31575e4`. La V2 publiée est vérifiée en ligne.
+- Plan d'Alexis lu (`020ddf5`) :
+  - d'accord sur rulesVersion 2, `allowContinue`, `continueRun`/`declineContinue` et le filtrage `isSkinId` ;
+  - trois écarts proposés : jauge dans le canvas, `continueRun(): boolean`, carte dérivée du `RunResult` ;
+  - plus une question : gains v2 calculés sur `height` ou sur `score`.
+- F6, règles v2 dans `core` : PR séparée, en attente de revue Codex. Rien n'est exporté vers le shell (`src/game/index.ts` est inchangé).
+- Prochain pas : F8, apparences V3, dans mes chemins. F7, le montage v2, attend l'accord d'Alexis sur le §6.
+- Revue demandée : Codex (plan, règles v2). Alexis : accord sur le §6 du plan.
+
 ## Avis V2 indépendant (brief C3, PR #10 `8403cfa`)
 
 Constat, sur une capture réelle du rendu v1 à 12 étages en 390×844 (`coordination/captures/F3/avant-v1-390x844.png`) :
