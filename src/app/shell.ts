@@ -10,10 +10,10 @@ import {
   type Challenge,
   type InvalidReason,
 } from './challenge-url';
-import { RULES_VERSION, type GameHandle } from './game-contract';
+import { PLAY_RULES_VERSION, RULES_VERSION, type GameEvent, type GameHandle } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
-import { asShellEvent, BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult, type ContinueControls } from './run-result';
+import { BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult } from './run-result';
 import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
 import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
@@ -245,9 +245,9 @@ export function createShell(options: ShellOptions): Shell {
     for (const mode of ['free', 'daily'] as const) {
       if (freshTicket(tickets[mode]) || ticketLoading[mode]) continue;
       ticketLoading[mode] = true;
-      void leaderboard.issueTicket(mode, RULES_VERSION).then((r) => {
+      void leaderboard.issueTicket(mode, PLAY_RULES_VERSION).then((r) => {
         ticketLoading[mode] = false;
-        if (r.ok && r.value.mode === mode && r.value.rulesVersion === RULES_VERSION) tickets[mode] = r.value;
+        if (r.ok && r.value.mode === mode && r.value.rulesVersion === PLAY_RULES_VERSION) tickets[mode] = r.value;
       });
     }
   };
@@ -751,7 +751,7 @@ export function createShell(options: ShellOptions): Shell {
     if (offset === 0) content.replaceChildren(loading);
     else content.append(loading);
     const r = await leaderboard.read(kind, {
-      rulesVersion: RULES_VERSION,
+      rulesVersion: PLAY_RULES_VERSION,
       offset,
       limit: 20,
       ...(player ? { player: player.id } : {}),
@@ -865,19 +865,14 @@ export function createShell(options: ShellOptions): Shell {
     try {
       current.handle = options.startGame({
         canvas,
-        config: { seed, rulesVersion: RULES_VERSION },
+        config: mode === 'challenge' ? { seed, rulesVersion: RULES_VERSION } : { seed, rulesVersion: PLAY_RULES_VERSION },
         prefs,
         appearance: progress.selected,
         ...(allowContinue ? { allowContinue } : {}),
         onGameEvent: (event) => {
           if (run !== current) return;
           current.events.onEvent(event);
-          const e = asShellEvent(event);
-          if (!e) return;
-          if (e.type === 'continue-offer') showReviveOffer(current, stage, canvas);
-          else if (e.type === 'continue-start') announce('C’est reparti ! Prêt dans 3 secondes.');
-          else if (e.type === 'bonus-start') announce(`Bonus ${BONUS_NAMES[e.bonus]} pour ${e.floors} étages !`);
-          else announce(`Fin du bonus ${BONUS_NAMES[e.bonus]}.`);
+          onRunEvent(current, event, stage, canvas);
         },
         onFirstPlacement: () => {
           if (placed || destroyed || run !== current) return;
@@ -917,7 +912,7 @@ export function createShell(options: ShellOptions): Shell {
    * Un refus, une vidéo absente ou une erreur ne donnent jamais de reprise.
    */
   const showReviveOffer = (current: RunState, stage: HTMLElement, canvas: HTMLCanvasElement) => {
-    const handle = current.handle as (GameHandle & ContinueControls) | null;
+    const handle = current.handle;
     if (!handle?.continueRun || !handle.declineContinue || stage.querySelector('[data-testid="revive"]')) return;
     if (reviveLives.count() === 0 && reviveAds.kind === 'none') {
       handle.declineContinue(); // aucun moyen réel : fin normale, aucune offre vide
@@ -982,6 +977,30 @@ export function createShell(options: ShellOptions): Shell {
     stage.append(box);
     buttons[0]!.focus();
     announce('Oups ! Encore une chance ? Choisis, ou Terminer.');
+  };
+
+  /** Événements v2 du moteur (F7) : offre de reprise, compte à rebours, bonus, jauge. */
+  const onRunEvent = (current: RunState, event: GameEvent, stage: HTMLElement, canvas: HTMLCanvasElement) => {
+    switch (event.type) {
+      case 'continue-offer':
+        showReviveOffer(current, stage, canvas);
+        break;
+      case 'continue-start':
+        announce(`C’est reparti ! Prêt dans ${Math.round(event.countdownTicks / 120)} secondes.`);
+        break;
+      case 'bonus-start':
+        announce(`Bonus ${BONUS_NAMES[event.bonus]} pour ${event.floors} étages !`);
+        break;
+      case 'bonus-end':
+        announce(`Fin du bonus ${BONUS_NAMES[event.bonus]}.`);
+        break;
+      case 'gauge':
+        // Jauge « Super » dessinée dans le canvas ; on n'annonce que la jauge pleine (pas de bruit).
+        if (event.value >= event.max) announce('Jauge Super pleine !');
+        break;
+      default:
+        break;
+    }
   };
 
   const finishRun = (current: RunState, result: AnyRunResult) => {
@@ -1130,8 +1149,24 @@ export function createShell(options: ShellOptions): Shell {
     const saveImage = domButton(doc, 'Enregistrer l’image', guarded(() => {
       void resultImage().then((file) => {
         if (destroyed || screen !== 'result') return;
-        const ok = file ? (options.saveFile ?? ((f: File) => downloadFile(f, doc)))(file) : false;
-        status.textContent = ok ? 'Image enregistrée.' : 'Image indisponible sur cet appareil.';
+        if (!file) {
+          status.textContent = 'Image indisponible sur cet appareil. Le lien du défi reste partageable.';
+          return;
+        }
+        if ((options.saveFile ?? ((f: File) => downloadFile(f, doc)))(file)) {
+          status.textContent = 'Image enregistrée.';
+          return;
+        }
+        // Dernier secours : l'image affichée, à garder par un appui long (navigateurs sans téléchargement).
+        try {
+          const img = el(doc, 'img', { alt: 'Image du résultat', class: 'result-image', 'data-testid': 'result-image' });
+          img.setAttribute('src', URL.createObjectURL(file));
+          fallback.replaceChildren(img, el(doc, 'p', { class: 'hint small' }, 'Appuie longtemps sur l’image pour l’enregistrer.'));
+          fallback.hidden = false;
+          status.textContent = 'Téléchargement impossible : image affichée ci-dessous.';
+        } catch {
+          status.textContent = 'Image indisponible sur cet appareil. Le lien du défi reste partageable.';
+        }
       });
     }), 'ghost', 'save-image');
     const doShare = async () => {

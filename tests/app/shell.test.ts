@@ -116,7 +116,7 @@ describe('parcours libre', () => {
     button('Jouer').click();
     expect(shell.screen).toBe('game');
     const mount = game.mounts[0]!;
-    expect(mount.options.config).toEqual({ seed: 100, rulesVersion: 1 });
+    expect(mount.options.config).toEqual({ seed: 100, rulesVersion: 2 }); // nouvelles parties : règles v2 (F7)
     expect(document.activeElement).toBe(mount.options.canvas);
 
     await end(4);
@@ -237,7 +237,7 @@ describe('défi par URL', () => {
     expect(document.activeElement?.textContent).toBe('Relever le défi');
 
     button('Relever le défi').click();
-    expect(game.mounts[0]!.options.config.seed).toBe(4242);
+    expect(game.mounts[0]!.options.config).toEqual({ seed: 4242, rulesVersion: 1 }); // ancien lien : règles v1
     expect(text('target')).toContain('6 étages');
     await end(6);
     expect(text('challenge-outcome')).toMatch(/Égalité/);
@@ -904,7 +904,7 @@ describe('classement (V3-A3)', () => {
   const T = (mode: 'free' | 'daily', n = 1, seed = 4242, day?: string): RankTicket => ({
     ticket: n.toString(16).padStart(32, '0'),
     seed,
-    rulesVersion: 1,
+    rulesVersion: 2,
     mode,
     ...(day ? { day } : {}),
     expiresAt: Date.parse('2026-11-17T02:00:00Z'),
@@ -1143,7 +1143,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     const { button, root } = setup({ startGame: g.startGame });
     button('Jouer').click();
     expect(g.mounts[0]!.options.allowContinue).toBeUndefined();
-    g.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    g.mounts[0]!.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
     expect(root.querySelector('[data-testid="revive"]')).toBeNull();
     expect(g.mounts[0]!.handle.declineContinue).toHaveBeenCalledTimes(1);
   });
@@ -1155,7 +1155,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     button('Jouer').click();
     const m = g.mounts[0]!;
     expect(m.options.allowContinue).toBe(true);
-    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
     expect(text('revive-demo')).toContain('Mode démo');
     expect(document.activeElement?.textContent).toBe('Regarder une vidéo');
     const video = root.querySelector<HTMLButtonElement>('[data-testid="revive-ad"]')!;
@@ -1166,7 +1166,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     await flush();
     expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
     expect(root.querySelector('[data-testid="revive"]')).toBeNull();
-    m.options.onGameEvent!({ type: 'continue-offer', tick: 90 } as never); // second raté : déjà récompensé
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 90 }); // second raté : déjà récompensé
     expect(root.querySelector('[data-testid="revive"]')).not.toBeNull();
   });
 
@@ -1176,7 +1176,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     const { button, text } = setup({ startGame: g.startGame, revive: { ads } });
     button('Jouer').click();
     const m = g.mounts[0]!;
-    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
     button('Regarder une vidéo').click();
     calls[0]!(outcome);
     await flush();
@@ -1192,14 +1192,14 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     const { button, text } = setup({ startGame: g.startGame, revive: { lives: { count: () => 2, consume } } });
     button('Jouer').click();
     const m = g.mounts[0]!;
-    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 } as never);
+    m.options.onGameEvent!({ type: 'continue-offer', tick: 50 });
     button('Utiliser une vie (2)').click();
     await flush();
     expect(text('revive-status')).toContain('Rien n’a été retiré');
     expect(m.handle.continueRun).not.toHaveBeenCalled();
     button('Utiliser une vie (2)').click();
     await flush();
-    expect(consume).toHaveBeenLastCalledWith('run1:revive');
+    expect(consume.mock.calls).toEqual([['run1:revive'], ['run1:revive']]); // même demande : idempotente côté serveur
     expect(m.handle.continueRun).toHaveBeenCalledTimes(1);
   });
 
@@ -1215,22 +1215,22 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     const g = reviveGame();
     const { button, text } = setup({ startGame: g.startGame });
     button('Jouer').click();
-    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-start', bonus: 'double', floors: 5 } as never);
+    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-start', bonus: 'double', floors: 5 });
     expect(text('live')).toBe('Bonus ×2 pour 5 étages !');
-    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-end', bonus: 'double' } as never);
+    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-end', bonus: 'double' });
     expect(text('live')).toBe('Fin du bonus ×2.');
   });
 
   it('résultat v2 : points affichés, gains et record sur la hauteur ; reprise hors classement', async () => {
     const g = reviveGame();
     const storage = memoryStorage();
-    const svc = { available: true, issueTicket: vi.fn(async (mode: 'free' | 'daily') => ({ ok: true as const, value: { ticket: '1'.padStart(32, '0'), seed: 5, rulesVersion: 1, mode, expiresAt: Date.parse('2026-11-17T02:00:00Z'), ...(mode === 'daily' ? { day: '2026-11-16' } : {}) } })), submit: vi.fn(), read: vi.fn() };
+    const svc = { available: true, issueTicket: vi.fn(async (mode: 'free' | 'daily') => ({ ok: true as const, value: { ticket: '1'.padStart(32, '0'), seed: 5, rulesVersion: 2, mode, expiresAt: Date.parse('2026-11-17T02:00:00Z'), ...(mode === 'daily' ? { day: '2026-11-16' } : {}) } })), submit: vi.fn(), read: vi.fn() };
     const meta = createMetaStore(storage);
     meta.writePlayer({ id: 'c'.repeat(32), pseudo: 'Alex' });
     const { button, text, store } = setup({ startGame: g.startGame, meta, leaderboard: svc as unknown as LeaderboardService });
     await flush();
     button('Jouer').click();
-    g.mounts[0]!.options.onEnd(v2(6, 40, 1) as never);
+    g.mounts[0]!.options.onEnd(v2(6, 40, 1));
     await flush();
     expect(text('score')).toBe('6 étages');
     expect(text('points')).toBe('40 points');
@@ -1263,5 +1263,113 @@ describe('carte de résultat (V3-A6, F9 injectée)', () => {
     plain.button('Jouer').click();
     await plain.end(4);
     expect([...plain.root.querySelectorAll('button')].some((b) => b.textContent === 'Enregistrer l’image')).toBe(false);
+  });
+});
+
+describe('V3-A6b : secours du partage d’image, annonces, sauvegarde et récompense unique', () => {
+  const file = new File(['png'], 'pile-ou-crash.png', { type: 'image/png' });
+  const v2r = (height: number, score: number, continues: 0 | 1 = 0) => ({
+    seed: 7, rulesVersion: 2 as const, score, height, perfectCount: 1, bestPerfectStreak: 1, bonusCount: 1,
+    continues, durationTicks: 900, inputTicks: [1, 2, 3], continueTicks: continues ? [2] : [],
+  });
+
+  it('téléchargement impossible : image affichée avec consigne d’appui long', async () => {
+    const createObjectURL = vi.fn(() => 'blob:image');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    const { button, end, text, root } = setup({ resultImage: async () => file, saveFile: () => false });
+    button('Jouer').click();
+    await end(4);
+    button('Enregistrer l’image').click();
+    await flush();
+    expect(text('share-status')).toBe('Téléchargement impossible : image affichée ci-dessous.');
+    expect(root.querySelector('[data-testid="result-image"]')?.getAttribute('src')).toBe('blob:image');
+    expect(createObjectURL).toHaveBeenCalledWith(file);
+  });
+
+  it.each([
+    ['carte absente', async () => null],
+    ['carte en échec', async () => { throw new Error('canvas'); }],
+  ])('%s : message honnête, le lien reste partageable sans image', async (_name, resultImage) => {
+    const { button, end, text, share } = setup({ resultImage: resultImage as () => Promise<File | null> });
+    button('Jouer').click();
+    await end(4);
+    button('Enregistrer l’image').click();
+    await flush();
+    expect(text('share-status')).toContain('Image indisponible');
+    button('Défier un ami').click();
+    await flush();
+    expect(share).toHaveBeenCalledWith(expect.not.objectContaining({ files: expect.anything() }));
+  });
+
+  it('partage avec image annulé : pas de succès compté', async () => {
+    const { button, end, share, sink, text } = setup({ resultImage: async () => file });
+    share.mockResolvedValueOnce('cancelled');
+    button('Jouer').click();
+    await end(4);
+    button('Défier un ami').click();
+    await flush();
+    expect(text('share-status')).toBe('Partage annulé.');
+    expect(sink.events.map((e) => e.name)).not.toContain('share_success');
+  });
+
+  it('jauge Super pleine et compte à rebours annoncés', () => {
+    const { button, text, game } = setup();
+    button('Jouer').click();
+    const emit = game.mounts[0]!.options.onGameEvent!;
+    emit({ type: 'gauge', value: 4, max: 10, next: 'ralenti' });
+    expect(text('live')).toBe('Partie commencée.');
+    emit({ type: 'gauge', value: 10, max: 10, next: 'ralenti' });
+    expect(text('live')).toBe('Jauge Super pleine !');
+    emit({ type: 'continue-start', countdownTicks: 360 });
+    expect(text('live')).toBe('C’est reparti ! Prêt dans 3 secondes.');
+  });
+
+  it('partie reprise puis rappels onEnd répétés : étoiles, pièces et saison comptées une seule fois', async () => {
+    const storage = memoryStorage();
+    const { button, game, day } = setup({ meta: createMetaStore(storage) });
+    day.now = new Date('2026-12-01T10:00:00Z');
+    button('Jouer').click();
+    const onEnd = game.mounts[0]!.options.onEnd;
+    onEnd(v2r(9, 30, 1));
+    onEnd(v2r(9, 30, 1));
+    await flush();
+    onEnd(v2r(9, 30, 1));
+    await flush();
+    const saved = storage.dump('poc:meta:v1:progress') as { xp: number; coins: number; season: { stars: number } };
+    expect(saved.xp).toBe(9 + 2); // hauteur 9 + 2×1 parfait, une seule fois, jamais les 30 points
+    expect(saved.season.stars).toBe(saved.xp);
+  });
+
+  it('rechargement : inventaire, saison, pseudo et sélection survivent ensemble ; identité corrompue ignorée', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({
+      version: 3, coins: 50, xp: 30, inventory: ['graphite'], grants: ['v2-objectives-backfill'],
+      season: { id: 's1', stars: 25, claimed: [] }, selected: { theme: 'confiserie', skin: 'gomme' },
+    }));
+    const meta = createMetaStore(storage);
+    meta.writePlayer({ id: 'c'.repeat(32), pseudo: 'Alex' });
+    const first = setup({ meta });
+    first.day.now = new Date('2026-12-01T10:00:00Z');
+    first.button('Récompenses').click();
+    first.button('Voir le passe · cadeau à prendre').click();
+    first.button('Prendre').click();
+    await flush();
+    first.shell.destroy();
+
+    const again = setup({ meta: createMetaStore(storage) });
+    again.day.now = new Date('2026-12-01T10:00:00Z');
+    const doc = storage.dump('poc:meta:v1:progress') as Record<string, unknown>;
+    expect(doc).toMatchObject({ version: 3, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
+    expect(again.text('coins')).toBe('60 pièces');
+    expect(storage.dump('poc:meta:v1:player')).toEqual({ id: 'c'.repeat(32), pseudo: 'Alex' });
+    again.shell.destroy();
+
+    storage.setItem('poc:meta:v1:player', JSON.stringify({ id: 'pirate', pseudo: '<script>' }));
+    const svc = { available: true, issueTicket: vi.fn(), submit: vi.fn(), read: vi.fn(async () => ({ ok: true as const, value: { kind: 'global' as const, demo: false, total: 0, nextOffset: null, entries: [] } })) };
+    const third = setup({ meta: createMetaStore(storage), leaderboard: svc as unknown as LeaderboardService });
+    await flush();
+    expect(svc.issueTicket).not.toHaveBeenCalled(); // identité invalide : aucun envoi au nom d'un autre
+    third.button('Classement').click();
+    expect(third.root.querySelector('[data-testid="pseudo-input"]')).not.toBeNull();
   });
 });
