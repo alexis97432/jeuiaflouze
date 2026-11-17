@@ -277,3 +277,25 @@ canvas.swatch.preview { display: block; width: 100%; height: auto; aspect-ratio:
 .tier-reward, .tier-state { margin: 0; font-weight: 800; }
 .tier-state { font-size: 0.9rem; }
 .swatch.soon { width: 72px; height: 54px; display: grid; place-items: center; border-radius: 10px; border: 2px dashed var(--ink); font-size: 1.6rem; font-weight: 900; }
+
+/*
+ * Robustesse aux polices larges (repli DejaVu/Roboto sur Android et runner CI) : aucun mot ne
+ * doit élargir la page à 320 px. Les colonnes peuvent rétrécir, les titres d'écran s'adaptent,
+ * les onglets réduisent leur texte avant de déborder ; jamais de mot coupé dans un onglet.
+ */
+.view > * { min-width: 0; }
+.screen-header { grid-template-columns: auto minmax(0, 1fr) auto; }
+.screen-title { font-size: clamp(1.4rem, 7vw, 2.3rem); overflow-wrap: anywhere; }
+.btn, .chip, .panel, .notice { overflow-wrap: anywhere; }
+.tabbar > .btn { min-width: 0; }
+.btn.tab { overflow-wrap: normal; word-break: keep-all; }
+@media (max-width: 360px) {
+  .btn.tab { flex-direction: column; gap: 0; font-size: 0.85rem; padding-inline: 4px; min-height: 56px; }
+  .btn.tab::before { font-size: 1.1rem; }
+  .chip { padding: 5px 9px; font-size: 0.9rem; }
+  .btn.primary.big { min-height: 64px; }
+}
+@media (orientation: landscape) and (max-height: 380px) and (max-width: 700px) {
+  .btn.tab { flex-direction: column; gap: 0; font-size: 0.85rem; min-height: 50px; padding: 4px; }
+  .btn.tab::before { font-size: 1rem; }
+}
