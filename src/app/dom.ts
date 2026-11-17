@@ -27,3 +27,21 @@ export function button(
 }
 
 export const floors = (n: number) => `${n} étage${n > 1 ? 's' : ''}`;
+
+/**
+ * Bouton avec pictogramme. Le pictogramme est posé en CSS (`data-icon`, contenu alternatif vide) :
+ * il n'entre ni dans le texte ni dans le nom accessible du bouton (« Jouer », pas « ▶ Jouer »).
+ */
+export function iconButton(
+  doc: Document,
+  icon: string,
+  label: string,
+  onClick: () => void,
+  variant: 'primary' | 'secondary' | 'ghost' | 'tab' = 'secondary',
+  testId?: string,
+): HTMLButtonElement {
+  const b = button(doc, label, onClick, variant === 'tab' ? 'ghost' : variant, testId);
+  if (variant === 'tab') b.classList.add('tab');
+  b.dataset.icon = icon;
+  return b;
+}

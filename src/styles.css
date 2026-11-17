@@ -212,3 +212,58 @@ h1 { font-size: clamp(2.2rem, 11vw, 3.1rem); line-height: 1; letter-spacing: -0.
 .gains { font-weight: 800; color: var(--violet-deep); }
 .hint.small { font-size: 0.85rem; }
 canvas.swatch.preview { display: block; width: 100%; height: auto; aspect-ratio: 160 / 72; padding: 0; }
+
+/* --- V3 : menu simple (enfant de 8 ans) ------------------------------------------------ */
+/* Pictogramme décoratif : contenu alternatif vide, hors du nom accessible et du texte. */
+[data-icon]::before { content: attr(data-icon) / ""; margin-right: 0.4em; }
+.chips { display: flex; justify-content: space-between; gap: 8px; }
+.chip { margin: 0; padding: 6px 12px; border-radius: 999px; background: #fff; border: 2px solid var(--ink); font-weight: 800; }
+.tagline { font-size: 1.05rem; }
+.btn.primary.big { font-size: 1.7rem; min-height: 72px; }
+.record-line { font-size: 0.95rem; }
+.tabbar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+.btn.tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 64px; padding: 6px 4px; font-size: 0.95rem; position: relative; }
+.btn.tab::before { margin: 0; font-size: 1.5rem; line-height: 1; }
+.btn.tab.has-dot::after { content: ''; position: absolute; top: 6px; right: 10px; width: 12px; height: 12px; border-radius: 50%; background: var(--coral); border: 2px solid var(--ink); }
+.panel h2[data-icon]::before { margin-right: 0.35em; }
+.panel progress { width: 100%; height: 12px; accent-color: var(--mint); }
+@media (max-height: 600px) {
+  .logo { display: none; }
+  h1 { font-size: clamp(1.8rem, 9vw, 2.4rem); }
+  .view { gap: 10px; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .view[data-screen='home'] .chips, .view[data-screen='home'] .tabbar { grid-column: 1 / -1; }
+  .view[data-screen='home'] .brand { grid-row: 2 / span 3; }
+  .view[data-screen='home'] [data-testid='daily'], .view[data-screen='home'] [data-testid='daily-hint'],
+  .view[data-screen='home'] .record-line { grid-column: 2; }
+}
+@media (orientation: landscape) and (max-height: 380px) {
+  #app { padding-top: max(8px, env(safe-area-inset-top)); padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  .view { gap: 8px; }
+  .btn.primary.big { min-height: 56px; font-size: 1.45rem; }
+  .btn.tab { flex-direction: row; min-height: 44px; gap: 6px; }
+  .btn.tab::before { font-size: 1.15rem; }
+  .tagline { display: none; }
+}
+/*
+ * Robustesse aux polices larges (repli DejaVu/Roboto sur Android et runner CI) : aucun mot ne
+ * doit élargir la page à 320 px. Les colonnes peuvent rétrécir, les titres d'écran s'adaptent,
+ * les onglets réduisent leur texte avant de déborder ; jamais de mot coupé dans un onglet.
+ */
+.view > * { min-width: 0; }
+.screen-header { grid-template-columns: auto minmax(0, 1fr) auto; }
+.screen-title { font-size: clamp(1.4rem, 7vw, 2.3rem); overflow-wrap: anywhere; }
+.btn, .chip, .panel, .notice { overflow-wrap: anywhere; }
+.tabbar > .btn { min-width: 0; }
+.btn.tab { overflow-wrap: normal; word-break: keep-all; }
+@media (max-width: 360px) {
+  .btn.tab { flex-direction: column; gap: 0; font-size: 0.85rem; padding-inline: 4px; min-height: 56px; }
+  .btn.tab::before { font-size: 1.1rem; }
+  .chip { padding: 5px 9px; font-size: 0.9rem; }
+  .btn.primary.big { min-height: 64px; }
+}
+@media (orientation: landscape) and (max-height: 380px) and (max-width: 700px) {
+  .btn.tab { flex-direction: column; gap: 0; font-size: 0.85rem; min-height: 50px; padding: 4px; }
+  .btn.tab::before { font-size: 1rem; }
+}
