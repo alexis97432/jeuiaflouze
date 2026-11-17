@@ -46,7 +46,7 @@ test('le lien partagé ouvre le même défi dans un autre navigateur', async ({ 
     });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Jouer' }).tap();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   const score = Number.parseInt((await page.getByTestId('score').textContent()) ?? '', 10);
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
@@ -77,7 +77,7 @@ test('partage annulé : pas de succès compté', async ({ page }) => {
     });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Jouer' }).tap();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
   await expect(page.getByTestId('share-status')).toHaveText('Partage annulé.');
@@ -123,7 +123,7 @@ test('stockage bloqué : le jeu reste jouable', async ({ page }) => {
   });
   await page.goto('/');
   await expect(page.getByTestId('record')).toContainText('sauvegarde indisponible');
-  await page.getByRole('button', { name: 'Jouer' }).tap();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   await page.getByRole('button', { name: 'Rejouer' }).tap();
   await expect(page.getByTestId('game-canvas')).toBeVisible();
@@ -158,7 +158,7 @@ test('le réglage du son survit au rechargement', async ({ page }) => {
 
 test('onglet caché : pause puis reprise explicite', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Jouer' }).tap();
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   const setVisibility = (state: 'hidden' | 'visible') =>
     page.evaluate((s) => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => s });
@@ -178,9 +178,10 @@ test('Tour du jour : seed de la date UTC, record du jour, objectifs affichés', 
   const { dailySeed, utcDateKey } = await import('../../src/platform/daily');
   await page.goto('/');
   const day = utcDateKey(new Date());
-  await expect(page.getByTestId('daily-hint')).toContainText(day);
+  await expect(page.getByTestId('daily-hint')).toHaveAttribute('data-day', day);
+  await expect(page.getByTestId('daily-next')).toContainText('heure locale');
   await expect(page.getByTestId('goals').locator('li')).toHaveCount(3);
-  await page.getByRole('button', { name: 'Tour du jour' }).tap();
+  await page.getByRole('button', { name: 'Jouer la tour du jour' }).tap();
   await expect(page.getByTestId('target')).toContainText(`Tour du jour · ${day}`);
   await tapUntilResult(page);
   const score = await lastScore(page);
@@ -195,3 +196,53 @@ test('Tour du jour : seed de la date UTC, record du jour, objectifs affichés', 
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
   await expect(page.getByTestId('challenge-link')).toHaveValue(new RegExp(`seed=${dailySeed(day)}&target=${score}$`));
 });
+
+test('collection : ouverture, verrous lisibles, retour, sans débordement', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('open-collection').tap();
+  await expect(page.getByRole('heading', { name: 'Collection' })).toBeFocused();
+  await expect(page.getByTestId('card-theme-orbital')).toContainText('À débloquer');
+  await expect(page.getByTestId('card-skin-gomme')).toContainText('Sélectionné');
+  await noHorizontalOverflow(page);
+  await page.getByTestId('collection-back').tap();
+  await expect(page.getByTestId('open-collection')).toBeFocused();
+});
+
+test('progression : un objectif rempli débloque une apparence choisie et persistante', async ({ page }) => {
+  // Progression préparée : seul « 5 étages » reste à faire parmi les actifs simulés n'est pas
+  // garanti avec le vrai moteur ; on prépare donc un déblocage déjà acquis pour tester le choix.
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('poc:meta:v1:progress', JSON.stringify({ completed: ['floors-5'], selected: { theme: 'confiserie', skin: 'gomme' }, evaluatedRuns: [] }));
+      sessionStorage.setItem('seeded', '1');
+    }
+  });
+  await page.goto('/');
+  await page.getByTestId('open-collection').tap();
+  await page.getByRole('button', { name: 'Choisir Apparence Marbré' }).tap();
+  await expect(page.getByTestId('card-skin-marbre')).toContainText('Sélectionné');
+  await page.reload();
+  await page.getByTestId('open-collection').tap();
+  await expect(page.getByTestId('card-skin-marbre')).toContainText('Sélectionné');
+});
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }]) {
+  test(`pastille d'objectif ${viewport.width}×${viewport.height} : hors de la zone du score et transparente aux appuis`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Jouer la tour du jour' }).tap();
+    const pill = page.getByTestId('target');
+    const canvas = page.getByTestId('game-canvas');
+    await expect(pill).toBeVisible();
+    const p = (await pill.boundingBox())!;
+    const c = (await canvas.boundingBox())!;
+    // Quart supérieur du canvas = zone du score dessiné par le moteur.
+    expect(p.y).toBeGreaterThan(c.y + c.height / 4);
+    // Un toucher au centre de la pastille atteint le jeu : première pose (impossible à rater).
+    await page.waitForTimeout(150);
+    await page.touchscreen.tap(p.x + p.width / 2, p.y + p.height / 2);
+    await expect.poll(async () => (await metrics(page)).some((e) => e.name === 'first_placement')).toBe(true);
+    await context.close();
+  });
+}

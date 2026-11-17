@@ -12,22 +12,31 @@ import {
 } from './challenge-url';
 import { RULES_VERSION, type GameHandle, type RunResult } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
+import { renderCollection } from './collection-view';
+import { button as domButton, el, floors } from './dom';
 import {
   activeObjectives,
   applyRun,
+  BADGE_IDS,
+  earnedBadges,
   rewardLabel,
   sanitizeProgress,
+  selectAppearance,
+  SKIN_IDS,
+  THEME_IDS,
+  unlockedSkins,
+  unlockedThemes,
   type Objective,
   type ObjectiveId,
   type ProgressState,
 } from './progression';
 import { createRunTracker, type RunTracker } from './run-tracker';
-import { dailySeed, utcDateKey } from '../platform/daily';
+import { dailySeed, nextDailyChange, utcDateKey } from '../platform/daily';
 import type { Mode, Tracker } from '../platform/metrics';
 import type { ShareData, ShareOutcome } from '../platform/share';
 import type { LocalStore, MetaStore } from '../platform/storage';
 
-export type Screen = 'home' | 'game' | 'result';
+export type Screen = 'home' | 'game' | 'result' | 'collection';
 
 /**
  * Délai pendant lequel les boutons du résultat ignorent les activations : un joueur qui tape
@@ -74,21 +83,13 @@ type RunState = {
   handle: GameHandle | null;
 };
 
-function el<K extends keyof HTMLElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  props: Partial<Record<string, string>> = {},
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = doc.createElement(tag);
-  for (const [key, value] of Object.entries(props)) {
-    if (value !== undefined) node.setAttribute(key, value);
-  }
-  if (text !== undefined) node.textContent = text; // jamais innerHTML
-  return node;
-}
+/** Date UTC lisible (« 16 novembre ») ; la clé ISO reste en attribut pour les tests. */
+const formatDay = (day: string) =>
+  new Date(`${day}T12:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 
-const floors = (n: number) => `${n} étage${n > 1 ? 's' : ''}`;
+/** Heure locale du prochain changement de tour (minuit UTC), calculée par le navigateur. */
+const formatLocalTime = (at: Date) =>
+  at.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 export function createShell(options: ShellOptions): Shell {
   const doc = options.doc ?? document;
@@ -122,18 +123,12 @@ export function createShell(options: ShellOptions): Shell {
     delete view.dataset.inputReady;
     view.replaceChildren(...children.filter((c): c is HTMLElement => c !== null));
     view.dataset.screen = next;
+    root.dataset.screen = next; // mise en page pleine page pendant la partie
     focus.focus();
   };
 
-  const button = (label: string, onClick: () => void, primary = false, testId?: string) => {
-    const b = el(doc, 'button', {
-      type: 'button',
-      class: primary ? 'primary' : undefined,
-      'data-testid': testId,
-    }, label);
-    b.addEventListener('click', onClick);
-    return b;
-  };
+  const button = (label: string, onClick: () => void, primary = false, testId?: string) =>
+    domButton(doc, label, onClick, primary ? 'primary' : 'secondary', testId);
 
   const recordLine = () => {
     const best = store.readBest();
@@ -146,7 +141,7 @@ export function createShell(options: ShellOptions): Shell {
   const soundToggle = () => {
     const b = el(doc, 'button', {
       type: 'button',
-      class: 'toggle',
+      class: 'btn ghost toggle',
       'aria-pressed': String(!prefs.muted),
       'data-testid': 'sound-toggle',
     }, prefs.muted ? 'Son : coupé' : 'Son : activé');
@@ -157,6 +152,32 @@ export function createShell(options: ShellOptions): Shell {
       b.textContent = prefs.muted ? 'Son : coupé' : 'Son : activé';
     });
     return b;
+  };
+
+  const collectionButton = () => {
+    const owned = unlockedThemes(progress).length + unlockedSkins(progress).length + earnedBadges(progress).length;
+    const total = THEME_IDS.length + SKIN_IDS.length + BADGE_IDS.length;
+    const b = domButton(doc, `Collection ${owned}/${total}`, () => renderCollectionScreen(), 'ghost', 'open-collection');
+    return b;
+  };
+
+  const renderCollectionScreen = (focusCard?: string) => {
+    const { nodes, focus } = renderCollection(doc, progress, {
+      onSelect: (next) => {
+        const updated = selectAppearance(progress, next);
+        if (updated.selected.theme === progress.selected.theme && updated.selected.skin === progress.selected.skin) return;
+        progress = updated;
+        meta.writeProgress(progress);
+        // Le focus reste sur la carte choisie, pas sur le titre.
+        renderCollectionScreen(next.theme ? `card-theme-${next.theme}` : `card-skin-${next.skin}`);
+        announce('Sélection enregistrée.');
+      },
+      onBack: () => {
+        renderHome();
+        view.querySelector<HTMLButtonElement>('[data-testid="open-collection"]')?.focus();
+      },
+    }, focusCard);
+    show('collection', nodes, focus);
   };
 
   const clearChallengeUrl = () => {
@@ -195,17 +216,45 @@ export function createShell(options: ShellOptions): Shell {
       show('home', [title, invite, note, accept, free, recordLine(), soundToggle()], accept);
       return;
     }
-    const rules = el(doc, 'p', {},
-      'Touchez l’écran ou appuyez sur Espace pour poser le bloc. Ce qui dépasse tombe.');
+    title.textContent = '';
+    title.append(el(doc, 'span', { class: 'brand-word' }, 'Pile'), ' ', el(doc, 'span', { class: 'brand-small' }, 'ou'), ' ',
+      el(doc, 'span', { class: 'brand-word accent' }, 'Crash'));
+    title.setAttribute('aria-label', 'Pile ou Crash');
+    const logo = el(doc, 'div', { class: 'logo', 'aria-hidden': 'true' });
+    for (let i = 0; i < 3; i++) logo.append(el(doc, 'span', {}));
+    const brand = el(doc, 'header', { class: 'brand' });
+    brand.append(logo, title, el(doc, 'p', { class: 'tagline' },
+      'Touchez pour poser le bloc. Ce qui dépasse tombe.'));
     const play = button('Jouer', () => startRun(null), true);
-    const day = utcDateKey(today());
-    const daily = button('Tour du jour', () => startRun(null, 'daily'), false, 'daily');
+    play.classList.add('big');
+
+    const now = today();
+    const day = utcDateKey(now);
     const dailyBest = meta.readDailyBest(day);
-    const dailyHint = el(doc, 'p', { class: 'hint', 'data-testid': 'daily-hint' },
-      `Même tour pour tous aujourd’hui (${day}, UTC)${dailyBest > 0 ? ` · votre record du jour : ${floors(dailyBest)}` : ''}`);
-    const goals = el(doc, 'ul', { class: 'goals', 'aria-label': 'Objectifs en cours', 'data-testid': 'goals' });
-    for (const o of activeObjectives(progress)) goals.append(el(doc, 'li', {}, o.label));
-    show('home', [title, rules, play, daily, dailyHint, goals, recordLine(), soundToggle()], play);
+    const dailyPanel = el(doc, 'section', { class: 'panel daily', 'aria-labelledby': 'daily-title', 'data-testid': 'daily-panel' });
+    dailyPanel.append(
+      el(doc, 'h2', { id: 'daily-title' }, 'Tour du jour'),
+      el(doc, 'p', { 'data-testid': 'daily-hint', 'data-day': day },
+        `Même tour pour tous · ${formatDay(day)} (UTC)`),
+      el(doc, 'p', { class: 'hint', 'data-testid': 'daily-next' },
+        `Nouvelle tour à ${formatLocalTime(nextDailyChange(now))} (heure locale)` +
+          (dailyBest > 0 ? ` · record du jour : ${floors(dailyBest)}` : '')),
+      button('Jouer la tour du jour', () => startRun(null, 'daily'), false, 'daily'),
+    );
+
+    const goalsPanel = el(doc, 'section', { class: 'panel', 'aria-labelledby': 'goals-title' });
+    const goals = el(doc, 'ul', { class: 'goals', 'data-testid': 'goals' });
+    for (const o of activeObjectives(progress)) {
+      const li = el(doc, 'li', {}, o.label);
+      li.append(el(doc, 'span', { class: 'reward' }, ` → ${rewardLabel(o.reward)}`));
+      goals.append(li);
+    }
+    if (goals.childElementCount === 0) goals.append(el(doc, 'li', {}, 'Tous les objectifs sont accomplis. Bravo !'));
+    goalsPanel.append(el(doc, 'h2', { id: 'goals-title' }, 'Objectifs'), goals);
+
+    const footer = el(doc, 'nav', { class: 'footer-row', 'aria-label': 'Options' });
+    footer.append(collectionButton(), soundToggle());
+    show('home', [brand, play, dailyPanel, goalsPanel, footer, recordLine()], play);
   };
 
   const stopRun = () => {
@@ -341,7 +390,7 @@ export function createShell(options: ShellOptions): Shell {
     const { isRecord } = outcome;
     const title = el(doc, 'h2', { tabindex: '-1' }, 'Partie terminée');
     const score = el(doc, 'p', { class: 'score', 'data-testid': 'score' }, floors(result.score));
-    const parts: (HTMLElement | null)[] = [title, score];
+    const parts: (HTMLElement | null)[] = [title, el(doc, 'p', { class: 'score-label', 'aria-hidden': 'true' }, 'Hauteur'), score];
     let summary = `Partie terminée. Score : ${result.score}.`;
 
     if (isRecord) {
@@ -375,6 +424,7 @@ export function createShell(options: ShellOptions): Shell {
       parts.push(list);
       summary += ` ${outcome.completedNow.length} objectif(s) accompli(s).`;
     }
+    const rewardShortcut = outcome.completedNow.length > 0;
     parts.push(el(doc, 'p', { class: 'hint' }, 'Score local, non vérifié.'), recordLine());
 
     const status = el(doc, 'p', { class: 'hint', role: 'status', 'data-testid': 'share-status' });
@@ -386,7 +436,7 @@ export function createShell(options: ShellOptions): Shell {
     };
     const retry = button('Rejouer', guarded(() => startRun(current)), true);
     const shareButton = button('Défier un ami', guarded(() => void doShare()), false, 'share');
-    const home = button('Accueil', guarded(renderHome));
+    const home = domButton(doc, 'Accueil', guarded(renderHome), 'ghost');
 
     const doShare = async () => {
       const url = buildChallengeUrl(options.url, current.seed, result.score);
@@ -429,14 +479,34 @@ export function createShell(options: ShellOptions): Shell {
       }
     };
 
-    parts.push(retry, shareButton, home, status, fallback);
-    show('result', parts, retry);
+    const actions = el(doc, 'div', { class: 'actions' });
+    actions.append(retry, shareButton);
+    if (rewardShortcut) actions.append(domButton(doc, 'Voir la collection', guarded(() => renderCollectionScreen()), 'ghost', 'result-collection'));
+    actions.append(home);
+    const info = el(doc, 'div', { class: 'result-info' });
+    info.append(...parts.filter((p): p is HTMLElement => p !== null));
+    show('result', [info, actions, status, fallback], retry);
     // Marqueur observable (tests, styles) de la fin du délai de garde.
     guardTimer = setTimeout(() => {
       if (screen === 'result') view.dataset.inputReady = 'true';
     }, RESULT_INPUT_GUARD_MS);
     announce(summary);
   };
+
+  // Modalité de la dernière interaction : l'anneau de focus du canvas n'apparaît qu'au clavier
+  // (proposition FLK, revue F3) ; au toucher, rien ne se superpose au jeu.
+  const onPointer = () => {
+    root.dataset.input = 'pointer';
+  };
+  const onKey = (event: KeyboardEvent) => {
+    // Espace (touche de jeu) exclue : un joueur qui alterne toucher et Espace ne voit pas
+    // apparaître l'anneau pendant la partie (revue A3b FLK, m1).
+    if (event.key === 'Tab' || event.key === 'Enter' || event.key.startsWith('Arrow')) {
+      root.dataset.input = 'keyboard';
+    }
+  };
+  doc.addEventListener('pointerdown', onPointer, true);
+  doc.addEventListener('keydown', onKey, true);
 
   const onVisibility = () => {
     if (screen !== 'game' || !run?.handle) return;
@@ -463,6 +533,10 @@ export function createShell(options: ShellOptions): Shell {
       clearTimeout(guardTimer);
       stopRun();
       doc.removeEventListener('visibilitychange', onVisibility);
+      doc.removeEventListener('pointerdown', onPointer, true);
+      doc.removeEventListener('keydown', onKey, true);
+      delete root.dataset.screen;
+      delete root.dataset.input;
       root.replaceChildren();
     },
   };
