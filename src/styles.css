@@ -266,3 +266,14 @@ canvas.swatch.preview { display: block; width: 100%; height: auto; aspect-ratio:
 .notice { margin: 0; padding: 10px 14px; border-radius: 12px; background: #fff; border: 2px solid var(--ink); font-weight: 800; }
 .price { margin: 0; font-weight: 900; }
 .cards.shop { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+/* Passe de saison (V3-A5) */
+.tiers { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.tier { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; border-radius: 14px; background: #fff; border: 2px solid var(--ink); }
+.tier-head { grid-column: 1 / -1; margin: 0; font-weight: 900; }
+.tier-cell { display: grid; gap: 6px; align-content: start; justify-items: center; text-align: center; padding: 8px; border-radius: 10px; background: var(--paper, #fff8ec); }
+.tier-cell canvas, .tier-cell .swatch { max-width: 72px; max-height: 72px; }
+.tier-cell.premium { opacity: 0.75; }
+.tier-cell.claimed { background: var(--mint); }
+.tier-reward, .tier-state { margin: 0; font-weight: 800; }
+.tier-state { font-size: 0.9rem; }
+.swatch.soon { width: 72px; height: 54px; display: grid; place-items: center; border-radius: 10px; border: 2px dashed var(--ink); font-size: 1.6rem; font-weight: 900; }

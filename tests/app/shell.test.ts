@@ -545,7 +545,7 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
 
     const saved = storage.dump('poc:meta:v1:progress');
     expect(saved).toMatchObject({
-      version: 2,
+      version: 3,
       xp: 14,
       coins: 40,
       selected: { skin: 'marbre' },
@@ -572,12 +572,12 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     expect(text('coins')).toBe('20 pièces');
     button('Jouer').click();
     await end(3); // perfectCount 1 : 1 + 1 = 2 pièces, 3 + 2 = 5 XP
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 2, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 3, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
   });
 
   it('sauvegarde d’une version future : lue, jamais réécrite', async () => {
     const storage = memoryStorage();
-    const future = { version: 3, completed: [], xp: 900, coins: 400, champInconnu: true };
+    const future = { version: 4, completed: [], xp: 900, coins: 400, champInconnu: true };
     storage.setItem('poc:meta:v1:progress', JSON.stringify(future));
     const { text, button, end } = setup({ meta: createMetaStore(storage) });
     expect(text('coins')).toBe('400 pièces');
@@ -1064,5 +1064,54 @@ describe('classement (V3-A3)', () => {
     await flush();
     expect(text('board-empty')).toBe('Personne pour l’instant. Sois le premier !');
     expect(read.mock.calls.map((c) => c[0])).toEqual(['global', 'weekly', 'weekly', 'daily', 'daily']);
+  });
+});
+
+describe('passe de saison (V3-A5)', () => {
+  it('avant la saison : étoiles non comptées, date de début affichée', async () => {
+    const storage = memoryStorage();
+    const { button, text, end, root, place } = setup({ meta: createMetaStore(storage) });
+    button('Jouer').click();
+    place([true, true, true]);
+    await end(15); // date du test : 16/11, la saison commence le 17/11
+    button('Accueil').click();
+    button('Récompenses').click();
+    expect(text('season-summary')).toBe('Commence le 17 novembre.');
+    expect(storage.dump('poc:meta:v1:progress')).not.toHaveProperty('season');
+    expect(root.querySelector('[data-testid="nav-rewards"]')).toBeNull();
+  });
+
+  it('pendant la saison : une partie ajoute ses étoiles une seule fois', async () => {
+    const storage = memoryStorage();
+    const { button, end, game, day } = setup({ meta: createMetaStore(storage) });
+    day.now = new Date('2026-12-01T10:00:00Z');
+    button('Jouer').click();
+    await end(15);
+    game.mounts[0]!.options.onEnd({ seed: 1, rulesVersion: 1, score: 15, perfectCount: 1, durationTicks: 500, inputTicks: [1, 2] }); // rappel répété
+    await flush();
+    const xp = (storage.dump('poc:meta:v1:progress') as { xp: number }).xp;
+    expect(xp).toBeGreaterThan(0);
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ season: { id: 's1', stars: xp } });
+  });
+
+  it('pendant la saison : jauge, réclamation, aucune double prise entre deux onglets', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 0, grants: ['v2-objectives-backfill'], season: { id: 's1', stars: 25, claimed: [] } }));
+    const a = setup({ meta: createMetaStore(storage) });
+    a.day.now = new Date('2026-12-01T10:00:00Z');
+    a.button('Récompenses').click();
+    expect(a.text('season-summary')).toBe('Palier 2 dans 35 étoiles · jusqu’au 28 février');
+    a.button('Voir le passe · cadeau à prendre').click();
+    expect(a.text('premium-note')).toContain('indisponible');
+    expect(a.text('tier-1-premium')).toContain('Indisponible');
+    expect(a.text('tier-2-free')).toContain('🔒 35 étoiles');
+    const stale = a.root.querySelector<HTMLButtonElement>('[data-testid="claim-tier-1"]')!;
+    stale.click();
+    await flush();
+    expect(a.text('season-notice')).toBe('Pris : +10 pièces.');
+    stale.click(); // bouton périmé (double appui) : déjà pris
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, season: { claimed: ['free:1'] } });
+    expect(a.text('tier-1-free')).toContain('Pris ✓');
   });
 });
