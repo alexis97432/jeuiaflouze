@@ -7,8 +7,8 @@ import { verifyRunResult, type RunResult } from '../../../src/game/core';
 import { createGame } from '../../../src/game/render/mount';
 import { Renderer } from '../../../src/game/render/renderer';
 import { getTheme, THEME_IDS } from '../../../src/game/render/themes';
-import { SKIN_IDS } from '../../../src/game/render/blocks';
-import { renderAppearancePreview } from '../../../src/game/render/preview';
+import { ALL_SKIN_IDS, SKIN_IDS } from '../../../src/game/render/blocks';
+import { drawAppearancePreview, renderAppearancePreview } from '../../../src/game/render/preview';
 
 const live = new Map<string, number>();
 const keyOf = (t: EventTarget, type: string) =>
@@ -136,13 +136,14 @@ const api = {
     return { lo: sorted[0] ?? -1, hi: sorted[sorted.length - 1] ?? -1, count: sorted.length };
   },
   /** Planche des 18 aperçus univers × apparence (captures et tests). Renvoie une empreinte par aperçu. */
-  previewBoard(cell = { w: 120, h: 84 }) {
+  previewBoard(cell = { w: 120, h: 84 }, all = false) {
+    const skins = all ? ALL_SKIN_IDS : SKIN_IDS;
     const grid = document.createElement('div');
     grid.id = 'board';
-    grid.style.cssText = `position:fixed;inset:0;z-index:9;background:#FFF4DB;display:grid;grid-template-columns:repeat(${SKIN_IDS.length},${cell.w}px);gap:6px;padding:6px;align-content:start;font:600 11px system-ui;color:#20213D`;
+    grid.style.cssText = `position:fixed;inset:0;z-index:9;background:#FFF4DB;display:grid;grid-template-columns:repeat(${skins.length},${cell.w}px);gap:6px;padding:6px;align-content:start;font:600 11px system-ui;color:#20213D`;
     const prints: Record<string, number> = {};
     for (const theme of THEME_IDS) {
-      for (const skin of SKIN_IDS) {
+      for (const skin of skins) {
         const fig = document.createElement('figure');
         fig.style.margin = '0';
         const c = document.createElement('canvas');
@@ -152,7 +153,8 @@ const api = {
         fig.append(c, cap);
         grid.append(fig);
         document.body.append(grid);
-        renderAppearancePreview(c, { theme, skin }, { width: cell.w, height: cell.h, dpr: 2 });
+        if (all) drawAppearancePreview(c, { theme, skin }, { width: cell.w, height: cell.h, dpr: 2 });
+        else renderAppearancePreview(c, { theme, skin: skin as (typeof SKIN_IDS)[number] }, { width: cell.w, height: cell.h, dpr: 2 });
         const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
         let h = 2166136261;
         for (let i = 0; i < d.length; i += 16) { h ^= d[i]! ^ (d[i + 1]! << 8) ^ (d[i + 2]! << 16); h = Math.imul(h, 16777619) >>> 0; }

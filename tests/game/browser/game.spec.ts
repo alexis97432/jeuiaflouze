@@ -299,7 +299,8 @@ test.describe('V2 (F3) : univers', () => {
 });
 
 test.describe('V2 (F4) : apparences', () => {
-  for (const skin of ['gomme', 'marbre', 'bonbon', 'verre', 'strie', 'ceramique']) {
+  for (const skin of ['gomme', 'marbre', 'bonbon', 'verre', 'strie', 'ceramique',
+    'graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave', 'or', 'cristal']) {
     test(`${skin} : aucune matière ne déborde du bloc (trois univers, pixels réels)`, async ({ page }) => {
       await page.goto(URL);
       for (const theme of ['confiserie', 'orbital', 'jardin']) {
@@ -317,6 +318,13 @@ test.describe('V2 (F4) : apparences', () => {
     expect(Object.keys(prints)).toHaveLength(18);
     expect(new Set(Object.values(prints)).size).toBe(18);
     expect(await page.evaluate(() => (window as any).__flk.previewWithoutContext())).toBe(false);
+  });
+
+  test('V3 (F8) : 42 aperçus univers × 14 apparences, tous différents', async ({ page }) => {
+    await page.goto(URL);
+    const prints = await page.evaluate(() => (window as any).__flk.previewBoard({ w: 120, h: 84 }, true));
+    expect(Object.keys(prints)).toHaveLength(42);
+    expect(new Set(Object.values(prints)).size).toBe(42);
   });
 
   test('appearance transmise au montage : le jeu applique univers et apparence', async ({ page }) => {

@@ -3,7 +3,7 @@ import { FixedStepDriver } from '../input/fixed-step';
 import { attachInput } from '../input/input';
 import { Sfx } from './audio';
 import { Renderer } from './renderer';
-import { DEFAULT_SKIN, isSkinId, type SkinId } from './blocks';
+import { DEFAULT_SKIN, isDrawSkinId, isSkinId, type DrawSkinId, type SkinId } from './blocks';
 import { DEFAULT_THEME, getTheme, isThemeId, VOYAGE, type ThemeId } from './themes';
 
 /** Univers et apparence de blocs choisis par le shell (V2). Purement visuels. */
@@ -58,6 +58,8 @@ export type InternalMountOptions = MountOptions & {
   theme?: ThemeId;
   /** Variante « la tour voyage » (avis FLK V2) : les univers se succèdent avec la hauteur. */
   voyage?: boolean;
+  /** Interne (démo, harnais) : apparence V3 pas encore exposée au shell ; prime sur appearance.skin. */
+  drawSkin?: DrawSkinId;
 };
 
 /** Délai entre le raté et onEnd, pour voir le bloc tomber (ms de rendu, gelé en pause). */
@@ -84,7 +86,7 @@ export function createGame(options: InternalMountOptions): GameHandle & { inspec
   const media = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : null;
   const appearance = resolveAppearance(options.appearance ?? { theme: options.theme });
   const theme = options.voyage ? VOYAGE : getTheme(appearance.theme);
-  const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme, appearance.skin);
+  const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme, isDrawSkinId(options.drawSkin) ? options.drawSkin : appearance.skin);
   const sfx = new Sfx(options.sound ?? true, theme.audio);
 
   let destroyed = false;
