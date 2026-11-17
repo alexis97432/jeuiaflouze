@@ -63,20 +63,41 @@ Fichier de reprise : si une session s'interrompt, repartir d'ici. Mis à jour à
 | S4 | Écrans : accueil, récompenses, passe, boutique, collection, classement, réglages, aide, résultat, partie et pause, reprise (`src/app/shell.ts`, `src/app/collection-view.ts`) | fait, typecheck propre |
 | S5 | Moteur : qualité d'effets, volume, police (`src/game/render/`) | fait |
 | S6 | Tests : mise à jour, régressions, exploration de tous les boutons, contrastes, thèmes, petits écrans | fait (501 unitaires, 92 e2e, 39 moteur ; exploration 36 boutons ; contrastes clair/sombre) |
-| S7 | Documentation, statut, PR, fusion, publication Pages, vérification en ligne | en cours (documentation faite : `docs/V4.md`, `docs/LICENCES-TIERS.md`) |
+| S7 | Documentation, statut, PR, fusion, publication Pages, vérification en ligne | fait : PR #48 fusionnée (`7c4c671`), publiée et vérifiée en ligne ; libellés de lien invalide en PR de suivi |
+
+## Publication V4 (auto-vérification)
+
+1. **Contrôle par mutation :** trois défauts introduits volontairement, chacun détecté par le test attendu, puis fichiers restaurés :
+   - « Crash » à 2,71:1 : tests de contraste ;
+   - bouton d'aide sans effet : exploration des boutons ;
+   - reprise sans délai de garde : test unitaire.
+2. **PR [#48](https://github.com/alexis97432/jeuiaflouze/pull/48)**, head `86364e0` :
+   - CI `check` en succès (run 44187066913) : `npm ci`, typecheck, 501 tests unitaires, 92 e2e (46 ignorés par conception), 39 tests moteur ;
+   - fusionnée par son auteur (exception V4) en `7c4c671`.
+3. **Pages :** `pages.yml` lancé avec `ref` = `7c4c671392b047705fcf182ba432093661b8b236`. Le run 44187918060 est en succès : il a rejoué les tests, publié, puis contrôlé `source-commit.txt` en ligne.
+4. **Vérification du site en ligne,** faite depuis ce conteneur avec Chromium (profil Pixel 7). Le site sert `7c4c671` depuis 22 h 18 UTC. Les 23 contrôles passent :
+   - `source-commit.txt` ;
+   - `licences-tiers.txt` ;
+   - police Fredoka chargée ;
+   - accueil V4 ;
+   - thème Auto, puis Sombre gardé après rechargement ;
+   - retour du téléphone ;
+   - Pause, puis Quitter sans rien enregistrer ;
+   - offre de reprise et « Vidéo indisponible » désactivée ;
+   - vie décomptée une seule fois, aussi après rechargement ;
+   - résultat avec Rejouer, Défier un ami et Accueil ;
+   - 320 × 568 sans débordement ;
+   - toutes les ressources servies ;
+   - aucune erreur console.
+
+   Contrôles en ligne en plus : liens `?v=1` et `?v=2` acceptés, lien invalide signalé, thème sombre suivi depuis l'appareil.
+5. **Suivi :** les messages de lien invalide contenaient encore « séquence invalide », « score invalide » et « mal formé ». Ils sont réécrits pour un enfant, avec un test, dans une PR de suivi qui contient aussi cet état. Après sa fusion, elle est republiée avec le même workflow. Le SHA en ligne final se lit dans `source-commit.txt`.
 
 ## Reprise
 
-- **Dernier état local, vérifié après `npm ci` (npm 10) :**
-  - `npm run typecheck` : OK ;
-  - `npm test` : 501 tests ;
-  - `npm run build` : OK ;
-  - `CI=1 npm run test:e2e` : 92 tests passés, 46 ignorés par conception (profils), plus 39 tests moteur.
-- **Verrou corrigé :** l'installation de la police et des icônes avec npm 11 avait retiré `@emnapi/core` et `@emnapi/runtime` du `package-lock.json`, et `npm ci` (npm 10, CI) échouait. Les deux entrées sont restaurées depuis la V3.
-- **Prochaine action :**
-  1. contrôle par mutation des nouveaux tests (contraste, exploration des boutons, délai de garde) ;
-  2. PR vers `claude/youthful-mayer-n4f7oy`, avec l'exception documentée ;
-  3. CI ;
-  4. fusion ;
-  5. `pages.yml` avec le SHA exact ;
-  6. vérification en ligne (`source-commit.txt`, ressources, parcours).
+- **Fait :** la V4 est fusionnée, publiée et vérifiée en ligne (`7c4c671`).
+- **Si la session s'interrompt :** reprendre la PR de suivi (libellés de lien invalide et état de publication) :
+  1. CI verte ;
+  2. fusion ;
+  3. `pages.yml` avec le SHA exact de la fusion ;
+  4. `source-commit.txt` en ligne et un lien invalide ouvert sur le site.

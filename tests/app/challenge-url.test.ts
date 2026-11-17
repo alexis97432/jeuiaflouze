@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildChallengeUrl, parseChallenge } from '../../src/app/challenge-url';
+import { buildChallengeUrl, INVALID_MESSAGES, parseChallenge } from '../../src/app/challenge-url';
 
 const ok = (seed: number, target: number) => ({
   kind: 'challenge',
@@ -71,5 +71,14 @@ describe('liens v2 (V3)', () => {
     expect(parseChallenge('?v=2&seed=5&target=9')).toEqual({ kind: 'challenge', challenge: { seed: 5, target: 9, rulesVersion: 2 } });
     expect(buildChallengeUrl('https://jeu.test/', 5, 9, 2)).toBe('https://jeu.test/?v=2&seed=5&target=9');
     expect(buildChallengeUrl('https://jeu.test/', 5, 9)).toBe('https://jeu.test/?v=1&seed=5&target=9');
+  });
+});
+
+describe('V4 : messages de lien invalide lisibles par un enfant', () => {
+  it('aucun mot technique, et toujours quoi faire ensuite', () => {
+    for (const message of Object.values(INVALID_MESSAGES)) {
+      expect(message).not.toMatch(/invalide|séquence|formé|seed|target|version \d|serveur|UTC|vous/i);
+      expect(message).toMatch(/Demande à ton ami|nouvelle partie/);
+    }
   });
 });
