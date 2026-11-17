@@ -371,6 +371,17 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }
   });
 }
 
+test('boutique : état réel tant que le moteur n’a pas les apparences de boutique', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('nav-shop').tap();
+  await expect(page.getByRole('heading', { name: 'Boutique' })).toBeFocused();
+  await expect(page.getByText('Les pièces se gagnent en jouant. Elles ne s’achètent pas.')).toBeVisible();
+  // Graphite, Nacré, Holographique ne sont proposés qu'une fois dessinables par le moteur (F-V3).
+  const sellable = await page.locator('.cards.shop li').count();
+  if (sellable === 0) await expect(page.getByTestId('shop-empty')).toBeVisible();
+  await noHorizontalOverflow(page);
+});
+
 /** Polices larges (repli Android, runner CI) : la CI échouait à 320 px avec DejaVu Sans. */
 for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
   test(`polices larges ${viewport.width}×${viewport.height} : aucun débordement, menu visible, aucun mot coupé`, async ({ browser }) => {

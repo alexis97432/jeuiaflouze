@@ -100,6 +100,8 @@ export type ProgressState = {
   completed: ObjectiveId[];
   selected: Appearance;
   evaluatedRuns: string[];
+  /** Objets achetés (boutique en pièces, E1e) ; complète les déblocages par objectif. */
+  inventory?: string[];
 };
 
 export const INITIAL_PROGRESS: ProgressState = {
@@ -123,7 +125,8 @@ export function unlockedThemes(state: ProgressState): ThemeId[] {
 }
 
 export function unlockedSkins(state: ProgressState): SkinId[] {
-  const won = new Set(rewardsOf(state).flatMap((r) => (r.kind === 'skin' ? [r.id] : [])));
+  const won = new Set<string>(rewardsOf(state).flatMap((r) => (r.kind === 'skin' ? [r.id] : [])));
+  for (const item of state.inventory ?? []) won.add(item); // achats en pièces
   return SKIN_IDS.filter((id) => id === DEFAULT_APPEARANCE.skin || won.has(id));
 }
 
@@ -190,10 +193,16 @@ export function sanitizeProgress(raw: unknown): ProgressState {
     ? r.evaluatedRuns.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 64)
     : [];
   const sel = (typeof r.selected === 'object' && r.selected !== null ? r.selected : {}) as Record<string, unknown>;
+  // L'inventaire (achats) compte pour valider la sélection : une apparence achetée et choisie
+  // reste choisie après rechargement.
+  const inventory = Array.isArray(r.inventory)
+    ? [...new Set(r.inventory.filter((i): i is string => typeof i === 'string' && /^[a-z0-9-]{1,32}$/.test(i)))]
+    : [];
   const base: ProgressState = {
     completed,
     selected: DEFAULT_APPEARANCE,
     evaluatedRuns: runs.slice(-MAX_REMEMBERED_RUNS),
+    ...(inventory.length > 0 ? { inventory } : {}),
   };
   return selectAppearance(base, {
     ...(isIn(THEME_IDS, sel.theme) ? { theme: sel.theme } : {}),

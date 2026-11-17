@@ -246,6 +246,9 @@ canvas.swatch.preview { display: block; width: 100%; height: auto; aspect-ratio:
   .btn.tab::before { font-size: 1.15rem; }
   .tagline { display: none; }
 }
+.notice { margin: 0; padding: 10px 14px; border-radius: 12px; background: #fff; border: 2px solid var(--ink); font-weight: 800; }
+.price { margin: 0; font-weight: 900; }
+.cards.shop { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 /*
  * Robustesse aux polices larges (repli DejaVu/Roboto sur Android et runner CI) : aucun mot ne
  * doit élargir la page à 320 px. Les colonnes peuvent rétrécir, les titres d'écran s'adaptent,
