@@ -68,3 +68,17 @@
 - Prochain pas Alexis : relire C6, intégrer F3 puis F4 sur les SHA approuvés, brancher les apparences et faire revoir le nouveau SHA A4 par FLK. Ne pas confondre code fusionné et build Pages publié.
 - E1 branché #20 garde **CHANGES_REQUESTED FLK sur 452ae7c**, défaut multi-onglets M2 ; pas de PASS Codex implicite. Attention : relire puis réécrire le localStorage ne garantit pas une transaction entre deux onglets concurrents ; convenir d'une sérialisation adéquate ou stratégie de fusion et tester le cas réellement concurrent, pas seulement des actions séquentielles.
 - Aucun téléphone physique testé, pas de validation humaine de la nouvelle esthétique.
+
+## C8 — F7/F9 validés, correction d'exposition F8b requise
+
+- F7 #39 cf95c51 : PASS montage sur SHA exact, 343 tests livrés après contrôle isolé ; première suite concurrente avait un timeout de charge sur test v1. Détail transparent dans F7-codex.md.
+- F9 #40 d8ba36f : PASS carte sur SHA exact, 355 unitaires/typecheck/build. Normalisation et bornes relues ; capture inspectée.
+- F8b #41 1509f1e : CHANGES_REQUESTED R1 (carte publique perd le skin V3). 356 unitaires livrés et 38 tests navigateur ciblés passent mais une sonde supplémentaire reproduit la carte Graphite identique à Gomme. Ne pas annoncer tous les systèmes V3 terminés.
+- Suite détaillée dans coordination/V3-INTEGRATION.md : correction F8b, déblocage drafts F6/F8, A6b carte réelle/catalogues, liens v2 sans conversion en v1, revue FLK et publication finale.
+- C8 REVIEW_PENDING Alexis. Aucun code des deux autres modifié à distance, aucun merge ni publication dans cette livraison. Pas de téléphone physique testé.
+
+## C9 — correction F8b validée
+
+- #41 SHA 28c0ec1b32c410e5f9086fea70b5bc449a2f4616 : PASS R1 après lecture et tests ciblés, typecheck/build et Chromium. Rapport F8b-codex.md actualisé.
+- #45 fusionnée ; #42 encore brouillon au contrôle, sans checks GitHub affichés : finalisation puis revue FLK nécessaires.
+- Livraison documentaire C9 REVIEW_PENDING Alexis ; aucun code des autres auteurs modifié, aucune publication effectuée.
