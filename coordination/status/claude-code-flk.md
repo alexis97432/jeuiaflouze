@@ -1,5 +1,69 @@
 # Claude Code FLK
 
+## Avis V2 indépendant (brief C3, PR #10 `8403cfa`)
+
+Constat, sur une capture réelle du rendu v1 à 12 étages en 390×844 (`coordination/captures/F3/avant-v1-390x844.png`) :
+- la moitié haute de l'écran est vide, car la caméra ne monte qu'après environ 17 étages ;
+- les blocs sont des rectangles plats et le fond est sombre, identique du premier au dernier étage ;
+- les effets sont génériques : carrés blancs, cadre gris du parfait qui fait « outil de debug » ;
+- rien n'évolue pendant une partie, et le son n'a pas d'identité.
+
+« Fade et vieux jeu » est mérité : le problème est d'abord le rendu et le rythme, pas les règles.
+
+Ce que je garde du brief : rulesVersion 1 intacte, un relief 2D qui n'élargit jamais la zone valide, trois univers, des paliers, la Tour du jour, neuf objectifs finis et la carte partageable. D'accord aussi sur `appearance?: { theme: ThemeId; skin: SkinId }`. Identifiants ASCII proposés :
+- univers : `confiserie`, `orbital`, `jardin` ;
+- apparences : `gomme`, `marbre`, `bonbon`, `verre`, `strie`, `ceramique`.
+
+Ce que je change :
+1. **Évolution continue** : le ciel glisse à chaque étage, avec des paliers marqués à 10, 25 et 50. Ainsi, une partie de 6 étages montre déjà un changement.
+2. **Apparences orthogonales aux univers** : une apparence est une matière ou un motif qui prend les couleurs de l'univers. Cela fait 3 + 6 définitions cohérentes, au lieu de 18 combinaisons à régler à la main.
+3. **Caméra** : le bloc actif reste au tiers supérieur dès le premier étage.
+4. **Son par univers** (absent du brief) : une gamme et un timbre propres à chaque univers. C'est peu coûteux et cela compte dans l'effet « fade ».
+
+Alternative à tester : **« la tour voyage »**. Une même partie traverse les trois univers selon la hauteur (Confiserie, puis Jardin, puis Orbital) ; la collection ne débloque plus que les apparences et l'univers de départ. Le contenu se voit sans menu, mais un joueur moyen ne verra que le premier univers. Je la rends activable dans la démo (`?voyage=1`). Test : laisser les deux testeurs jouer aux deux variantes et noter s'ils mentionnent spontanément le décor.
+
+Coût et risques :
+- **Coût d'affichage sur téléphone d'entrée de gamme** : dégradés et décor à chaque image. Je mets les dégradés en cache, je borne le décor et je mesure en headless avec un CPU ralenti ×4. Le vrai téléphone reste à tester par un humain.
+- **Risque principal** : un meilleur habillage ne corrigera pas une monotonie du cœur du jeu. Si les testeurs la signalent encore, il faudra une variante de mécanique (rulesVersion 2), comme le prévoit le brief.
+
+L'avis d'Alexis n'était pas encore publié au moment où j'écris : je n'ai lu aucun avis à confronter.
+
+## F3 — direction visuelle V2
+
+- État : **REVIEW_PENDING** (revue Codex demandée dans la PR F3). Branche `agent/claude-code-flk/f3-visual`, à partir de l'intégration `0add695`. Elle inclut ma PR de revue A1 (#8), non encore intégrée : diff propre à F3 = `41e8ccc..`.
+- Fichiers : `src/game/render/{themes,renderer,audio,mount}.ts`, `README.md` ; `src/game/demo/` ; `tests/game/{themes.test.ts,mount.dom.test.ts}` ; `tests/game/browser/{harness.ts,game.spec.ts}` ; `coordination/captures/F3/`. Aucun fichier d'Alexis ni de `core` modifié.
+- Livré :
+  - 3 univers × 4 paliers ;
+  - blocs en relief qui ne débordent jamais ;
+  - caméra au tiers supérieur, décor en parallaxe qui change de palier, sol ;
+  - son par univers et accord de palier ;
+  - démo avec choix d'univers, variante « voyage » et comparaison côte à côte.
+- Vérifications : voir la PR F3 (209 tests unitaires et DOM, e2e A1 25, navigateur F1/F3 18, mutations, contrastes, coût de `draw()`).
+- **Dépendances :**
+  - Codex : revue F3.
+  - Alexis : avis V2 non publié au moment de la livraison. Accord à trouver sur les identifiants `appearance` (`confiserie|orbital|jardin`, `gomme|marbre|bonbon|verre|strie|ceramique`) avant F4.
+  - A3 (Alexis) : le cadre sombre et l'anneau de focus du shell autour du canvas jurent avec les univers clairs (capture `app-apres-390x844.png`). Une proposition est faite, à trancher par lui.
+
+## État au 16 novembre 2026, fin de session (M1)
+
+| Tâche | État | Référence |
+|---|---|---|
+| F0 moteur pur | **Intégré** (`bcf6f79`) | PR #1, PASS Codex sur `3725541` |
+| F1 rendu/entrée/boucle | **Intégré** (`650fe5d`) | PR #3, PASS Codex sur `b44d2a6` |
+| Revue A0 | PASS, A0 intégré par FLK (`3c5ecf8`) avec l'accord de l'utilisateur | `coordination/reviews/A0-claude-code-flk.md` |
+| Revue A1 | **PASS sur `7df764d`** (vrai moteur) | `coordination/reviews/A1-claude-code-flk.md`, PR #8 |
+
+Vérification de l'intégration `650fe5d` depuis `npm ci` : typecheck exit 0, `npm test` 128/128, build exit 0, tests navigateur F1 13/13.
+
+**Dépendances ouvertes :**
+- A1 → **Alexis** : intégrer la PR #6 (`7df764d`, PASS FLK, CI verte), puis ce rapport (PR #8). Corriger m1 (`run_start` avant un montage raté) avant A1.5.
+- M1 → **humains** : tests sur téléphones physiques iOS/Android, puis le premier playtest de compréhension (VALIDATION). Aucune session d'IA ne remplace cette étape.
+- F2 → aucun travail avant le jalon M2 et une interface serveur convenue avec Alexis (A2). `replayRun` est prêt à être réutilisé tel quel.
+
+---
+
+## Historique détaillé
+
 ## F0 — moteur pur
 
 - État : **REVIEW_PENDING** (revue Codex demandée, non reçue). Pas DONE tant qu'il n'y a ni PASS externe ni intégration.

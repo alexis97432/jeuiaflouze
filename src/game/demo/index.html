@@ -3,19 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Démo moteur</title>
+<title>Démo univers</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #0b1020; color: #fff; font: 16px system-ui, sans-serif; }
-  #game { display: block; width: 100vw; height: 100dvh; }
-  #end { position: fixed; inset: auto 0 12% 0; text-align: center; }
+  html, body { margin: 0; height: 100%; background: #20213D; color: #FFF4DB; font: 16px system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; height: 100dvh; }
+  /* La navigation occupe sa propre bande : elle ne recouvre jamais le score du canvas. */
+  #nav { flex: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: max(8px, env(safe-area-inset-top)) 8px 8px; }
+  #nav a { color: #20213D; background: #FFF4DB; text-decoration: none; padding: 12px 12px; min-height: 44px; box-sizing: border-box; border-radius: 999px; font-weight: 700; font-size: 14px; line-height: 20px; }
+  #nav a[aria-current] { background: #20213D; color: #FFF4DB; outline: 2px solid #FFF4DB; }
+  #nav a:focus-visible { outline: 3px solid #FF665E; outline-offset: 2px; }
+  #game { display: block; width: 100%; flex: 1; min-height: 0; }
+  #end { position: fixed; inset: auto 0 10% 0; text-align: center; }
   #end[hidden] { display: none; }
-  button { font: inherit; padding: .7em 1.4em; border-radius: .5em; border: 0; }
-  button:focus-visible { outline: 3px solid #ffd36b; outline-offset: 2px; }
+  #msg { background: rgb(32 33 61 / 0.85); display: inline-block; padding: 6px 12px; border-radius: 8px; }
+  button { font: inherit; font-weight: 700; padding: .8em 1.6em; min-height: 44px; border-radius: 999px; border: 0; background: #FF665E; color: #20213D; }
+  button:focus-visible { outline: 3px solid #FFF4DB; outline-offset: 2px; }
+  #grid { display: none; }
+  .compare #game, .compare #end { display: none; }
+  .compare #grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 8px 8px; flex: 1; min-height: 0; box-sizing: border-box; }
+  #grid figure { margin: 0; display: flex; flex-direction: column; min-height: 0; }
+  #grid canvas { flex: 1; width: 100%; min-height: 0; border-radius: 12px; }
+  #grid figcaption { text-align: center; padding-top: 4px; font-weight: 700; }
 </style>
 </head>
 <body>
+<nav id="nav" aria-label="Univers"></nav>
 <canvas id="game" aria-label="Zone de jeu : touchez ou appuyez sur Espace pour poser le bloc"></canvas>
 <div id="end" hidden><p id="msg" role="status"></p><button id="again" type="button">Rejouer</button></div>
+<div id="grid"></div>
 <script type="module" src="./demo.ts"></script>
 </body>
 </html>

@@ -246,3 +246,54 @@ test.describe('reduced-motion', () => {
     expect(maxSparks).toBe(0);
   });
 });
+
+test.describe('V2 (F3) : univers', () => {
+  for (const theme of ['confiserie', 'orbital', 'jardin']) {
+    test(`${theme} : le relief ne dépasse jamais la largeur logique du bloc (pixels réels)`, async ({ page }) => {
+      await page.goto(URL);
+      const r = await page.evaluate((t) => (window as any).__flk.reliefExtent(t), theme);
+      // Bloc de 150 unités à 1 px/unité, de x = 90 à 240 : aucune colonne ne doit changer hors de
+      // cette plage (1 px de tolérance d'anticrénelage de chaque côté).
+      expect(r.lo).toBeGreaterThanOrEqual(89);
+      expect(r.hi).toBeLessThanOrEqual(240);
+      // Et le bloc a bien été dessiné sur presque toute sa largeur.
+      expect(r.count).toBeGreaterThan(140);
+    });
+  }
+
+  test('le montage dans chaque univers dessine un décor borné et garde le jeu jouable', async ({ page }) => {
+    await page.goto(URL);
+    for (const theme of ['confiserie', 'orbital', 'jardin']) {
+      await mount(page, { seed: 3, theme });
+      await waitTicks(page, 10);
+      await page.mouse.click(400, 400);
+      await expect.poll(async () => (await state(page)).inputTicks.length).toBe(1);
+      const s = await page.evaluate(() => (window as any).__flk.state());
+      expect(s.theme).toBe(theme[0]!.toUpperCase() + theme.slice(1));
+      expect(s.decor).toBeGreaterThan(0);
+      expect(s.decor).toBeLessThanOrEqual(28);
+    }
+  });
+
+  test('coût de draw() à 50 étages, CPU ralenti ×4 (mesure headless, pas des FPS d\'appareil)', async ({ page }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const cdp = await page.context().newCDPSession(page);
+    await page.goto(URL);
+    const lines: string[] = [];
+    for (const theme of ['confiserie', 'orbital', 'jardin']) {
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      await mount(page, { seed: 5, theme });
+      await page.evaluate(() => (window as any).__flk.autoplay(50, 3500));
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+      await page.evaluate(() => (window as any).__flk.resetDrawStats());
+      await page.waitForTimeout(3000);
+      const st = await page.evaluate(() => (window as any).__flk.drawStats());
+      lines.push(`${theme}: ${st.n} images, médiane ${st.median.toFixed(2)} ms, p95 ${st.p95.toFixed(2)} ms`);
+      expect(st.n).toBeGreaterThan(20);
+      expect(st.p95).toBeLessThan(12); // garde-fou large contre une régression grossière
+    }
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    console.info('[mesure Chromium headless, conteneur cloud, CPU ×4, 50 étages] ' + lines.join(' | '));
+  });
+});

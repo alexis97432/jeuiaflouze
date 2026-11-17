@@ -3,6 +3,7 @@ import { FixedStepDriver } from '../input/fixed-step';
 import { attachInput } from '../input/input';
 import { Sfx } from './audio';
 import { Renderer } from './renderer';
+import { getTheme, VOYAGE, type ThemeId } from './themes';
 
 export type GameHandle = {
   pause(): void;
@@ -27,6 +28,16 @@ export type MountOptions = {
   reducedMotion?: boolean;
 };
 
+/**
+ * Options internes (F3), non exportées par `src/game/index.ts` : utilisées par la démo et
+ * les tests. L'option publique `appearance` sera ajoutée en F4 après accord avec Alexis.
+ */
+export type InternalMountOptions = MountOptions & {
+  theme?: ThemeId;
+  /** Variante « la tour voyage » (avis FLK V2) : les univers se succèdent avec la hauteur. */
+  voyage?: boolean;
+};
+
 /** Délai entre le raté et onEnd, pour voir le bloc tomber (ms de rendu, gelé en pause). */
 export const END_DELAY_MS = 650;
 
@@ -41,7 +52,7 @@ export interface GameInspector {
   readonly endReported: boolean;
 }
 
-export function createGame(options: MountOptions): GameHandle & { inspect(): GameInspector } {
+export function createGame(options: InternalMountOptions): GameHandle & { inspect(): GameInspector } {
   const { canvas, config, onEnd } = options;
   // Échecs de montage, synchrones et sans effet de bord (rien n'est encore attaché) :
   // RangeError si seed ou rulesVersion invalide, Error si le contexte Canvas 2D est indisponible.
@@ -49,8 +60,9 @@ export function createGame(options: MountOptions): GameHandle & { inspect(): Gam
   const doc = canvas.ownerDocument;
   const win = doc.defaultView ?? window;
   const media = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false);
-  const sfx = new Sfx(options.sound ?? true);
+  const theme = options.voyage ? VOYAGE : getTheme(options.theme);
+  const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme);
+  const sfx = new Sfx(options.sound ?? true, theme.audio);
 
   let destroyed = false;
   let pauseReason: 'none' | 'shell' | 'hidden' = 'none';
@@ -70,7 +82,7 @@ export function createGame(options: MountOptions): GameHandle & { inspect(): Gam
     }
   };
   const onEvent = (e: StepEvent) => {
-    renderer.onEvent(e);
+    if (renderer.onEvent(e)) sfx.milestone();
     notify(e.kind === 'placed'
       ? { type: 'placement', tick: e.tick, floor: e.floor, perfect: e.perfect, perfectStreak: e.perfectStreak }
       : { type: 'miss', tick: e.tick, floor: e.floor });
