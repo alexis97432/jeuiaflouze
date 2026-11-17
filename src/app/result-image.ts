@@ -4,7 +4,7 @@
  * seul et le dit (jamais d'image inventée).
  */
 import type { RunResult } from './game-contract';
-import type { Appearance, AnyAppearance, CardMode, ResultCard } from '../game';
+import type { AnyAppearance, CardMode, ResultCard } from '../game';
 
 export type RenderCard = (canvas: HTMLCanvasElement, card: ResultCard, options?: { scale?: number }) => boolean;
 
@@ -16,7 +16,7 @@ export function createResultImage(render: RenderCard, doc: Document = document) 
     const canvas = doc.createElement('canvas');
     let drawn = false;
     try {
-      drawn = render(canvas, { result, mode, ...(day ? { day } : {}), ...(appearance ? { appearance: appearance as Appearance } : {}) }, { scale: CARD_SCALE }); // F9 accepte une matière V3 au dessin ; type public V2 (à élargir par FLK)
+      drawn = render(canvas, { result, mode, ...(day ? { day } : {}), ...(appearance ? { appearance } : {}) }, { scale: CARD_SCALE });
     } catch {
       drawn = false;
     }
