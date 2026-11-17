@@ -89,8 +89,12 @@ export function rewardLabel(reward: Reward): string {
 }
 
 export const ACTIVE_OBJECTIVES = 3;
-/** Parties déjà évaluées gardées en mémoire pour l'idempotence (borné). */
-export const MAX_REMEMBERED_RUNS = 50;
+/**
+ * Parties déjà évaluées gardées en mémoire pour l'idempotence. Borné (≈ 3,5 Ko) : la garantie
+ * vaut pour les MAX_REMEMBERED_RUNS dernières parties ; une partie plus ancienne réappliquée
+ * serait recomptée. Aucun chemin de l'interface ne réapplique une ancienne partie (revue E1 FLK, m2).
+ */
+export const MAX_REMEMBERED_RUNS = 200;
 
 export type ProgressState = {
   completed: ObjectiveId[];
@@ -137,7 +141,7 @@ export type RunEvaluation = { state: ProgressState; completedNow: Objective[] };
 
 /**
  * Évalue une partie terminée contre les objectifs actifs **au lancement** (`activeAtStart`).
- * Idempotent par runId : une seconde évaluation ne change rien.
+ * Idempotent par runId parmi les MAX_REMEMBERED_RUNS dernières parties évaluées.
  */
 export function applyRun(
   state: ProgressState,
