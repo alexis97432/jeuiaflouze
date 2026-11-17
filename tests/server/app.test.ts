@@ -55,7 +55,7 @@ afterEach(() => new Promise<void>((r) => server.close(() => r())));
 describe('serveur de classement', () => {
   it('santé', async () => {
     const r = await fetch(base + '/health');
-    expect(await r.json()).toEqual({ ok: true, rulesVersions: [1], demo: false });
+    expect(await r.json()).toEqual({ ok: true, rulesVersions: [1, 2], demo: false });
   });
 
   it('ticket → rejeu → classement global et hebdomadaire ; score recalculé, pas déclaré', async () => {
@@ -206,5 +206,34 @@ describe('persistance fichier', () => {
     const a = createMemoryStore(file);
     a.putBest('global:v1', { playerId: PLAYER, pseudo: 'Alex', score: 4, height: 4, perfectCount: 1, achievedAt: 1 });
     expect(createMemoryStore(file).listBoard('global:v1')).toHaveLength(1);
+  });
+});
+
+describe('règles v2 (F6)', () => {
+  it('partie v2 sans reprise classée sur les points ; avec reprise jamais classée', async () => {
+    const golden = (await import('../game/golden-v2.json')).default as { vectors: { seed: number; continues: number; score: number; height: number; inputTicks: number[]; continueTicks?: number[] }[] };
+    for (const v of golden.vectors.slice(0, 2)) {
+      server.close();
+      store = createMemoryStore();
+      const handle = createApp({
+        store, replay: (i) => replayRun(i), now: () => now,
+        randomHex: () => (++seq).toString(16).padStart(32, '0'), randomSeed: () => v.seed,
+        config: { ...DEFAULT_CONFIG },
+      });
+      server = createServer((req, res) => void handle(req, res));
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
+      const t = (await (await post('/tickets', { mode: 'free', rulesVersion: 2 })).json()) as { ticket: string };
+      now += 60 * 60_000;
+      const r = (await (await post('/scores', { ticket: t.ticket, playerId: PLAYER, pseudo: 'Alex', inputTicks: v.inputTicks, continueTicks: v.continueTicks ?? [] })).json()) as Record<string, unknown>;
+      if (v.continues === 0) {
+        expect(r).toMatchObject({ ranked: true, score: v.score, height: v.height });
+        expect(store.listBoard('global:v2')).toHaveLength(1);
+        expect(store.listBoard('global:v1')).toHaveLength(0);
+      } else {
+        expect(r).toMatchObject({ ranked: false, reason: 'continued' });
+        expect(store.listBoard('global:v2')).toHaveLength(0);
+      }
+    }
   });
 });

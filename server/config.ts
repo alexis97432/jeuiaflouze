@@ -8,7 +8,7 @@
  *                     (ex. https://alexis97432.github.io,http://localhost:5173)
  *   DATA_FILE         fichier JSON de persistance (absent : mémoire seule, perdue au redémarrage)
  *   DEMO              « 1 » : remplit des tableaux de démonstration marqués `demo: true`
- *   RULES_VERSIONS    versions de règles acceptées, ex. « 1 » ou « 1,2 » (défaut : 1)
+ *   RULES_VERSIONS    versions de règles acceptées, ex. « 1 » ou « 1,2 » (défaut : 1,2)
  */
 import { DEFAULT_CONFIG, type AppConfig } from './app';
 
@@ -21,7 +21,7 @@ export function readConfig(env: Record<string, string | undefined>): ServerEnv {
   for (const o of origins) {
     if (!/^https?:\/\/[^/\s]+$/.test(o)) throw new Error(`origine invalide (schéma://hôte, sans chemin) : ${o}`);
   }
-  const versions = (env.RULES_VERSIONS ?? '1').split(',').map((v) => Number(v.trim()));
+  const versions = (env.RULES_VERSIONS ?? '1,2').split(',').map((v) => Number(v.trim()));
   if (versions.some((v) => !Number.isInteger(v) || v < 1)) throw new Error(`RULES_VERSIONS invalide : ${env.RULES_VERSIONS}`);
   return {
     ...DEFAULT_CONFIG,

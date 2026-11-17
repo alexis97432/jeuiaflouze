@@ -44,6 +44,8 @@ describe('registre des achats (serveur)', () => {
     l.credit((await demoVerifier('demo:lives-3:1:2', 'acc1'))!);
     expect(l.wallet('acc1')).toEqual({ lives: 0, entitlements: [], demo: { lives: 3, entitlements: ['pass-premium-s1'] } });
     expect(l.consumeLife('acc1', 'x')).toMatchObject({ ok: true, demo: true });
+    expect(l.consumeLife('acc1', 'x')).toMatchObject({ ok: true, demo: true }); // rejeu : reste démo
+    expect(l.wallet('acc1').demo.lives).toBe(2);
     expect(await demoVerifier('vrai-recu', 'acc1')).toBeNull();
   });
 });
