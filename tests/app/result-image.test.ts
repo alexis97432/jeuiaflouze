@@ -25,7 +25,7 @@ describe('image de résultat (carte F9 → PNG)', () => {
     const render = vi.fn(() => true);
     const file = await createResultImage(render, docWithBlob(new Blob(['png'], { type: 'image/png' })))(result, 'daily', '2026-12-01', { theme: 'confiserie', skin: 'gomme' });
     expect(file).toBeInstanceOf(File);
-    expect(file).toMatchObject({ name: 'pile-ou-crash.png', type: 'image/png' });
+    expect(file).toMatchObject({ name: 'stack-or-crash.png', type: 'image/png' });
     expect(render).toHaveBeenCalledWith(expect.anything(), { result, mode: 'daily', day: '2026-12-01', appearance: { theme: 'confiserie', skin: 'gomme' } }, { scale: CARD_SCALE });
   });
 

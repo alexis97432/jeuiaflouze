@@ -1,0 +1,420 @@
+/*
+ * V6 — onglets, raretés, boutique, passe, collection et révélation.
+ * La rareté est toujours écrite en toutes lettres : la couleur n'est jamais la seule information.
+ * Contrastes du texte des pastilles ≥ 4,5:1 dans les deux thèmes (tests/app/contrast.test.ts).
+ */
+:root {
+  --r-commun: #4b5563;
+  --r-commun-bg: #eceef2;
+  --r-commun-gem: #8a94a6;
+  --r-rare: #1556a8;
+  --r-rare-bg: #e3efff;
+  --r-rare-gem: #2e8cf0;
+  --r-epique: #6a2fc4;
+  --r-epique-bg: #f1e8ff;
+  --r-epique-gem: #a050f0;
+  --r-legendaire: #874600;
+  --r-legendaire-bg: #ffefcc;
+  --r-legendaire-gem: #f0a014;
+}
+:root[data-theme='dark'] {
+  --r-commun: #e2e5eb;
+  --r-commun-bg: #3a3c58;
+  --r-rare: #b5d6ff;
+  --r-rare-bg: #1d3157;
+  --r-epique: #e0ccff;
+  --r-epique-bg: #3a2463;
+  --r-legendaire: #ffd98a;
+  --r-legendaire-bg: #4a3417;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']),
+  :root[data-theme='system'] {
+    --r-commun: #e2e5eb;
+    --r-commun-bg: #3a3c58;
+    --r-rare: #b5d6ff;
+    --r-rare-bg: #1d3157;
+    --r-epique: #e0ccff;
+    --r-epique-bg: #3a2463;
+    --r-legendaire: #ffd98a;
+    --r-legendaire-bg: #4a3417;
+  }
+}
+
+/* ---- Écrans de menu : contenu puis barre d'onglets collée en bas ---- */
+.view[data-tabs='true'] {
+  min-height: calc(100dvh - 24px);
+}
+.screen-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.screen-body > * {
+  min-width: 0;
+}
+.tabbar {
+  position: sticky;
+  bottom: max(6px, env(safe-area-inset-bottom));
+  z-index: 8;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  padding: 4px;
+  margin-top: auto;
+}
+.tabbar .dock-btn,
+.tabbar .tab {
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 58px;
+  padding: 4px 1px;
+  font-size: clamp(0.62rem, 2.85vw, 0.82rem);
+  color: var(--ink-soft);
+}
+.tabbar .dock-btn .ic {
+  width: 24px;
+  height: 24px;
+}
+.tabbar .tab.active {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.tabbar .tab.active::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 30%;
+  right: 30%;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--primary);
+}
+.tabbar .dock-btn .dot {
+  top: 4px;
+  right: calc(50% - 20px);
+  left: auto;
+}
+.tabbar .dock-btn .ic.home { color: var(--primary); }
+.tabbar .dock-btn .ic.season { color: var(--coin); }
+@media (max-width: 479px) and (orientation: portrait) {
+  .tabbar {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    padding: 4px;
+  }
+  .tabbar .dock-btn {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-height: 56px;
+    padding: 4px 1px;
+  }
+  .tabbar .dock-btn .ic {
+    width: 22px;
+    height: 22px;
+  }
+  .tabbar .dock-btn .dot {
+    top: 4px;
+    left: auto;
+    right: calc(50% - 20px);
+  }
+}
+
+/* ---- Pastille de rareté ---- */
+.rarity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  max-width: 100%;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.rarity .ic {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.rarity[data-rarity='commun'] { color: var(--r-commun); background: var(--r-commun-bg); }
+.rarity[data-rarity='commun'] .ic { color: var(--r-commun-gem); }
+.rarity[data-rarity='rare'] { color: var(--r-rare); background: var(--r-rare-bg); }
+.rarity[data-rarity='rare'] .ic { color: var(--r-rare-gem); }
+.rarity[data-rarity='epique'] { color: var(--r-epique); background: var(--r-epique-bg); }
+.rarity[data-rarity='epique'] .ic { color: var(--r-epique-gem); }
+.rarity[data-rarity='legendaire'] { color: var(--r-legendaire); background: var(--r-legendaire-bg); }
+.rarity[data-rarity='legendaire'] .ic { color: var(--r-legendaire-gem); fill: var(--r-legendaire-gem); }
+
+/* ---- Cartes cosmétiques : la rareté se voit aussi au cadre (en plus du nom) ---- */
+.item.cos[data-rarity='rare'] { border-color: color-mix(in srgb, var(--r-rare-gem) 45%, var(--line-soft)); }
+.item.cos[data-rarity='epique'] { border-color: color-mix(in srgb, var(--r-epique-gem) 55%, var(--line-soft)); }
+.item.cos[data-rarity='legendaire'] {
+  border-color: var(--r-legendaire-gem);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--r-legendaire-gem) 14%, var(--surface)), var(--surface) 55%);
+}
+.item.cos.equipped {
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 3px var(--secondary), var(--shadow);
+}
+.item.cos.premium .item-visual {
+  filter: saturate(0.7) opacity(0.85);
+}
+.item.cos.locked .item-visual {
+  filter: grayscale(0.6) opacity(0.75);
+}
+.item-meta.equipped,
+.item-meta.owned {
+  color: var(--ok-ink);
+}
+.item-meta.equipped .ic,
+.item-meta.owned .ic {
+  width: 18px;
+  height: 18px;
+}
+.btn .ic.coin {
+  color: var(--coin);
+  fill: var(--accent);
+}
+.btn.short {
+  font-size: 0.86rem;
+}
+.btn:disabled.short {
+  opacity: 1;
+  color: var(--ink-soft);
+  border-style: dashed;
+}
+.collection-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.collection-section h2 .count {
+  margin-left: auto;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+.items .empty {
+  grid-column: 1 / -1;
+  padding: 10px;
+}
+
+/* ---- Boutique : porte-monnaie ---- */
+.wallet {
+  display: grid;
+  gap: 4px;
+}
+.wallet-amount {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+.wallet-amount .ic {
+  width: 30px;
+  height: 30px;
+  color: var(--coin);
+  fill: var(--accent);
+}
+.wallet-unit {
+  font-size: 1rem;
+  color: var(--ink-soft);
+}
+.coin-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-2));
+}
+.coin-art .ic {
+  width: 22px;
+  height: 22px;
+  color: var(--coin);
+  fill: var(--accent);
+}
+
+/* ---- Passe ---- */
+.pass-hero {
+  display: grid;
+  gap: 8px;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--accent) 26%, var(--surface)), var(--surface) 60%);
+}
+.pass-level {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pass-level-word {
+  font-size: 1.1rem;
+  color: var(--ink-soft);
+}
+.pass-level-num {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+.pass-level-max {
+  font-size: 1.2rem;
+  color: var(--ink-soft);
+}
+.next-rewards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(132px, 100%), 1fr));
+  gap: 10px;
+}
+.next-reward {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-width: 0;
+}
+.next-reward .swatch,
+.next-reward canvas {
+  width: 100%;
+  aspect-ratio: 15 / 7;
+  border-radius: 12px;
+}
+.premium-offer {
+  display: grid;
+  gap: 8px;
+  border: 2px dashed color-mix(in srgb, var(--r-legendaire-gem) 70%, var(--line-soft));
+}
+.premium-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.premium-items li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.money-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-weight: 600;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+}
+.money-note .ic {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+}
+.tier-cell .swatch,
+.tier-cell canvas {
+  width: 100%;
+  max-width: 120px;
+  aspect-ratio: 2 / 1;
+  border-radius: 10px;
+}
+.tier-cell .rarity {
+  font-size: 0.72rem;
+}
+.tier-state.claimed {
+  color: var(--ok-ink);
+}
+.tier-cell.claimable {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+/* ---- Accueil : « Ton look » ---- */
+.look-card {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  grid-template-areas: 'art text' 'art change';
+  gap: 4px 12px;
+  align-items: center;
+}
+.look-art {
+  grid-area: art;
+  aspect-ratio: 33 / 16;
+}
+.look-text {
+  grid-area: text;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.look-card .btn {
+  grid-area: change;
+  justify-self: start;
+}
+.look-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.92rem;
+}
+.look-label {
+  color: var(--ink-soft);
+}
+/* Petits écrans : l'accueil reste léger, Jouer d'abord. */
+@media (max-height: 620px) and (orientation: portrait) {
+  .look-card {
+    display: none;
+  }
+}
+
+/* ---- Fenêtre de révélation et aide des raretés ---- */
+.reveal-art {
+  aspect-ratio: 2 / 1;
+}
+.reveal-name {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+.rarity-help {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.rarity-help li {
+  display: grid;
+  gap: 4px;
+}
+
+/* Boutons des cartes : le prix tient sur une ligne avec la pièce. */
+.item .btn.sm {
+  white-space: nowrap;
+  padding-left: 6px;
+  padding-right: 6px;
+  gap: 4px;
+}
+.item .btn.sm .ic {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+/* Très petits écrans (≤ 340 px) : les cinq libellés d'onglets tiennent en entier. */
+@media (max-width: 340px) {
+  .tabbar .dock-btn,
+  .tabbar .tab {
+    font-size: 0.6rem;
+    letter-spacing: -0.015em;
+  }
+}

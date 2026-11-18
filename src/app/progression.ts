@@ -10,6 +10,7 @@
  */
 
 import { ALL_SKIN_IDS, SKIN_IDS, THEME_IDS, type AnyAppearance, type AnySkinId, type SkinId, type ThemeId } from '../game';
+import { INVENTORY_THEMES, LOCAL_SKINS } from './catalog';
 
 // Identifiants et types d'apparence : API publique du moteur (F4, contrat C6 ; F8b pour les
 // huit matières V3), jamais redéclarés.
@@ -19,15 +20,10 @@ export type Appearance = AnyAppearance;
 export type { AnySkinId, SkinId, ThemeId };
 
 /**
- * Apparences V3 que le joueur peut obtenir dans cette version : boutique en pièces et piste
- * gratuite du passe. Or et Cristal (premium) restent hors du total : indisponibles à l'achat.
+ * Matières obtenables sur cet appareil hors missions : boutique en pièces et piste gratuite du
+ * passe (V6 : catalogue). Le premium (Or, Néon, Cristal, Abysse) reste hors du total.
  */
-export const OBTAINABLE_V3_SKINS = ['graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave'] as const satisfies readonly AnySkinId[];
-/** D'où vient une apparence V3 (pour expliquer comment l'obtenir). */
-export const V3_SKIN_SOURCE: Partial<Record<AnySkinId, string>> = {
-  graphite: 'En boutique', nacre: 'En boutique', holographique: 'En boutique',
-  pixel: 'Passe de saison', galaxie: 'Passe de saison', lave: 'Passe de saison',
-};
+export const OBTAINABLE_V3_SKINS: readonly AnySkinId[] = LOCAL_SKINS.filter((id) => !(SKIN_IDS as readonly string[]).includes(id) && id !== 'gomme');
 export const BADGE_IDS = ['touriste-des-nuages', 'precision'] as const;
 
 export type BadgeId = (typeof BADGE_IDS)[number];
@@ -92,6 +88,11 @@ const REWARD_LABELS: Record<AnySkinId | ThemeId | BadgeId, string> = {
   lave: 'Lave',
   or: 'Or',
   cristal: 'Cristal',
+  bois: 'Bois',
+  circuit: 'Circuit',
+  neon: 'Néon',
+  aurore: 'Aurore',
+  abysse: 'Abysse',
   gomme: 'Gomme',
   marbre: 'Marbré',
   bonbon: 'Bonbon',
@@ -101,6 +102,8 @@ const REWARD_LABELS: Record<AnySkinId | ThemeId | BadgeId, string> = {
   confiserie: 'Confiserie',
   orbital: 'Orbital',
   jardin: 'Jardin',
+  recif: 'Récif',
+  cite: 'Cité néon',
   'touriste-des-nuages': 'Touriste des nuages',
   precision: 'Précision',
 };
@@ -142,7 +145,9 @@ const rewardsOf = (state: ProgressState) =>
   state.completed.map((id) => objectiveById.get(id)?.reward).filter((r): r is Reward => !!r);
 
 export function unlockedThemes(state: ProgressState): ThemeId[] {
-  const won = new Set(rewardsOf(state).flatMap((r) => (r.kind === 'theme' ? [r.id] : [])));
+  const won = new Set<string>(rewardsOf(state).flatMap((r) => (r.kind === 'theme' ? [r.id] : [])));
+  // V6 : univers achetés en pièces (inventaire). Le premium (Cité néon) n'est jamais débloqué ici.
+  for (const item of state.inventory ?? []) if ((INVENTORY_THEMES as readonly string[]).includes(item)) won.add(item);
   return THEME_IDS.filter((id) => id === DEFAULT_APPEARANCE.theme || won.has(id));
 }
 
@@ -152,7 +157,7 @@ export function unlockedSkins(state: ProgressState): AnySkinId[] {
   // Or et Cristal (premium) exigeront un droit vérifié par le serveur : une sauvegarde modifiée
   // ne peut pas les débloquer (revue FLK A6b, m1).
   for (const item of state.inventory ?? []) {
-    if ((OBTAINABLE_V3_SKINS as readonly string[]).includes(item) || (SKIN_IDS as readonly string[]).includes(item)) won.add(item);
+    if ((LOCAL_SKINS as readonly string[]).includes(item)) won.add(item);
   }
   return ALL_SKIN_IDS.filter((id) => id === DEFAULT_APPEARANCE.skin || won.has(id));
 }

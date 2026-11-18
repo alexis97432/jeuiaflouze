@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StepEvent } from '../../src/game/core';
 import { BLOCK_HEIGHT, MAX_DECOR, MAX_SPARKS, Renderer, reliefParts, type ViewState } from '../../src/game/render/renderer';
-import { ALL_SKIN_IDS, edgeColors, isDrawSkinId, isSkinId, SKIN_IDS, SKIN_IDS_V3 } from '../../src/game/render/blocks';
+import { ALL_SKIN_IDS, edgeColors, isDrawSkinId, isSkinId, SKIN_IDS, SKIN_IDS_V3, SKIN_IDS_V6 } from '../../src/game/render/blocks';
 import { resolveAppearance } from '../../src/game/render/mount';
 import {
   contrast,
@@ -23,9 +23,9 @@ const ALL: Theme[] = [...THEME_IDS.map(getTheme), VOYAGE];
 const HEIGHTS = Array.from({ length: 241 }, (_, i) => i * 0.25); // 0..60 étages
 
 describe('paliers et ciel', () => {
-  it('seuils 10 / 25 / 50 étages', () => {
-    expect(TIER_FLOORS).toEqual([0, 10, 25, 50]);
-    expect([0, 9, 9.99, 10, 24, 25, 49, 50, 999].map(tierIndex)).toEqual([0, 0, 0, 1, 1, 2, 2, 3, 3]);
+  it('V6 : six paliers 0 / 5 / 10 / 20 / 35 / 50 étages, les premiers vite atteints', () => {
+    expect(TIER_FLOORS).toEqual([0, 5, 10, 20, 35, 50]);
+    expect([0, 4.99, 5, 9, 10, 19, 20, 34, 35, 49, 50, 999].map(tierIndex)).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
   });
 
   it.each(ALL)('$name : ciel continu, égal aux couleurs du palier à chaque seuil, constant au-delà de 50', (theme) => {
@@ -79,17 +79,18 @@ describe('lisibilité (contraste WCAG 2.x mesuré)', () => {
 });
 
 describe('univers', () => {
-  it('trois univers distincts, quatre paliers nommés chacun, au moins six couleurs de blocs', () => {
-    expect(THEME_IDS).toEqual(['confiserie', 'orbital', 'jardin']);
+  it('V6 : cinq univers distincts, six paliers nommés chacun, une rareté, au moins six couleurs de blocs', () => {
+    expect(THEME_IDS).toEqual(['confiserie', 'orbital', 'jardin', 'recif', 'cite']);
     const names = new Set<string>();
     for (const id of THEME_IDS) {
       const t = getTheme(id);
       expect(t.id).toBe(id);
-      expect(t.tiers).toHaveLength(4);
+      expect(t.tiers).toHaveLength(6);
+      expect(['commun', 'rare', 'epique', 'legendaire']).toContain(t.rarity);
       t.tiers.forEach((tier) => names.add(tier.name));
       expect(t.blocks.length).toBeGreaterThanOrEqual(6);
     }
-    expect(names.size).toBe(12);
+    expect(names.size).toBe(30);
   });
 
   it('les ciels de départ sont nettement différents deux à deux', () => {
@@ -110,10 +111,11 @@ describe('univers', () => {
     expect(isThemeId(1)).toBe(false);
   });
 
-  it('variante voyage : Confiserie, puis Jardin au palier 2, puis Orbital au palier 3', () => {
+  it('variante voyage : Confiserie, puis Jardin au palier 3, puis Orbital aux paliers 4 et 5', () => {
     expect(VOYAGE.tiers[0]).toBe(getTheme('confiserie').tiers[0]);
-    expect(VOYAGE.tiers[2]).toBe(getTheme('jardin').tiers[2]);
-    expect(VOYAGE.tiers[3]).toBe(getTheme('orbital').tiers[3]);
+    expect(VOYAGE.tiers[3]).toBe(getTheme('jardin').tiers[3]);
+    expect(VOYAGE.tiers[4]).toBe(getTheme('orbital').tiers[4]);
+    expect(VOYAGE.tiers[5]).toBe(getTheme('orbital').tiers[5]);
   });
 });
 
@@ -158,7 +160,7 @@ function viewFor(floors: number): ViewState {
 }
 
 describe('renderer (contexte factice)', () => {
-  it('annonce un palier à 10, 25 et 50 étages seulement, avec le nom de l\'univers', () => {
+  it('annonce un palier à 5, 10, 20, 35 et 50 étages seulement, avec le nom de l\'univers', () => {
     const { canvas } = fakeCanvas();
     const r = new Renderer(canvas, false, getTheme('jardin'));
     const hits: [number, string][] = [];
@@ -166,7 +168,7 @@ describe('renderer (contexte factice)', () => {
       const name = r.onEvent(placed(f, false));
       if (name) hits.push([f, name]);
     }
-    expect(hits).toEqual([[10, 'Floraison'], [25, 'Envol'], [50, 'Soleil couchant']]);
+    expect(hits).toEqual([[5, 'Haies fleuries'], [10, 'Cime des arbres'], [20, 'Cerfs-volants'], [35, 'Soleil couchant'], [50, 'Nuit des lucioles']]);
   });
 
   it('reduced-motion : aucun étincelle ni onde sur des parfaits, effets terminés vite', () => {
@@ -267,7 +269,7 @@ describe('V2 (F4) : apparences', () => {
 describe('apparences V3 (F8/F8b) : exposées sans élargir SkinId (V2)', () => {
   it('huit nouvelles matières, distinctes des V2, non exposées par isSkinId', () => {
     expect(SKIN_IDS_V3).toEqual(['graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave', 'or', 'cristal']);
-    expect(new Set(ALL_SKIN_IDS).size).toBe(SKIN_IDS.length + SKIN_IDS_V3.length);
+    expect(new Set(ALL_SKIN_IDS).size).toBe(SKIN_IDS.length + SKIN_IDS_V3.length + SKIN_IDS_V6.length);
     for (const id of SKIN_IDS_V3) {
       expect(isSkinId(id)).toBe(false);
       expect(isDrawSkinId(id)).toBe(true);
@@ -280,7 +282,7 @@ describe('apparences V3 (F8/F8b) : exposées sans élargir SkinId (V2)', () => {
 describe('F8b : exposition publique des apparences V3', () => {
   it('API publique : ALL_SKIN_IDS, isAnySkinId, resolveAnyAppearance ; resolveAppearance reste V2', async () => {
     const game = await import('../../src/game');
-    expect(game.ALL_SKIN_IDS).toEqual([...game.SKIN_IDS, ...game.SKIN_IDS_V3]);
+    expect(game.ALL_SKIN_IDS).toEqual([...game.SKIN_IDS, ...game.SKIN_IDS_V3, ...game.SKIN_IDS_V6]);
     for (const id of game.SKIN_IDS_V3) {
       expect(game.isAnySkinId(id)).toBe(true);
       expect(game.isSkinId(id)).toBe(false);

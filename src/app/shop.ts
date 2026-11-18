@@ -1,24 +1,22 @@
 /**
- * Boutique en pièces (E1e, ECONOMIE.md / C5) — logique pure, sans DOM ni stockage.
+ * Boutique en pièces du jeu (E1e, ECONOMIE.md / C5 ; V6 : matières et univers) — logique pure.
  *
- * - Les pièces se gagnent en jouant ; ce catalogue ne vend que des apparences supplémentaires.
- *   Les apparences d'objectifs (V2) ne deviennent jamais payantes : elles ne figurent pas ici.
- * - Un objet n'est proposé que si le moteur sait le dessiner (`isAvailable`, ex. `isSkinId`).
+ * - Les pièces se gagnent en jouant ; elles ne s'achètent pas et n'ont aucune valeur d'argent.
+ * - Ce catalogue ne vend que des cosmétiques déterminés (jamais de tirage au hasard), à prix fixe.
+ *   Les apparences d'objectifs ne deviennent jamais payantes : elles ne figurent pas ici.
+ * - Un objet n'est proposé que si le moteur sait le dessiner (`isAvailable`).
  * - Achat atomique : vérifier, débiter et livrer dans le même document, écrit en une fois sous
- *   le verrou de progression (shell). Jamais « débité mais non livré ».
- * - Les pièces sont locales : aucune valeur d'argent réel, aucun lien avec les achats payants.
+ *   le verrou de progression (shell). Jamais « débité mais non livré », jamais deux débits.
  */
-import { unlockedSkins } from './progression';
+import { SKIN_CATALOG, THEME_CATALOG } from './catalog';
+import { unlockedSkins, unlockedThemes } from './progression';
 import type { ProgressDoc } from './economy';
 
-export type ShopItem = { id: string; kind: 'skin'; price: number; name: string };
+export type ShopItem = { id: string; kind: 'skin' | 'theme'; price: number; name: string };
 
-/** Premier catalogue (hypothèses C4/C5 : 12, 24 et 48 parties de référence). */
-export const COIN_SHOP: readonly ShopItem[] = [
-  { id: 'graphite', kind: 'skin', price: 60, name: 'Graphite' },
-  { id: 'nacre', kind: 'skin', price: 120, name: 'Nacré' },
-  { id: 'holographique', kind: 'skin', price: 240, name: 'Holographique' },
-];
+/** Catalogue en pièces, dérivé du catalogue V6 (prix fixés par rareté, inchangés depuis la V5). */
+export const COIN_SHOP: readonly ShopItem[] = [...SKIN_CATALOG, ...THEME_CATALOG].flatMap((i) =>
+  i.source.kind === 'shop' ? [{ id: i.id, kind: i.kind, price: i.source.price, name: i.name }] : []);
 
 export type ItemState = 'owned' | 'affordable' | 'too-expensive';
 
@@ -31,7 +29,10 @@ export function sellableItems(
 }
 
 export function ownsItem(doc: ProgressDoc, item: ShopItem): boolean {
-  return doc.inventory.includes(item.id) || (unlockedSkins(doc) as readonly string[]).includes(item.id);
+  if (doc.inventory.includes(item.id)) return true;
+  return item.kind === 'theme'
+    ? (unlockedThemes(doc) as readonly string[]).includes(item.id)
+    : (unlockedSkins(doc) as readonly string[]).includes(item.id);
 }
 
 export function itemState(doc: ProgressDoc, item: ShopItem): ItemState {

@@ -190,6 +190,8 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
   const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme, isDrawSkinId(options.drawSkin) ? options.drawSkin : appearance.skin);
   const sfx = new Sfx(options.sound ?? true, theme.audio, options.volume ?? 1);
   renderer.quality = options.effects === 'light' ? 'light' : 'full';
+  // Qualité adaptative (V6) : résolution interne réduite dès qu'elle se déclenche.
+  renderer.onAutoLight = () => measure();
   renderer.onGag = (kind) => sfx.gag(kind);
 
   let destroyed = false;
@@ -445,6 +447,7 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
       observer?.disconnect();
       media?.removeEventListener('change', onMotion);
       sfx.close();
+      renderer.dispose();
     },
     continueRun() {
       if (destroyed || !allowContinue || !resumable) return false;

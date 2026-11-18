@@ -108,7 +108,7 @@ export function drawWord(ctx: CanvasRenderingContext2D, w: Word, font: string, m
 
 // ——— Particules ———
 
-export type ParticleKind = 'star' | 'dust' | 'ember' | 'shard' | 'feather' | 'spark';
+export type ParticleKind = 'star' | 'dust' | 'ember' | 'shard' | 'feather' | 'spark' | 'glint' | 'bubble';
 export interface Particle {
   alive: boolean;
   kind: ParticleKind;
@@ -168,7 +168,7 @@ export class ParticlePool {
         continue;
       }
       p.vy -= gravity * p.gravity * dt;
-      if (p.kind === 'feather' || p.kind === 'dust') {
+      if (p.kind === 'feather' || p.kind === 'dust' || p.kind === 'bubble') {
         p.vx *= 1 - Math.min(1, dt * 2.2);
         p.vy *= 1 - Math.min(1, dt * 1.6);
       }
@@ -230,6 +230,30 @@ export function drawParticle(ctx: CanvasRenderingContext2D, p: Particle): void {
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       ctx.lineWidth = 1;
       ctx.stroke();
+      break;
+    case 'glint': {
+      // Éclat à quatre branches (matières précieuses).
+      const r = p.size * (0.5 + 0.5 * k);
+      ctx.beginPath();
+      ctx.moveTo(0, -r);
+      ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.quadraticCurveTo(0, 0, 0, r);
+      ctx.quadraticCurveTo(0, 0, -r, 0);
+      ctx.quadraticCurveTo(0, 0, 0, -r);
+      ctx.fillStyle = css(p.color);
+      ctx.fill();
+      break;
+    }
+    case 'bubble':
+      // Bulle qui monte : cercle fin et reflet.
+      ctx.rotate(-p.rot);
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size * 0.6, 0, TAU);
+      ctx.strokeStyle = css(p.color, 0.85);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fillRect(-p.size * 0.25, -p.size * 0.3, 1.2, 1.2);
       break;
     case 'feather':
       ctx.beginPath();

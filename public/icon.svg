@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Stack or Crash">
+  <rect width="64" height="64" rx="14" fill="#fff3e0"/>
+  <rect x="10" y="44" width="44" height="10" rx="3" fill="#ff5e6c" stroke="#23204a" stroke-width="2.5"/>
+  <rect x="14" y="32" width="36" height="10" rx="3" fill="#3fd6b3" stroke="#23204a" stroke-width="2.5"/>
+  <rect x="20" y="15" width="30" height="10" rx="3" fill="#ffc83d" stroke="#23204a" stroke-width="2.5" transform="rotate(-8 35 20)"/>
+</svg>

@@ -28,6 +28,6 @@ export function createResultImage(render: RenderCard, doc: Document = document) 
         resolve(null);
       }
     });
-    return blob && blob.size > 0 ? new File([blob], 'pile-ou-crash.png', { type: 'image/png' }) : null;
+    return blob && blob.size > 0 ? new File([blob], 'stack-or-crash.png', { type: 'image/png' }) : null;
   };
 }

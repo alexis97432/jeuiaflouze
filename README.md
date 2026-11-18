@@ -1,4 +1,6 @@
-# PILE OU CRASH — jeuiaflouze
+# STACK OR CRASH — jeuiaflouze
+
+*(anciennement « Pile ou Crash » ; le dépôt, l'URL et les sauvegardes ne changent pas)*
 
 Jeu web mobile à un geste : empiler, battre son record, défier un ami sur la même séquence.
 **État : prototype mobile implémenté et essayé par deux personnes ; évolution visuelle et contenu en préparation, succès commercial non démontré.**
@@ -21,7 +23,7 @@ Lire le [protocole de coordination autonome](coordination/AUTONOMIE.md) : les se
 
 ## Version actuelle
 
-[V5 : boosts Ralenti, Aimant, Bouclier et Fièvre (règles v3), identité « Pop Choc »](docs/V5.md), sur la base de la [V4](docs/V4.md) (interface, réglages). Réalisée par Claude Code Alexis seul, sur exception décidée par l'utilisateur : auto-vérification, sans revue indépendante.
+[V6 : « Stack or Crash », matières vivantes, univers en plusieurs plans, raretés, passe de 30 niveaux, menus à onglets](docs/V6.md), sur la base de la [V5](docs/V5.md) (boosts, règles v3) et de la [V4](docs/V4.md). Réalisée par Claude Code Alexis seul, sur exception décidée par l'utilisateur : auto-vérification, sans revue indépendante.
 
 [Jouer au prototype publié](https://alexis97432.github.io/jeuiaflouze/) — instantané déployé ; le commit publié est dans `source-commit.txt`.
 

@@ -252,9 +252,10 @@ test('Défi du jour : seed de la date UTC, record du jour, missions affichées',
   const day = utcDateKey(new Date());
   await expect(page.getByTestId('daily-hint')).toHaveAttribute('data-day', day);
   await expect(page.getByTestId('daily-hint')).toContainText('nouveau à');
-  await page.getByTestId('nav-rewards').tap();
+  await page.getByTestId('nav-season').tap();
+  await page.getByRole('button', { name: 'Missions et cadeau' }).tap();
   await expect(page.getByTestId('goals').locator('li')).toHaveCount(3);
-  await page.getByTestId('back').tap();
+  await page.getByTestId('nav-home').tap();
   await page.getByRole('button', { name: 'Défi du jour' }).tap();
   const { dayInWords } = await import('../../src/game/render/card');
   await expect(page.getByTestId('target')).toHaveText(`Défi du jour · ${dayInWords(day)}`);
@@ -274,16 +275,17 @@ test('Défi du jour : seed de la date UTC, record du jour, missions affichées',
   await expect(page.getByTestId('challenge-link')).toHaveValue(new RegExp(`seed=${dailySeed(day)}&target=${height}$`));
 });
 
-test('collection : ouverture, verrous lisibles, retour, sans débordement', async ({ page }) => {
+test('collection : onglet dédié, raretés et verrous lisibles, sans débordement', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('nav-rewards').tap();
-  await page.getByTestId('open-collection').tap();
+  await page.getByTestId('nav-collection').tap();
   await expect(page.getByRole('heading', { name: 'Collection' })).toBeFocused();
-  await expect(page.getByTestId('card-theme-orbital')).toContainText('À débloquer');
-  await expect(page.getByTestId('card-skin-gomme')).toContainText('Sélectionné');
+  await expect(page.getByTestId('nav-collection')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('card-theme-orbital')).toContainText('À obtenir');
+  await expect(page.getByTestId('card-skin-gomme')).toContainText('Équipé');
+  await expect(page.getByTestId('card-skin-galaxie').locator('.rarity')).toHaveText('Légendaire');
   await noHorizontalOverflow(page);
-  await page.getByTestId('collection-back').tap();
-  await expect(page.getByTestId('open-collection')).toBeFocused();
+  await page.getByTestId('nav-home').tap();
+  await expect(page.getByTestId('play')).toBeVisible();
 });
 
 test('progression : un objectif rempli débloque une apparence choisie et persistante', async ({ page }) => {
@@ -296,14 +298,12 @@ test('progression : un objectif rempli débloque une apparence choisie et persis
     }
   });
   await page.goto('/');
-  await page.getByTestId('nav-rewards').tap();
-  await page.getByTestId('open-collection').tap();
-  await page.getByRole('button', { name: 'Choisir Apparence Marbré' }).tap();
-  await expect(page.getByTestId('card-skin-marbre')).toContainText('Sélectionné');
+  await page.getByTestId('nav-collection').tap();
+  await page.getByRole('button', { name: 'Équiper Matière Marbré' }).tap();
+  await expect(page.getByTestId('card-skin-marbre')).toContainText('Équipé');
   await page.reload();
-  await page.getByTestId('nav-rewards').tap();
-  await page.getByTestId('open-collection').tap();
-  await expect(page.getByTestId('card-skin-marbre')).toContainText('Sélectionné');
+  await page.getByTestId('nav-collection').tap();
+  await expect(page.getByTestId('card-skin-marbre')).toContainText('Équipé');
 });
 
 for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }]) {
@@ -335,9 +335,10 @@ test('E1 : XP, pièces et récompense de connexion conservées après rechargeme
   await tapUntilResult(page);
   await expect(page.getByTestId('gains')).toContainText('étoile');
   await page.getByRole('button', { name: 'Accueil' }).tap();
-  await page.getByTestId('nav-rewards').tap();
-  await page.getByRole('button', { name: /^Prendre \+5$/ }).tap();
-  await expect(page.getByTestId('calendar')).toContainText('Déjà pris');
+  await page.getByTestId('nav-season').tap();
+  await page.getByRole('button', { name: 'Missions et cadeau' }).tap();
+  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap();
+  await expect(page.getByTestId('calendar')).toContainText('Déjà récupéré');
   const before = {
     coins: await page.getByTestId('coins').textContent(),
     xp: await page.getByTestId('xp').textContent(),
@@ -347,25 +348,28 @@ test('E1 : XP, pièces et récompense de connexion conservées après rechargeme
   await page.reload();
   await expect(page.getByTestId('coins')).toHaveText(before.coins!);
   await expect(page.getByTestId('level')).toHaveText(before.level!);
-  await page.getByTestId('nav-rewards').tap();
+  await page.getByTestId('nav-season').tap();
+  await page.getByRole('button', { name: 'Missions et cadeau' }).tap();
   await expect(page.getByTestId('xp')).toHaveText(before.xp!);
-  await expect(page.getByTestId('calendar')).toContainText('Déjà pris');
+  await expect(page.getByTestId('calendar')).toContainText('Déjà récupéré');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
-  expect(saved).toMatchObject({ version: 3, grants: ['v2-objectives-backfill'] });
+  expect(saved).toMatchObject({ version: 4, grants: ['v2-objectives-backfill'] });
 });
 
 test('E1 : deux onglets du même navigateur ne perdent ni gains ni réclamation', async ({ page, context }) => {
   await page.goto('/');
   const other = await context.newPage();
   await other.goto('/');
-  await page.getByTestId('nav-rewards').tap();
-  await page.getByRole('button', { name: /^Prendre \+5$/ }).tap();
+  await page.getByTestId('nav-season').tap();
+  await page.getByRole('button', { name: 'Missions et cadeau' }).tap();
+  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap();
   await expect(page.getByTestId('coins')).toHaveText('5 pièces');
   // Vrai événement storage : l'autre onglet se met à jour sans rechargement.
   await expect(other.getByTestId('coins')).toHaveText('5 pièces'); // accueil mis à jour par l'événement storage
-  await other.getByTestId('nav-rewards').tap();
-  await expect(other.getByTestId('calendar')).toContainText('Déjà pris');
-  await other.getByTestId('back').tap();
+  await other.getByTestId('nav-season').tap();
+  await other.getByRole('button', { name: 'Missions et cadeau' }).tap();
+  await expect(other.getByTestId('calendar')).toContainText('Déjà récupéré');
+  await other.getByTestId('nav-home').tap();
   // Partie dans l'autre onglet : la réclamation du premier est conservée.
   await other.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(other);
@@ -393,8 +397,9 @@ test('E1 : sous le vrai verrou Web Locks, un onglet concurrent ne perd pas la r�
       localStorage.setItem('poc:meta:v1:progress', JSON.stringify({ ...doc, coins: doc.coins + 100 }));
     });
   });
-  await page.getByTestId('nav-rewards').tap();
-  await page.getByRole('button', { name: /^Prendre \+5$/ }).tap(); // pendant que l'autre tient le verrou
+  await page.getByTestId('nav-season').tap();
+  await page.getByRole('button', { name: 'Missions et cadeau' }).tap();
+  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap(); // pendant que l'autre tient le verrou
   await expect(page.getByTestId('coins')).toHaveText('105 pièces');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress')!));
   expect(saved).toMatchObject({ coins: 105 });
@@ -410,10 +415,9 @@ test('A4 : aperçus de collection dessinés par le moteur, apparence appliquée 
     }
   });
   await page.goto('/');
-  await page.getByTestId('nav-rewards').tap();
-  await page.getByTestId('open-collection').tap();
+  await page.getByTestId('nav-collection').tap();
   const previews = page.locator('canvas.swatch.preview');
-  await expect(previews).toHaveCount(15);
+  await expect(previews).toHaveCount(24); // 19 matières et 5 univers, tous dessinés par le moteur
   const colorsPerPreview = await previews.evaluateAll((canvases) =>
     (canvases as HTMLCanvasElement[]).map((c) => {
       const { data } = c.getContext('2d')!.getImageData(0, 0, c.width, c.height);
@@ -423,9 +427,8 @@ test('A4 : aperçus de collection dessinés par le moteur, apparence appliquée 
     }),
   );
   expect(colorsPerPreview.every((n) => n > 4)).toBe(true); // vrais dessins, pas des cadres vides
-  await expect(page.getByTestId('card-theme-orbital')).toContainText('Sélectionné');
-  await page.getByTestId('collection-back').tap();
-  await page.getByTestId('back').tap();
+  await expect(page.getByTestId('card-theme-orbital')).toContainText('Équipé');
+  await page.getByTestId('nav-home').tap();
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   await expect(page.getByTestId('score')).toBeVisible();
@@ -437,22 +440,24 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }
     const page = await context.newPage();
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Jouer', exact: true })).toBeInViewport({ ratio: 1 });
-    for (const name of ['Défi du jour', 'Boutique', 'Collection', 'Classement', 'Récompenses', 'Réglages']) {
-      await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
+    for (const name of ['Défi du jour', 'Boutique', 'Collection', 'Classement', 'Passe', 'Réglages']) {
+      await expect(page.getByRole('button', { name }).first()).toBeInViewport({ ratio: 1 });
     }
     await noHorizontalOverflow(page);
     await context.close();
   });
 }
 
-test('boutique : état réel tant que le moteur n’a pas les apparences de boutique', async ({ page }) => {
+test('boutique : pièces du jeu distinctes de l’argent réel, prix dans les boutons, solde insuffisant', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('nav-shop').tap();
   await expect(page.getByRole('heading', { name: 'Boutique' })).toBeFocused();
-  await expect(page.getByText('Les pièces se gagnent en jouant. Elles ne s’achètent pas.')).toBeVisible();
-  // Graphite, Nacré, Holographique ne sont proposés qu'une fois dessinables par le moteur (F-V3).
-  const sellable = await page.locator('.items li').count();
-  if (sellable === 0) await expect(page.getByTestId('shop-empty')).toBeVisible();
+  await expect(page.getByTestId('wallet')).toContainText('0 pièce du jeu');
+  await expect(page.getByTestId('wallet')).toContainText('ne s’achètent pas avec de l’argent réel');
+  // Sans pièces : chaque bouton dit ce qui manque et ne peut pas être appuyé.
+  await expect(page.getByTestId('buy-nacre')).toHaveText('Il manque 120');
+  await expect(page.getByTestId('buy-nacre')).toBeDisabled();
+  await expect(page.getByTestId('shop-recif').locator('.rarity')).toHaveText('Épique');
   await noHorizontalOverflow(page);
 });
 
@@ -466,19 +471,23 @@ test('classement : sans serveur configuré (build Pages), « Indisponible » et 
   await expect(page.getByRole('heading', { name: 'Classement' })).toBeFocused();
   await expect(page.getByTestId('board-unavailable')).toContainText('indisponible');
   await noHorizontalOverflow(page);
-  await page.getByRole('button', { name: 'Retour' }).tap();
+  await page.getByTestId('nav-home').tap();
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   await expect(page.getByTestId('rank-status')).toHaveText('Score gardé sur cet appareil.');
   expect(requests).toEqual([]);
 });
 
-test('passe de saison : écran lisible sans débordement, premium indisponible', async ({ page }) => {
+test('passe de saison : 30 niveaux lisibles sans débordement, premium détaillé mais pas en vente', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('nav-rewards').tap();
-  await page.getByTestId('open-season').tap();
-  await expect(page.getByTestId('premium-note')).toContainText('indisponible');
-  await expect(page.getByTestId('tier-10-premium')).toContainText('Indisponible');
+  await page.getByTestId('nav-season').tap();
+  await expect(page.getByTestId('season-level')).toContainText('/ 30');
+  await expect(page.locator('ol.tiers > li')).toHaveCount(30);
+  await expect(page.getByTestId('premium-note')).toContainText('Argent réel');
+  await expect(page.getByTestId('premium-note')).toContainText('rien n’est en vente');
+  await expect(page.getByTestId('premium-soon')).toBeDisabled();
+  await expect(page.getByTestId('tier-30-premium')).toContainText('Abysse');
+  await expect(page.getByTestId('tier-30-premium')).toContainText('Premium');
   await noHorizontalOverflow(page);
 });
 
@@ -497,7 +506,7 @@ test('sauvegarde V2 publiée : migrée en v3 sans perte (XP, pièces, objectifs,
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
-  expect(saved).toMatchObject({ version: 3, completed: expect.arrayContaining(['floors-5']) });
+  expect(saved).toMatchObject({ version: 4, completed: expect.arrayContaining(['floors-5']) });
   expect(saved.xp).toBeGreaterThanOrEqual(140);
   expect(saved.coins).toBeGreaterThanOrEqual(37);
 });
@@ -534,13 +543,11 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 412, height: 839 }
       await page.getByTestId(nav!).tap();
       await noHorizontalOverflow(page);
     }
-    // Sous-écrans aux noms longs (« Holographique », paliers du passe).
-    for (const sub of ['open-collection', 'open-season']) {
-      await page.goto('/');
-      await page.getByTestId('nav-rewards').tap();
-      await page.getByTestId(sub).tap();
-      await noHorizontalOverflow(page);
-    }
+    // Section Missions du passe (textes longs).
+    await page.goto('/');
+    await page.getByTestId('nav-season').tap();
+    await page.getByRole('button', { name: 'Missions et cadeau' }).tap();
+    await noHorizontalOverflow(page);
     await context.close();
   });
 }
@@ -566,7 +573,7 @@ test('vie de reprise (build de production, vrai moteur) : achat en pièces, offr
   await page.getByTestId('buy-life').tap();
   await page.getByTestId('confirm-life').tap();
   await expect(page.getByTestId('life-success')).toContainText('1 vie');
-  await page.getByRole('button', { name: 'Retour' }).tap();
+  await page.getByTestId('nav-home').tap();
   await expect(page.getByTestId('lives')).toHaveText('1 vie');
   await expect(page.getByTestId('coins')).toHaveText('10 pièces');
 
