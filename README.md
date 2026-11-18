@@ -23,7 +23,7 @@ Lire le [protocole de coordination autonome](coordination/AUTONOMIE.md) : les se
 
 ## Version actuelle
 
-[V6 : « Stack or Crash », matières vivantes, univers en plusieurs plans, raretés, passe de 30 niveaux, menus à onglets](docs/V6.md), sur la base de la [V5](docs/V5.md) (boosts, règles v3) et de la [V4](docs/V4.md). Réalisée par Claude Code Alexis seul, sur exception décidée par l'utilisateur : auto-vérification, sans revue indépendante.
+[V7 : stabilité, musique originale, boutique du jour, nouveaux univers et matières](docs/V7.md), sur la base de la [V6](docs/V6.md) (« Stack or Crash », matières vivantes, raretés, passe de 30 niveaux), de la [V5](docs/V5.md) et de la [V4](docs/V4.md). Musiques : [docs/MUSIQUE.md](docs/MUSIQUE.md). Réalisée par Claude Code Alexis seul, sur exception décidée par l'utilisateur : auto-vérification, sans revue indépendante.
 
 [Jouer au prototype publié](https://alexis97432.github.io/jeuiaflouze/) — instantané déployé ; le commit publié est dans `source-commit.txt`.
 

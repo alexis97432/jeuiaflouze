@@ -15,19 +15,26 @@ import {
 import { PLAY_RULES_VERSION, type GameEvent, type GameHandle } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { cosmeticCard, previewOrSwatch, rarityChip, renderCollection, stateLine, type CollectionFilter, type PreviewFn } from './collection-view';
-import { byRarity, catalogItem, type CatalogItem } from './catalog';
+import { byRarity, catalogItem, MUSIC_CATALOG, sourceLabel, universeTrack, type CatalogItem } from './catalog';
+import { checkOpenOffer, dailySelection, nextRotationAt, rotationDay, rotationLocalTime, untilRotation } from './rotation';
+import type { AudioHub } from '../platform/audio-hub';
+import type { MusicPlayer, PlayerState } from './music/player';
+import type { DeviceInfo, Diagnostics } from './diagnostics';
 import { createPreviewAnimator } from './preview-animator';
 import { BONUS_HINTS, BONUS_NAMES, continuesOf, continueTicksOf, feversOf, heightOf, pointsOf, savesOf, type AnyRunResult } from './run-result';
 import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
 import { buyLife, LIFE_PRICE, livesOf, MAX_LIVES, returnLife, useLife } from './lives';
 import { claimAllFree, claimSeasonTier, SEASON_1, seasonLevel, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type SeasonTier, type TierStatus, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
+import { isTrackId } from './music/tracks';
 import { dayInWords, GAME_NAME, isAnySkinId, isThemeId, RARITIES, RARITY_INFO, rarityRank, renderAppearancePreview, type AnyAppearance } from '../game';
 import {
   applyRunEconomy,
   CALENDAR_REWARDS,
   calendarStatus,
   claimCalendar,
+  equipMusic,
+  equippedMusic,
   LEVEL_TITLES,
   levelInfo,
   readProgressDoc,
@@ -36,6 +43,7 @@ import {
 import { el, floors } from './dom';
 import {
   activeObjectives,
+  ownsMusic,
   rewardLabel,
   selectAppearance,
   type Objective,
@@ -47,7 +55,7 @@ import type { Mode, Tracker } from '../platform/metrics';
 import { copyText, downloadFile, type ShareData, type ShareOutcome } from '../platform/share';
 import { sanitizePrefs, type LocalStore, type MetaStore, type Prefs } from '../platform/storage';
 import { applyPrefs, watchSystemPrefs } from './prefs';
-import { browserHaptics, createUiSound, HAPTIC_PATTERNS, type HapticKind, type Haptics, type UiSound, type UiSoundKind } from './feedback';
+import { browserHaptics, createHubUiSound, createUiSound, HAPTIC_PATTERNS, type HapticKind, type Haptics, type UiSound, type UiSoundKind } from './feedback';
 import {
   cardTitle,
   confetti,
@@ -141,6 +149,14 @@ export type ShellOptions = {
   resultImage?: (result: AnyRunResult, mode: Mode, day: string | null, appearance?: AnyAppearance) => Promise<File | null>;
   /** Enregistre un fichier (téléchargement) ; injectable pour les tests. */
   saveFile?: (file: File) => boolean;
+  /** V7 : centrale audio (un seul contexte : musique, effets, interface). Absente : sons d'avant. */
+  audio?: AudioHub;
+  /** V7 : lecteur de musique (pistes procédurales). Absent : pas de musique. */
+  music?: MusicPlayer;
+  /** V7 : journal de diagnostic local (Réglages → Diagnostic). */
+  diagnostics?: Diagnostics;
+  /** V7 : caractéristiques de l'appareil pour le rapport de diagnostic. */
+  deviceInfo?: () => DeviceInfo;
 };
 
 /** Vies de reprise possédées (achats vérifiés par le serveur). Par défaut : aucune. */
@@ -272,12 +288,30 @@ export function createShell(options: ShellOptions): Shell {
   applyPrefs(doc, prefs);
   const unwatchPrefs = watchSystemPrefs(doc, () => prefs);
   const haptics = options.haptics ?? browserHaptics(doc.defaultView?.navigator);
-  const uiSound = options.uiSound ?? createUiSound(doc.defaultView as never);
+  const hub = options.audio ?? null;
+  const music = options.music ?? null;
+  const diag = options.diagnostics ?? null;
+  const uiSound = options.uiSound ?? (hub ? createHubUiSound(hub) : createUiSound(doc.defaultView as never));
+  /**
+   * V7 : piste voulue. Musique coupée : aucune (rien n'est rendu). Sinon la musique de l'univers
+   * choisi, ou la musique équipée selon le réglage. Appliquée tout de suite, avec fondu.
+   */
+  const desiredTrack = (): string | null => {
+    if (!prefs.music) return null;
+    if (prefs.musicSource === 'equipee') return equippedMusic(progress);
+    return universeTrack(progress.selected.theme) ?? equippedMusic(progress);
+  };
+  const syncAudio = () => {
+    hub?.setMusic(prefs.music, prefs.musicVolume);
+    hub?.setSfx(!prefs.muted, prefs.volume);
+    music?.want(desiredTrack());
+  };
   const savePrefs = (next: Partial<Prefs>) => {
     prefs = sanitizePrefs({ ...prefs, ...next });
     store.writePrefs(prefs);
     applyPrefs(doc, prefs);
     run?.handle?.setAudio?.(!prefs.muted, prefs.volume);
+    syncAudio();
     animator.refresh();
   };
   /** Ce que le moteur reçoit : `reducedMotion` absent = le moteur suit l'appareil en direct. */
@@ -287,6 +321,7 @@ export function createShell(options: ShellOptions): Shell {
     effects: prefs.effects,
     ...(prefs.motion === 'system' ? {} : { reducedMotion: prefs.motion === 'reduce' }),
   });
+  syncAudio();
   const fx = {
     haptic(kind: HapticKind) {
       if (prefs.haptics) haptics.vibrate(HAPTIC_PATTERNS[kind]);
@@ -410,6 +445,8 @@ export function createShell(options: ShellOptions): Shell {
 
   const show = (next: Screen, children: (HTMLElement | null)[], focus: HTMLElement) => {
     const changed = next !== screen;
+    // V7 : une écoute de musique s'arrête dès qu'on quitte l'écran (jamais deux pistes à la fois).
+    if (changed) music?.stopPreview();
     if (changed) {
       switching = true;
       closeSheet();
@@ -434,6 +471,9 @@ export function createShell(options: ShellOptions): Shell {
     view.dataset.tabs = tab ? 'true' : 'false';
     // Les aperçus de l'écran précédent sont oubliés : rien ne continue de tourner.
     animator.prune();
+    // V7 : boutons « Écouter » de l'écran affiché alignés sur l'état réel du lecteur (l'écoute de
+    // l'écran précédent vient d'être arrêtée, après la construction de ce nouvel écran).
+    if (changed) refreshListen();
     // Nouvel écran : on repart du haut (pas la position de défilement de l'écran précédent).
     if (changed) {
       try {
@@ -457,15 +497,28 @@ export function createShell(options: ShellOptions): Shell {
     return p;
   };
 
-  /** Interrupteur du son (Réglages et Pause) : appliqué tout de suite, y compris en partie. */
-  const soundToggle = (onChange?: () => void) =>
+  /** Interrupteur des effets sonores (Réglages et Pause) : appliqué tout de suite, y compris en partie. */
+  const soundToggle = (onChange?: () => void, label = 'Effets sonores') =>
     switchButton(doc, {
-      label: 'Son',
+      label,
       checked: !prefs.muted,
       testId: 'sound-toggle',
       onChange: (on) => {
         savePrefs({ muted: !on });
         if (on) fx.sound('tap');
+        onChange?.();
+      },
+    });
+
+  /** V7 : interrupteur de la musique (Réglages et Pause), indépendant des effets sonores. */
+  const musicToggle = (onChange?: () => void) =>
+    switchButton(doc, {
+      label: 'Musique',
+      checked: prefs.music,
+      testId: 'music-toggle',
+      onChange: (on) => {
+        hub?.unlock();
+        savePrefs({ music: on });
         onChange?.();
       },
     });
@@ -826,9 +879,38 @@ export function createShell(options: ShellOptions): Shell {
       el(doc, 'p', { class: 'hint small' }, 'Auto suit le réglage de ton appareil.'),
     );
 
+    // V7 : musique et effets sonores réglés séparément, appliqués tout de suite et gardés.
+    const musicRow = el(doc, 'div', { class: 'range-row' });
+    const musicVolume = rangeInput(doc, {
+      label: 'Volume de la musique',
+      value: prefs.musicVolume * 100,
+      testId: 'music-volume',
+      disabled: !prefs.music,
+      onCommit: (v) => savePrefs({ musicVolume: v / 100 }),
+    });
+    musicRow.append(icon(doc, 'mute'), musicVolume, icon(doc, 'sound'));
+    const equippedName = catalogItem('music', equippedMusic(progress))?.name ?? '';
+    const musicCard = settingsCard('music', 'Musique', 'set-music',
+      musicToggle(() => {
+        musicVolume.disabled = !prefs.music;
+      }),
+      musicRow,
+      segmented(doc, {
+        label: 'Musique en partie',
+        testId: 'music-source',
+        value: prefs.musicSource,
+        options: [
+          { value: 'univers', label: 'De l’univers' },
+          { value: 'equipee', label: 'Ma musique' },
+        ],
+        onChange: (v) => savePrefs({ musicSource: v }),
+      }),
+      el(doc, 'p', { class: 'hint small', 'data-testid': 'music-equipped' }, `Ta musique : ${equippedName}. Écoute et équipe tes musiques dans Collection.`),
+    );
+
     const volumeRow = el(doc, 'div', { class: 'range-row' });
     const volume = rangeInput(doc, {
-      label: 'Volume',
+      label: 'Volume des effets',
       value: prefs.volume * 100,
       testId: 'volume',
       disabled: prefs.muted,
@@ -838,7 +920,7 @@ export function createShell(options: ShellOptions): Shell {
       },
     });
     volumeRow.append(icon(doc, 'mute'), volume, icon(doc, 'sound'));
-    const sound = settingsCard('sound', 'Son', 'set-sound',
+    const sound = settingsCard('sound', 'Effets sonores', 'set-sound',
       soundToggle(() => {
         volume.disabled = prefs.muted;
       }),
@@ -888,13 +970,63 @@ export function createShell(options: ShellOptions): Shell {
       el(doc, 'p', { class: 'hint small' }, 'Fluides : moins d’effets, pour les téléphones plus lents.'),
     );
 
+    const diagnostic = diagnosticCard();
     const help = uiButton(doc, { label: 'Comment jouer', icon: 'help', variant: 'ghost', block: true, testId: 'open-howto', onClick: () => openHowTo() });
     const note = el(doc, 'p', { class: 'hint small center' }, 'Tes réglages restent sur cet appareil.');
     // Licences de la police et des icônes, livrées avec le jeu (OFL 1.1, ISC, MIT).
     const credits = el(doc, 'p', { class: 'hint small center' });
     const creditsLink = el(doc, 'a', { href: 'licences-tiers.txt', class: 'credits', 'data-testid': 'credits', target: '_blank', rel: 'noopener' }, 'Crédits : police Fredoka, icônes Lucide');
     credits.append(creditsLink);
-    show('settings', [header, theme, sound, vibration, motion, effects, help, note, credits], title);
+    const musicCredits = el(doc, 'p', { class: 'hint small center', 'data-testid': 'music-credits' }, 'Musiques : compositions originales de Stack or Crash, jouées par le synthétiseur du jeu (aucun fichier externe).');
+    show('settings', [header, theme, musicCard, sound, vibration, motion, effects, diagnostic, help, note, credits, musicCredits], title);
+  };
+
+  /**
+   * V7 : journal de diagnostic local. Rien n'est envoyé : le joueur copie le rapport s'il veut le
+   * joindre à un signalement (exceptions, blocages, rechargements pendant une partie, contexte
+   * graphique, son).
+   */
+  const diagnosticCard = () => {
+    const entries = diag?.entries() ?? [];
+    const last = entries[entries.length - 1];
+    const summary = entries.length === 0
+      ? 'Aucun incident enregistré sur cet appareil.'
+      : `${entries.length} incident${entries.length > 1 ? 's' : ''} enregistré${entries.length > 1 ? 's' : ''} (dernier : ${last!.kind}).`;
+    const status = el(doc, 'p', { role: 'status', class: 'hint small', 'data-testid': 'diag-status' });
+    const copy = uiButton(doc, {
+      label: 'Copier le rapport', icon: 'copy', variant: 'secondary', block: true, testId: 'diag-copy',
+      onClick: () => {
+        if (!diag) return;
+        const report = diag.report(options.deviceInfo?.() ?? {});
+        void (options.copy ?? ((t: string) => copyText(t)))(report).then((ok) => {
+          status.textContent = ok ? 'Rapport copié. Colle-le dans ton message de signalement.' : 'Copie impossible ici : sélectionne le rapport ci-dessous.';
+          if (!ok) {
+            const area = el(doc, 'textarea', { class: 'diag-report', readonly: '', rows: '8', 'aria-label': 'Rapport de diagnostic', 'data-testid': 'diag-report' });
+            area.value = report;
+            status.after(area);
+            area.select();
+          }
+          announce(status.textContent);
+        });
+      },
+    });
+    const clear = uiButton(doc, {
+      label: 'Effacer le journal', variant: 'ghost', block: true, testId: 'diag-clear',
+      onClick: () => {
+        diag?.clear();
+        renderSettings();
+        announce('Journal effacé.');
+      },
+    });
+    if (!diag) {
+      copy.disabled = true;
+      clear.disabled = true;
+    }
+    return settingsCard('activity', 'Diagnostic', 'set-diag',
+      el(doc, 'p', { 'data-testid': 'diag-summary' }, summary),
+      el(doc, 'p', { class: 'hint small' }, 'En cas de plantage, ce journal aide à comprendre la cause. Il reste sur ton appareil ; rien n’est envoyé.'),
+      copy, clear, status,
+    );
   };
 
   /** Fenêtre « Comment jouer » : six étapes, des mots simples. */
@@ -920,7 +1052,10 @@ export function createShell(options: ShellOptions): Shell {
     openDialog({ title: 'Comment jouer', body: [list], actions: [ok], testId: 'howto' });
   };
 
-  const shopConfig = options.shop ?? { catalog: COIN_SHOP, isAvailable: (id: string) => isAnySkinId(id) || isThemeId(id) };
+  const shopConfig = options.shop ?? { catalog: COIN_SHOP, isAvailable: (id: string) => isAnySkinId(id) || isThemeId(id) || isTrackId(id) };
+  /** Objets vendables (calculés une fois : la sélection du jour s'appuie sur cette liste). */
+  let sellableMemo: ShopItem[] | null = null;
+  const sellableCatalog = () => (sellableMemo ??= sellableItems(shopConfig.catalog, shopConfig.isAvailable));
   const shopPreview = shopConfig.preview ?? renderAppearancePreview;
 
   type ShopNotice = { text: string; testId: string };
@@ -928,7 +1063,7 @@ export function createShell(options: ShellOptions): Shell {
   let pendingPurchase: string | null = null;
 
   /** Apparence montrée par l'aperçu d'un objet (l'autre moitié reste celle du joueur). */
-  const appearanceOf = (kind: 'skin' | 'theme', id: string): AnyAppearance => (kind === 'skin'
+  const appearanceOf = (kind: 'skin' | 'theme' | 'music', id: string): AnyAppearance => (kind === 'skin'
     ? { theme: progress.selected.theme, skin: id }
     : { theme: id, skin: progress.selected.skin }) as AnyAppearance;
 
@@ -970,11 +1105,71 @@ export function createShell(options: ShellOptions): Shell {
     openDialog({ title: opts.title, body, actions: [yes, no], testId: 'confirm', initialFocus: yes });
   };
 
+  /** V7 : visuel d'une musique (disque aux couleurs de la rareté). */
+  const musicArt = (item: CatalogItem, large = false) => {
+    const art = el(doc, 'div', { class: `music-art${large ? ' large' : ''}`, 'data-rarity': item.rarity, 'aria-hidden': 'true' });
+    const disc = el(doc, 'span', { class: 'music-disc' });
+    disc.append(icon(doc, 'music'));
+    art.append(disc);
+    return art;
+  };
+
+  /**
+   * V7 : bouton « Écouter » / « Arrêter » d'une musique. Une seule écoute à la fois : en lancer une
+   * arrête la précédente ; quitter l'écran l'arrête aussi. Musique coupée : bouton indisponible.
+   */
+  const listenButton = (item: CatalogItem) => {
+    const st = music?.state;
+    const playing = st?.previewing === item.id;
+    const loading = playing && st?.loading === item.id;
+    const off = !music || !prefs.music;
+    const b = uiButton(doc, {
+      label: off ? 'Musique coupée' : loading ? 'Chargement…' : playing ? 'Arrêter' : 'Écouter',
+      icon: playing ? 'stop' : 'listen',
+      variant: 'secondary',
+      size: 'sm',
+      block: true,
+      testId: `listen-${item.id}`,
+      ariaLabel: off ? `Écoute indisponible : la musique est coupée dans Réglages` : playing ? `Arrêter l’écoute de ${item.name}` : `Écouter ${item.name}`,
+      onClick: () => {
+        if (!music || off) return;
+        if (music.state.previewing === item.id) music.stopPreview();
+        else {
+          hub?.unlock();
+          music.preview(item.id);
+        }
+        refreshListen();
+      },
+    });
+    b.dataset.listen = item.id;
+    b.setAttribute('aria-pressed', playing ? 'true' : 'false');
+    if (off) b.disabled = true;
+    return b;
+  };
+  /** Met à jour les boutons d'écoute visibles (état du lecteur), sans redessiner l'écran. */
+  const refreshListen = () => {
+    for (const b of [...view.querySelectorAll<HTMLButtonElement>('button[data-listen]')]) {
+      const item = catalogItem('music', b.dataset.listen ?? '');
+      if (!item) continue;
+      const focused = doc.activeElement === b;
+      const fresh = listenButton(item);
+      b.replaceWith(fresh);
+      if (focused) fresh.focus();
+    }
+  };
+  const unsubscribeMusic = music?.subscribe((st: PlayerState) => {
+    void st;
+    refreshListen();
+  }) ?? (() => undefined);
+
   /** Fenêtre « C'est à toi ! » : l'objet obtenu, animé, avec Équiper tout de suite ou plus tard. */
   const revealItem = (item: CatalogItem) => {
     const art = el(doc, 'div', { class: 'art item-visual reveal-art' });
-    art.append(previewOrSwatch(doc, item.id, appearanceOf(item.kind, item.id), renderAppearancePreview, { animate, climb: item.kind === 'theme', material: item.kind === 'skin', size: { width: 280, height: 140 } }));
-    const equipped = item.kind === 'skin' ? progress.selected.skin === item.id : progress.selected.theme === item.id;
+    if (item.kind === 'music') art.append(musicArt(item, true));
+    else art.append(previewOrSwatch(doc, item.id, appearanceOf(item.kind, item.id), renderAppearancePreview, { animate, climb: item.kind === 'theme', material: item.kind === 'skin', size: { width: 280, height: 140 } }));
+    const equipped = item.kind === 'skin' ? progress.selected.skin === item.id
+      : item.kind === 'theme' ? progress.selected.theme === item.id
+        : equippedMusic(progress) === item.id && prefs.musicSource === 'equipee';
     const equip = uiButton(doc, {
       label: 'Équiper maintenant',
       icon: 'check',
@@ -988,13 +1183,13 @@ export function createShell(options: ShellOptions): Shell {
     });
     const later = uiButton(doc, { label: 'Plus tard', variant: 'ghost', block: true, testId: 'reveal-later', onClick: () => closeSheet() });
     openDialog({
-      title: item.kind === 'skin' ? 'Nouvelle matière !' : 'Nouvel univers !',
+      title: item.kind === 'skin' ? 'Nouvelle matière !' : item.kind === 'theme' ? 'Nouvel univers !' : 'Nouvelle musique !',
       body: [
         art,
         el(doc, 'p', { class: 'reveal-name', 'data-testid': 'reveal-name' }, item.name),
         rarityChip(doc, item.rarity),
         el(doc, 'p', { class: 'hint' }, item.blurb),
-        el(doc, 'p', { class: 'hint small' }, RARITY_INFO[item.rarity].promise),
+        el(doc, 'p', { class: 'hint small' }, item.kind === 'music' ? 'Composition originale du jeu. Elle se joue en partie quand elle est équipée.' : RARITY_INFO[item.rarity].promise),
       ],
       actions: equipped ? [later] : [equip, later],
       testId: 'reveal',
@@ -1005,16 +1200,32 @@ export function createShell(options: ShellOptions): Shell {
 
   /** Équipe un cosmétique possédé ; confirmation visible et lue, focus gardé sur la carte. */
   const equipItem = (item: CatalogItem) => withProgressLock(() => {
-    const changed = updateDoc((current) => {
-      const next = item.kind === 'skin' ? selectAppearance(current, { skin: item.id as AnyAppearance['skin'] }) : selectAppearance(current, { theme: item.id as AnyAppearance['theme'] });
-      const same = next.selected.theme === current.selected.theme && next.selected.skin === current.selected.skin;
-      return { doc: same ? current : next, result: !same };
-    });
-    if (!changed) return;
-    fx.haptic('tap');
-    const text = `${item.name} est équipé${item.kind === 'theme' ? '' : 'e'} pour ta prochaine partie.`;
-    announce(text);
-    showToast(doc, root, `${item.name} équipé${item.kind === 'theme' ? '' : 'e'} !`);
+    if (item.kind === 'music') {
+      const changed = updateDoc((current) => {
+        const next = equipMusic(current, item.id);
+        return { doc: next, result: next !== current };
+      });
+      const switchSource = prefs.musicSource !== 'equipee';
+      if (!changed && !switchSource) return;
+      // Équiper une musique, c'est vouloir l'entendre : elle remplace la musique des univers.
+      if (switchSource) savePrefs({ musicSource: 'equipee' });
+      else syncAudio();
+      fx.haptic('tap');
+      announce(`${item.name} est ta musique. Elle remplace la musique des univers ; tu peux revenir à celle de l’univers dans Réglages.`);
+      showToast(doc, root, `${item.name} équipée !`);
+    } else {
+      const changed = updateDoc((current) => {
+        const next = item.kind === 'skin' ? selectAppearance(current, { skin: item.id as AnyAppearance['skin'] }) : selectAppearance(current, { theme: item.id as AnyAppearance['theme'] });
+        const same = next.selected.theme === current.selected.theme && next.selected.skin === current.selected.skin;
+        return { doc: same ? current : next, result: !same };
+      });
+      if (!changed) return;
+      if (item.kind === 'theme') syncAudio(); // musique de l'univers, si c'est le réglage
+      fx.haptic('tap');
+      const text = `${item.name} est équipé${item.kind === 'theme' ? '' : 'e'} pour ta prochaine partie.`;
+      announce(text);
+      showToast(doc, root, `${item.name} équipé${item.kind === 'theme' ? '' : 'e'} !`);
+    }
     const focus = `${screen === 'shop' ? 'shop' : 'card'}-${screen === 'shop' ? item.id : `${item.kind}-${item.id}`}`;
     if (screen === 'shop') renderShop({ focus });
     else if (screen === 'collection') renderCollectionScreen(focus);
@@ -1022,10 +1233,23 @@ export function createShell(options: ShellOptions): Shell {
     else if (screen === 'home') renderHome();
   });
 
-  /** Boutique en pièces du jeu : matières, univers et vies ; prix dans les boutons. */
+  /** V7 : texte du renouvellement (compte à rebours et heure locale de minuit UTC). */
+  const renewalText = (nowMs: number) =>
+    `Nouvelle sélection ${untilRotation(nowMs)}, à ${rotationLocalTime(nowMs)} (heure de ton appareil).`;
+  /** Jour de la sélection affichée (pour détecter le renouvellement pendant que l'écran est ouvert). */
+  let shopDay = -1;
+
+  /**
+   * Boutique en pièces du jeu (V7 : sélection du jour) : 3 matières, 1 univers et 2 musiques,
+   * renouvelés chaque jour à minuit UTC ; vies toujours en vente ; prix dans les boutons.
+   */
   const renderShop = (state: { notice?: ShopNotice; focus?: string } = {}) => {
     const { header, title } = screenHeader('Boutique');
-    const items = sellableItems(shopConfig.catalog, shopConfig.isAvailable);
+    const sellable = sellableCatalog();
+    const nowMs = today().getTime();
+    const day = rotationDay(nowMs);
+    shopDay = day;
+    const offers = dailySelection(day, sellable);
     const parts: HTMLElement[] = [header];
 
     const wallet = el(doc, 'section', { class: 'card wallet', 'data-testid': 'wallet' });
@@ -1035,55 +1259,89 @@ export function createShell(options: ShellOptions): Shell {
     parts.push(wallet);
 
     if (state.notice) {
-      parts.push(el(doc, 'p', { class: `notice ${state.notice.testId.endsWith('success') || state.notice.testId === 'shop-worn' ? 'ok' : 'warn'}`, role: 'status', 'data-testid': state.notice.testId, tabindex: '-1' }, state.notice.text));
+      parts.push(el(doc, 'p', { class: `notice ${state.notice.testId.endsWith('success') || state.notice.testId === 'shop-worn' || state.notice.testId === 'shop-renewed' ? 'ok' : 'warn'}`, role: 'status', 'data-testid': state.notice.testId, tabindex: '-1' }, state.notice.text));
     }
 
-    const section = (kind: 'skin' | 'theme', iconName: IconName, label: string) => {
+    const daily = el(doc, 'section', { class: 'card daily-head', 'aria-labelledby': 'shop-daily-title', 'data-testid': 'shop-daily' });
+    daily.append(
+      cardTitle(doc, 'refresh', 'Sélection du jour', 'shop-daily-title'),
+      el(doc, 'p', { class: 'hint', 'data-testid': 'shop-renewal' }, renewalText(nowMs)),
+      el(doc, 'p', { class: 'hint small' }, 'Même sélection pour tout le monde, renouvelée chaque jour à la même heure. Elle change les offres, jamais tes objets : ce que tu possèdes reste dans ta collection.'),
+    );
+    parts.push(daily);
+
+    const section = (kind: 'skin' | 'theme' | 'music', iconName: IconName, label: string) => {
       const box = el(doc, 'section', { class: 'card', 'aria-labelledby': `shop-${kind}-title`, 'data-testid': `shop-section-${kind}` });
       box.append(cardTitle(doc, iconName, label, `shop-${kind}-title`));
       const list = el(doc, 'ul', { class: 'items' });
-      const ofKind = items.filter((i) => i.kind === kind);
+      const ofKind = offers.filter((i) => i.kind === kind);
       const ordered = byRarity(ofKind.map((i) => catalogItem(i.kind, i.id)).filter((c): c is CatalogItem => !!c));
       for (const item of ordered) {
         const shopItem = ofKind.find((i) => i.id === item.id)!;
         const st = itemState(progress, shopItem);
-        const equipped = st === 'owned' && (kind === 'skin' ? progress.selected.skin === item.id : progress.selected.theme === item.id);
-        const visual = previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin' });
+        const equipped = st === 'owned' && (kind === 'skin' ? progress.selected.skin === item.id
+          : kind === 'theme' ? progress.selected.theme === item.id
+            : prefs.musicSource === 'equipee' && equippedMusic(progress) === item.id);
+        const visual = kind === 'music'
+          ? musicArt(item)
+          : previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin' });
         const tail: HTMLElement[] = [];
-        if (equipped) tail.push(stateLine(doc, 'check', 'Équipé', 'equipped'));
+        if (kind === 'music') tail.push(listenButton(item));
+        const fem = kind === 'music' ? 'e' : '';
+        if (equipped) tail.push(stateLine(doc, 'check', `Équipé${fem}`, 'equipped'));
         else if (st === 'owned') {
-          tail.push(stateLine(doc, 'check', 'Possédé', 'owned'), uiButton(doc, { label: 'Équiper', variant: 'secondary', size: 'sm', block: true, testId: `equip-${item.id}`, ariaLabel: `Équiper ${item.name}`, onClick: () => equipItem(item) }));
+          tail.push(stateLine(doc, 'check', `Possédé${fem}`, 'owned'), uiButton(doc, { label: 'Équiper', variant: 'secondary', size: 'sm', block: true, testId: `equip-${item.id}`, ariaLabel: `Équiper ${item.name}`, onClick: () => equipItem(item) }));
         } else {
           tail.push(buyButton(item.name, shopItem.price, `buy-${item.id}`, () => confirmPurchase({
             title: `Acheter ${item.name} ?`,
             name: item.name,
             price: shopItem.price,
-            art: previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin', size: { width: 280, height: 140 } }),
+            art: kind === 'music' ? musicArt(item, true) : previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin', size: { width: 280, height: 140 } }),
             extra: [rarityChip(doc, item.rarity), el(doc, 'p', { class: 'hint' }, item.blurb)],
-            onYes: () => startPurchase(shopItem, item),
+            onYes: () => startPurchase(shopItem, item, day),
             yesTestId: 'confirm-buy',
             noTestId: 'cancel-buy',
           }), pendingPurchase === item.id));
         }
         list.append(cosmeticCard(doc, item, visual, equipped ? 'equipped' : st === 'owned' ? 'owned' : 'locked', tail, `shop-${item.id}`));
       }
-      if (ordered.length === 0) list.append(el(doc, 'li', { class: 'empty hint', 'data-testid': 'shop-empty' }, 'Rien à vendre pour l’instant. Reviens bientôt !'));
+      if (ordered.length === 0) list.append(el(doc, 'li', { class: 'empty hint', 'data-testid': 'shop-empty' }, 'Rien à vendre aujourd’hui. Reviens demain !'));
       box.append(list);
       return box;
     };
-    if (items.length === 0) {
+    if (offers.length === 0) {
       const empty = el(doc, 'section', { class: 'card' });
       empty.append(el(doc, 'p', { 'data-testid': 'shop-empty' }, 'Rien à vendre pour l’instant. Reviens bientôt !'));
       parts.push(empty);
     } else {
-      parts.push(section('skin', 'palette', 'Matières'));
-      if (items.some((i) => i.kind === 'theme')) parts.push(section('theme', 'orbit', 'Univers'));
+      if (offers.some((i) => i.kind === 'skin')) parts.push(section('skin', 'palette', 'Matières'));
+      if (offers.some((i) => i.kind === 'theme')) parts.push(section('theme', 'orbit', 'Univers'));
+      if (offers.some((i) => i.kind === 'music')) parts.push(section('music', 'music', 'Musiques'));
     }
     parts.push(livesShopSection());
     parts.push(el(doc, 'p', { class: 'hint small center' }, 'Aucun tirage au hasard : tu vois exactement ce que tu achètes. Les cosmétiques ne changent jamais le score.'));
     show('shop', parts, title);
     if (state.focus) view.querySelector<HTMLElement>(`[data-testid="${state.focus}"]`)?.focus();
   };
+
+  /**
+   * V7 : renouvellement automatique si l'écran reste ouvert. Toutes les 30 s (et au retour sur la
+   * page), le compte à rebours est mis à jour ; à minuit UTC, la nouvelle sélection s'affiche.
+   * Aucune récompense n'est liée au renouvellement.
+   */
+  const checkRotation = () => {
+    if (destroyed || screen !== 'shop') return;
+    const nowMs = today().getTime();
+    if (rotationDay(nowMs) !== shopDay && pendingPurchase === null) {
+      renderShop({ notice: { text: 'Nouvelle sélection du jour !', testId: 'shop-renewed' } });
+      announce('Nouvelle sélection du jour dans la boutique.');
+      return;
+    }
+    const line = view.querySelector<HTMLElement>('[data-testid="shop-renewal"]');
+    if (line) line.textContent = renewalText(nowMs);
+  };
+  const rotationTimer = setInterval(checkRotation, 30_000);
+  void nextRotationAt;
 
   /** Vies de reprise en pièces : stock, prix dans le bouton, confirmation, maximum. */
   const livesShopSection = () => {
@@ -1132,14 +1390,27 @@ export function createShell(options: ShellOptions): Shell {
     });
   };
 
-  /** Achat confirmé : bouton « Achat… » puis transaction unique sous le verrou de progression. */
-  const startPurchase = (shopItem: ShopItem, item: CatalogItem) => {
+  /**
+   * Achat confirmé : bouton « Achat… » puis transaction unique sous le verrou de progression.
+   * V7 : l'offre confirmée (objet, prix, jour) est vérifiée. Après minuit UTC, elle reste honorée
+   * 5 minutes au prix confirmé ; au-delà, elle a expiré et rien n'est débité. Jamais un autre objet
+   * ni un autre prix : le débit compare le prix du catalogue au prix confirmé.
+   */
+  const startPurchase = (shopItem: ShopItem, item: CatalogItem, offerDay: number) => {
     if (pendingPurchase !== null) return;
+    const open = checkOpenOffer({ kind: shopItem.kind, id: shopItem.id, day: offerDay }, today().getTime(), sellableCatalog());
+    if (!open.ok) {
+      const notice: ShopNotice = { text: `L’offre ${item.name} a expiré : la sélection du jour a changé à ${rotationLocalTime(today().getTime() - 60_000)} (heure de ton appareil). Rien n’a été débité.`, testId: 'shop-expired' };
+      announce(notice.text);
+      fx.sound('error');
+      if (screen === 'shop') renderShop({ notice, focus: notice.testId });
+      return;
+    }
     pendingPurchase = shopItem.id;
     if (screen === 'shop') renderShop();
     withProgressLock(() => {
       const result = updateDoc((current) => {
-        const r = purchaseWithCoins(current, shopItem.id, shopConfig.catalog);
+        const r = purchaseWithCoins(current, shopItem.id, shopConfig.catalog, shopItem.price);
         return { doc: r.doc, result: r };
       });
       pendingPurchase = null;
@@ -1149,7 +1420,9 @@ export function createShell(options: ShellOptions): Shell {
           ? { text: `Tu as déjà ${item.name}.`, testId: 'shop-owned' }
           : result.reason === 'insufficient'
             ? { text: `Il te manque ${result.missing ?? 0} pièces pour ${item.name}.`, testId: 'shop-insufficient' }
-            : { text: 'Cet objet n’est plus en vente.', testId: 'shop-unknown' };
+            : result.reason === 'price-changed'
+              ? { text: `Le prix de ${item.name} a changé. Rien n’a été débité.`, testId: 'shop-price-changed' }
+              : { text: 'Cet objet n’est plus en vente.', testId: 'shop-unknown' };
       announce(notice.text);
       if (result.ok) {
         fx.sound('reward');
@@ -1195,7 +1468,38 @@ export function createShell(options: ShellOptions): Shell {
       },
       onRarityHelp: () => openRarityHelp(),
     }, { filter: collectionFilter, ...(focusCard ? { focusCard } : {}), ...(options.shop?.preview ? { preview: options.shop.preview } : {}), animate });
-    show('collection', nodes, focus);
+    show('collection', [...nodes, musicCollection()], focus);
+    if (focusCard?.startsWith('card-music-')) view.querySelector<HTMLElement>(`[data-testid="${focusCard}"]`)?.focus();
+  };
+
+  /**
+   * V7 : musiques de la collection. Toutes visibles (avec leur provenance) ; les possédées
+   * s'écoutent et s'équipent, même quand elles ne sont plus dans la sélection du jour.
+   */
+  const musicCollection = () => {
+    const box = el(doc, 'section', { class: 'card', 'aria-labelledby': 'col-music-title', 'data-testid': 'collection-music' });
+    const mode = prefs.musicSource === 'equipee'
+      ? `En jeu : ta musique équipée (${catalogItem('music', equippedMusic(progress))?.name ?? ''}).`
+      : 'En jeu : la musique de l’univers choisi. Équipe une musique pour l’entendre partout.';
+    box.append(cardTitle(doc, 'music', 'Musiques', 'col-music-title'), el(doc, 'p', { class: 'hint small', 'data-testid': 'music-mode' }, mode));
+    const list = el(doc, 'ul', { class: 'items' });
+    for (const item of byRarity(MUSIC_CATALOG)) {
+      const owned = ownsMusic(progress, item.id);
+      if ((collectionFilter === 'owned' && !owned) || (collectionFilter === 'missing' && owned)) continue;
+      const equipped = owned && prefs.musicSource === 'equipee' && equippedMusic(progress) === item.id;
+      const tail: HTMLElement[] = [listenButton(item)];
+      if (equipped) tail.push(stateLine(doc, 'check', 'Équipée', 'equipped'));
+      else if (owned) {
+        tail.push(stateLine(doc, 'check', 'Possédée', 'owned'), uiButton(doc, {
+          label: 'Équiper', variant: 'secondary', size: 'sm', block: true, testId: `equip-music-${item.id}`, ariaLabel: `Équiper la musique ${item.name}`,
+          onClick: () => equipItem(item),
+        }));
+      } else tail.push(stateLine(doc, 'lock', sourceLabel(item.source), 'locked', 'Pour l’obtenir : '));
+      list.append(cosmeticCard(doc, item, musicArt(item), equipped ? 'equipped' : owned ? 'owned' : 'locked', tail, `card-music-${item.id}`));
+    }
+    if (!list.firstChild) list.append(el(doc, 'li', { class: 'empty hint' }, collectionFilter === 'owned' ? 'Aucune musique ici.' : 'Tu as toutes les musiques !'));
+    box.append(list);
+    return box;
   };
 
   const clearChallengeUrl = () => {
@@ -1481,10 +1785,17 @@ export function createShell(options: ShellOptions): Shell {
   };
 
   const stopRun = () => {
+    const had = run?.handle != null;
     run?.handle?.destroy();
     if (run) {
       run.handle = null;
       run.controls = null;
+    }
+    if (had) {
+      // V7 : la musique redevient celle des menus ; la partie est close proprement (journal).
+      music?.setGameActive(false);
+      music?.setIntensity(0.15);
+      diag?.runEnded();
     }
   };
 
@@ -1575,6 +1886,7 @@ export function createShell(options: ShellOptions): Shell {
       el(doc, 'h2', { id: 'pause-title' }, 'Pause'),
       el(doc, 'p', { class: 'hint' }, 'Ta partie t’attend.'),
       resume,
+      musicToggle(),
       soundToggle(),
       quit,
     );
@@ -1631,6 +1943,11 @@ export function createShell(options: ShellOptions): Shell {
         prefs: gamePrefs(),
         appearance: progress.selected,
         ...(allowContinue ? { allowContinue } : {}),
+        // V7 : effets sonores sur le contexte audio de l'application (jamais un contexte par partie).
+        audio: hub?.sfxOutput() ?? null,
+        onIncident: (incident) => diag?.record(incident.kind, incident.message, {
+          where: incident.layer, ...(incident.stack ? { stack: incident.stack } : {}), ...(incident.ms !== undefined ? { ms: incident.ms } : {}),
+        }),
         onGameEvent: (event) => {
           if (run !== current) return;
           current.events.onEvent(event);
@@ -1648,6 +1965,9 @@ export function createShell(options: ShellOptions): Shell {
           queueMicrotask(() => finishRun(current, result));
         },
       });
+      music?.setGameActive(true);
+      music?.setIntensity(0.25);
+      diag?.runStarted({ mode, theme: progress.selected.theme, skin: progress.selected.skin, music: desiredTrack() ?? 'aucune', effects: prefs.effects });
       // Mesures émises seulement après un montage réussi (revue A1 FLK, m1).
       if (previous) tracker.track('retry', { mode, runId, previousRunId: previous.runId });
       tracker.track('run_start', { mode, runId, ...(day ? { day } : {}) });
@@ -1812,6 +2132,15 @@ export function createShell(options: ShellOptions): Shell {
 
   /** Événements du moteur : vibrations mesurées, offre de reprise, compte à rebours, bonus, jauge. */
   const onRunEvent = (current: RunState, event: GameEvent, stage: HTMLElement, canvas: HTMLCanvasElement) => {
+    // V7 : la musique suit la hauteur (sections plus énergiques en haut) et s'efface un instant sous
+    // les sons importants (parfait, boost, Fièvre, chute) ; journal : partie toujours en vie.
+    if (event.type === 'placement') {
+      const height = event.height ?? event.floor;
+      music?.setIntensity(Math.min(1, 0.2 + height / 50));
+      diag?.runBeat({ floor: height });
+      if (event.perfect) hub?.duck(0.75, 0.12);
+    } else if (event.type === 'bonus-start' || event.type === 'fever-start') hub?.duck(0.6, 0.3);
+    else if (event.type === 'miss') hub?.duck(0.5, 0.6);
     switch (event.type) {
       case 'placement':
         fx.haptic(event.perfect ? 'perfect' : 'place');
@@ -1819,6 +2148,7 @@ export function createShell(options: ShellOptions): Shell {
       case 'miss':
         current.controls?.setFallen(true);
         fx.haptic('miss');
+        diag?.runBeat({}, true);
         break;
       case 'continue-offer':
         showReviveOffer(current, stage, canvas);
@@ -2231,6 +2561,11 @@ export function createShell(options: ShellOptions): Shell {
   doc.addEventListener('keydown', onKey, true);
 
   const onVisibility = () => {
+    const hidden = doc.visibilityState === 'hidden';
+    // V7 : aucun son en arrière-plan ; au retour, la musique reprend là où elle était.
+    hub?.background(hidden);
+    if (run?.handle) diag?.runVisibility(!hidden);
+    if (!hidden) checkRotation();
     if (screen !== 'game' || !run?.controls) return;
     if (doc.visibilityState === 'hidden') run.controls.hidden();
     else run.controls.visible();
@@ -2285,6 +2620,9 @@ export function createShell(options: ShellOptions): Shell {
       unwatchPrefs();
       animator.destroy();
       uiSound.close();
+      clearInterval(rotationTimer);
+      unsubscribeMusic();
+      music?.stopPreview();
       doc.removeEventListener('visibilitychange', onVisibility);
       doc.removeEventListener('pointerdown', onPointer, true);
       win?.removeEventListener('storage', onStorage);

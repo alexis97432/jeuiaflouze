@@ -722,9 +722,207 @@ const GALAXY: Rgb = [22, 18, 58];
 const ROCK: Rgb = [52, 30, 24];
 const GOLD: Rgb = [226, 178, 64];
 const WOOD_TONE: Rgb = [186, 128, 78];
+// ——— V7 : papier, mosaïque, vitrail, phénix ———
+
+// Papier : fibres claires et sombres, marbrure douce du papier fait main.
+const PAPER: TexSpec = {
+  key: 'paper', w: 256, h: 128,
+  paint: (x, w, h) => {
+    const oct = octavesOf(8, 4, 3, 131);
+    imageFrom(x, w, h, (px, py, d, i) => {
+      const v = (fbm(oct, px / w, py / h) - 0.5) * 2;
+      if (v > 0) {
+        d[i] = d[i + 1] = d[i + 2] = 255;
+        d[i + 3] = Math.round(v * 110);
+      } else {
+        d[i] = 96; d[i + 1] = 84; d[i + 2] = 72;
+        d[i + 3] = Math.round(-v * 70);
+      }
+    });
+    const r = prng(137);
+    x.lineCap = 'round';
+    for (let k = 0; k < 240; k++) {
+      const fx = r() * w;
+      const fy = r() * h;
+      const len = 3 + r() * 9;
+      const a = r() * Math.PI;
+      const bend = (r() - 0.5) * 2;
+      const light = r() < 0.6;
+      const width = 0.5 + r() * 0.6;
+      x.strokeStyle = light ? 'rgba(255,255,255,0.85)' : 'rgba(110,90,70,0.42)';
+      x.lineWidth = width;
+      wrapped(w, h, fx, fy, len, (cx, cy) => {
+        x.beginPath();
+        x.moveTo(cx, cy);
+        x.quadraticCurveTo(cx + Math.cos(a) * len * 0.5 + bend, cy + Math.sin(a) * len * 0.5, cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+        x.stroke();
+      });
+    }
+  },
+};
+
+// Mosaïque : tesselles posées à la main (légers décalages), joints sombres, glaçure.
+const TILES: TexSpec = {
+  key: 'tiles', w: 256, h: 128,
+  paint: (x, w, h) => {
+    const r = prng(211);
+    const cols = 22;
+    const rows = 11;
+    const cw = w / cols;
+    const ch = h / rows;
+    x.fillStyle = 'rgba(40,36,48,0.6)';
+    x.fillRect(0, 0, w, h);
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        const jx = (r() - 0.5) * 1.2;
+        const jy = (r() - 0.5) * 1.2;
+        const v = r();
+        const tx = i * cw + 1.1 + jx;
+        const ty = j * ch + 1.1 + jy;
+        const tw = cw - 2.2;
+        const th = ch - 2.2;
+        x.clearRect(tx, ty, tw, th);
+        x.fillStyle = v < 0.55 ? `rgba(255,255,255,${(0.06 + v * 0.42).toFixed(3)})` : `rgba(0,0,0,${((v - 0.55) * 0.42).toFixed(3)})`;
+        x.fillRect(tx, ty, tw, th);
+        x.fillStyle = 'rgba(255,255,255,0.4)';
+        x.fillRect(tx + 1, ty + 1, tw * 0.45, 1.1);
+      }
+    }
+  },
+};
+
+// Vitrail : panneaux de verre de couleur (cellules de Voronoï) sertis de plomb.
+const JEWELS: readonly Rgb[] = [[205, 34, 64], [44, 86, 206], [24, 150, 92], [240, 170, 34], [150, 62, 196], [40, 172, 204], [236, 230, 196]];
+const LEADED: TexSpec = {
+  key: 'leaded', w: 256, h: 128,
+  paint: (x, w, h) => {
+    const r = prng(307);
+    const pts: { x: number; y: number; c: Rgb }[] = [];
+    for (let k = 0; k < 34; k++) pts.push({ x: r() * w, y: r() * h, c: JEWELS[Math.floor(r() * JEWELS.length)]! });
+    imageFrom(x, w, h, (px, py, d, i) => {
+      let f1 = Infinity;
+      let f2 = Infinity;
+      let best = pts[0]!;
+      for (const p of pts) {
+        // Distance périodique (texture sans couture).
+        let dx = Math.abs(px - p.x);
+        let dy = Math.abs(py - p.y);
+        if (dx > w / 2) dx = w - dx;
+        if (dy > h / 2) dy = h - dy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < f1) {
+          f2 = f1;
+          f1 = dist;
+          best = p;
+        } else if (dist < f2) f2 = dist;
+      }
+      if (f2 - f1 < 2.4) {
+        d[i] = 30; d[i + 1] = 26; d[i + 2] = 40; d[i + 3] = 240;
+      } else {
+        // Verre un peu plus clair au centre du panneau (lumière qui le traverse).
+        const k = Math.min(1, f1 / 18);
+        d[i] = Math.round(best.c[0] + (255 - best.c[0]) * (1 - k) * 0.3);
+        d[i + 1] = Math.round(best.c[1] + (255 - best.c[1]) * (1 - k) * 0.3);
+        d[i + 2] = Math.round(best.c[2] + (255 - best.c[2]) * (1 - k) * 0.3);
+        d[i + 3] = 215;
+      }
+    });
+  },
+};
+
+// Phénix : plumes de feu en écailles (or, orange, cramoisi), braises, langues de flamme.
+const FEATHERS: TexSpec = {
+  key: 'feathers', w: 256, h: 256,
+  paint: (x, w, h) => {
+    // Plumes effilées qui se chevauchent, pointe dorée vers le haut, base cramoisie, barbes fines.
+    const tones: readonly Rgb[] = [[255, 214, 96], [255, 160, 52], [240, 92, 40], [196, 40, 54]];
+    const rows = 12;
+    const cols = 9;
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        const fx = (i + (j % 2) * 0.5) * (w / cols);
+        const fy = j * (h / rows);
+        const c = tones[(j * 3 + i) % tones.length]!;
+        const tilt = ((i * 7 + j * 3) % 5 - 2) * 0.06;
+        wrapped(w, h, fx, fy, 26, (cx, cy) => {
+          x.save();
+          x.translate(cx, cy);
+          x.rotate(tilt);
+          const g = x.createLinearGradient(0, -22, 0, 16);
+          g.addColorStop(0, css(lighten(c, 0.45), 0.95));
+          g.addColorStop(0.55, css(c, 0.85));
+          g.addColorStop(1, css(darken(c, 0.45), 0.2));
+          x.fillStyle = g;
+          x.beginPath();
+          x.moveTo(0, -22);
+          x.bezierCurveTo(8, -12, 8, 8, 0, 16);
+          x.bezierCurveTo(-8, 8, -8, -12, 0, -22);
+          x.fill();
+          x.strokeStyle = css(lighten(c, 0.6), 0.75);
+          x.lineWidth = 1;
+          x.beginPath();
+          x.moveTo(0, -20);
+          x.lineTo(0, 14);
+          for (let k = -16; k < 12; k += 4) {
+            x.moveTo(0, k);
+            x.lineTo(5, k - 4);
+            x.moveTo(0, k);
+            x.lineTo(-5, k - 4);
+          }
+          x.stroke();
+          x.restore();
+        });
+      }
+    }
+  },
+};
+
+const EMBERS: TexSpec = {
+  key: 'embers', w: 256, h: 256,
+  paint: (x, w, h) => {
+    const r = prng(401);
+    for (let k = 0; k < 80; k++) {
+      const ex = r() * w;
+      const ey = r() * h;
+      const rad = 0.8 + r() * 2.2;
+      const hot = r() < 0.4;
+      wrapped(w, h, ex, ey, rad * 3, (cx, cy) => {
+        x.fillStyle = hot ? 'rgba(255,230,150,0.9)' : 'rgba(255,140,50,0.75)';
+        x.beginPath();
+        x.arc(cx, cy, rad, 0, TAU);
+        x.fill();
+        x.fillStyle = 'rgba(255,120,40,0.18)';
+        x.beginPath();
+        x.arc(cx, cy, rad * 3, 0, TAU);
+        x.fill();
+      });
+    }
+  },
+};
+
+const FLAMES: TexSpec = {
+  key: 'flames', w: 256, h: 128,
+  paint: (x, w, h) => {
+    const oct = octavesOf(6, 2, 4, 503);
+    imageFrom(x, w, h, (px, py, d, i) => {
+      const u = px / w;
+      const v = py / h;
+      const n = fbm(oct, u, v);
+      // Langues verticales : bandes ondulées, plus vives vers le bas de la texture.
+      const band = Math.abs(Math.sin((u * 6 + n * 1.6) * Math.PI));
+      const k = (1 - smoothstep(0.0, 0.35, band)) * (0.35 + 0.65 * v);
+      d[i] = 255;
+      d[i + 1] = Math.round(120 + 110 * k);
+      d[i + 2] = Math.round(40 + 60 * k * k);
+      d[i + 3] = Math.round(Math.min(1, k) * 170);
+    });
+  },
+};
+
 const PCB: Rgb = [22, 70, 58];
 const SMOKE: Rgb = [24, 20, 40];
 const NIGHT: Rgb = [14, 22, 52];
+const EMBER_DARK: Rgb = [74, 18, 26];
 const DEEP: Rgb = [6, 44, 78];
 const HOLO: readonly Rgb[] = [[255, 128, 206], [255, 214, 120], [130, 240, 170], [120, 196, 255], [196, 140, 255]];
 const NEON_TUBES: readonly Rgb[] = [[60, 240, 255], [255, 70, 200], [180, 255, 80], [255, 190, 60]];
@@ -732,7 +930,8 @@ const NEON_TUBES: readonly Rgb[] = [[60, 240, 255], [255, 70, 200], [180, 255, 8
 export type MaterialSkin =
   | 'gomme' | 'marbre' | 'bonbon' | 'verre' | 'strie' | 'ceramique'
   | 'graphite' | 'nacre' | 'holographique' | 'pixel' | 'galaxie' | 'lave' | 'or' | 'cristal'
-  | 'bois' | 'circuit' | 'neon' | 'aurore' | 'abysse';
+  | 'bois' | 'circuit' | 'neon' | 'aurore' | 'abysse'
+  | 'papier' | 'mosaique' | 'vitrail' | 'phenix';
 
 /** Teinte moyenne de la face (contour, lisibilité). */
 export function faceTone(color: Rgb, skin: MaterialSkin, sky: Rgb): Rgb {
@@ -753,6 +952,10 @@ export function faceTone(color: Rgb, skin: MaterialSkin, sky: Rgb): Rgb {
     case 'neon': return mix(color, SMOKE, 0.85);
     case 'aurore': return mix(color, NIGHT, 0.85);
     case 'abysse': return mix(color, DEEP, 0.92);
+    case 'papier': return mix(lighten(color, 0.3), [250, 244, 230], 0.25);
+    case 'mosaique': return color;
+    case 'vitrail': return mix(color, [120, 90, 140], 0.35);
+    case 'phenix': return mix(color, EMBER_DARK, 0.86);
     default: return color;
   }
 }
@@ -776,6 +979,9 @@ export function faceGradient(ctx: CanvasRenderingContext2D, color: Rgb, skin: Ma
     case 'neon': { const c = mix(color, SMOKE, 0.85); stops([0, lighten(c, 0.08)], [1, darken(c, 0.3)]); break; }
     case 'aurore': { const c = mix(color, NIGHT, 0.86); stops([0, darken(c, 0.25)], [1, lighten(c, 0.06)]); break; }
     case 'abysse': { const c = mix(color, DEEP, 0.92); stops([0, mix(c, [40, 150, 200], 0.55)], [0.5, c], [1, darken(c, 0.55)]); break; }
+    case 'papier': { const c = mix(lighten(color, 0.3), [250, 244, 230], 0.25); stops([0, lighten(c, 0.2)], [0.6, c], [1, darken(c, 0.1)]); break; }
+    case 'vitrail': { const c = mix(color, [120, 90, 140], 0.35); stops([0, lighten(c, 0.2)], [1, darken(c, 0.25)]); break; }
+    case 'phenix': { const c = mix(color, EMBER_DARK, 0.86); stops([0, mix(c, [255, 140, 60], 0.25)], [0.55, c], [1, darken(c, 0.45)]); break; }
     default: stops([0, lighten(color, 0.14)], [0.55, color], [1, darken(color, 0.16)]);
   }
   return g;
@@ -1334,6 +1540,109 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
     }
     innerDepth(ctx, w, 0.8);
   },
+  papier: (ctx, w, color, env, real) => {
+    // Papier fait main : fibres, pli en diagonale (une face un peu plus sombre), bord déchiré.
+    if (real) fillTex(ctx, w, PAPER, objX(env, env.floor), objY(env.floor), 1);
+    const fx = w * (0.25 + vary(env.floor, 11) * 0.5);
+    ctx.fillStyle = css(darken(mix(lighten(color, 0.3), [250, 244, 230], 0.25), 0.16), 0.45);
+    ctx.beginPath();
+    ctx.moveTo(fx - 6, 0);
+    ctx.lineTo(w, 0);
+    ctx.lineTo(w, H);
+    ctx.lineTo(fx + 6, H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(fx - 6, 0);
+    ctx.lineTo(fx + 6, H);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath();
+    ctx.moveTo(0, 6);
+    for (let x = 0; x <= w; x += 4) ctx.lineTo(x, 8 + vary(env.floor * 31 + Math.floor(x / 4), 5) * 2.4);
+    ctx.lineTo(w, 6);
+    ctx.closePath();
+    ctx.fill();
+    sideShade(ctx, w, 0.7);
+  },
+  mosaique: (ctx, w, color, env, real) => {
+    // Mosaïque : tesselles et joints, émail plus profond en bas ; le reflet glisse (calque vivant).
+    if (real) fillTex(ctx, w, TILES, objX(env, env.floor), objY(env.floor), 1);
+    else {
+      ctx.strokeStyle = css(darken(color, 0.5), 0.6);
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      for (let x = 6; x < w; x += 6) {
+        ctx.moveTo(x, 6);
+        ctx.lineTo(x, H);
+      }
+      for (let y = 12; y < H; y += 6) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+    }
+    const pool = ctx.createLinearGradient(0, H * 0.5, 0, H);
+    pool.addColorStop(0, css(darken(color, 0.2), 0));
+    pool.addColorStop(1, css(darken(color, 0.35), 0.4));
+    ctx.fillStyle = pool;
+    ctx.fillRect(0, 0, w, H);
+    sideShade(ctx, w, 0.9);
+  },
+  vitrail: (ctx, w, color, env, real) => {
+    // Vitrail : verres de couleur sertis de plomb ; la lumière du jour les traverse et glisse.
+    if (!real || !fillTex(ctx, w, LEADED, objX(env, env.floor), objY(env.floor), 0.92)) {
+      const panes = Math.max(1, Math.round(w / 18));
+      for (let k = 0; k < panes; k++) {
+        ctx.fillStyle = css(JEWELS[(k + env.floor) % JEWELS.length]!, 0.75);
+        ctx.fillRect((k * w) / panes + 1, 7, w / panes - 2, H - 9);
+      }
+    }
+    const span = 520;
+    const pos = env.motion ? ((((env.t * 45 + env.wy * 0.6) % span) + span) % span) - 80 : 150;
+    const lx = pos - env.wx;
+    if (lx > -70 && lx < w + 70) {
+      const g = ctx.createLinearGradient(lx - 46, 0, lx + 46, 0);
+      g.addColorStop(0, 'rgba(255,240,200,0)');
+      g.addColorStop(0.5, `rgba(255,240,200,${env.full ? 0.5 : 0.35})`);
+      g.addColorStop(1, 'rgba(255,240,200,0)');
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, H);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    if (env.full) {
+      // Deux panneaux qui s'illuminent doucement tour à tour (jamais de clignotement).
+      for (let k = 0; k < Math.min(2, Math.floor(w / 40)); k++) {
+        const glow = env.motion ? 0.5 + 0.5 * Math.sin(env.t * 0.9 + env.floor * 1.7 + k * 2.4) : 0.5;
+        glint(ctx, vary(env.floor, 700 + k) * w, 10 + vary(env.floor, 710 + k) * (H - 14), 4, glow * 0.8, [255, 245, 220]);
+      }
+    }
+    ctx.fillStyle = 'rgba(30,26,40,0.85)';
+    ctx.fillRect(0, 7.2, w, 1.6);
+    ctx.fillRect(0, H - 4, w, 1.6);
+    sideShade(ctx, w, 0.6);
+    void color;
+  },
+  phenix: (ctx, w, _color, env, real) => {
+    // Phénix : un même plumage de feu traverse toute la tour, en profondeur. Les braises au fond
+    // montent lentement, les plumes ondulent plus vite, les flammes du premier plan encore plus.
+    const drift = env.motion ? env.t : 0;
+    if (real && fillTex(ctx, w, EMBERS, env.wx * 0.6, env.wy * 0.6 + env.cam * 0.45 + drift * 14, 0.85, 'lighter')) {
+      fillTex(ctx, w, FEATHERS, env.wx * 0.85 + Math.sin(drift * 0.5) * 6, env.wy * 0.8 + env.cam * 0.3 + drift * 10, 0.8, 'source-over');
+      if (env.full) fillTex(ctx, w, FLAMES, env.wx + Math.sin(drift * 0.8) * 4, env.wy + env.cam * 0.15 + drift * 26, 0.55, 'lighter');
+    } else {
+      const g = ctx.createLinearGradient(0, H, 0, 4);
+      g.addColorStop(0, 'rgba(255,170,60,0.6)');
+      g.addColorStop(1, 'rgba(255,90,40,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, H);
+    }
+    innerDepth(ctx, w, 0.7);
+    if (env.full) sheen(ctx, w, env, 0.18, [255, 220, 150], 20);
+  },
 };
 
 /**
@@ -1345,6 +1654,7 @@ const LIVE: Partial<Record<MaterialSkin, (ctx: CanvasRenderingContext2D, w: numb
   ceramique: (ctx, w, env) => sheen(ctx, w, env, 0.5),
   verre: (ctx, w, env) => sheen(ctx, w, env, 0.55, [235, 250, 255]),
   nacre: (ctx, w, env) => sheen(ctx, w, env, 0.6, [255, 245, 255], 20),
+  mosaique: (ctx, w, env) => sheen(ctx, w, env, 0.5, [255, 250, 235], 14),
   pixel: (ctx, w, env) => {
     const span = 460;
     const pos = env.motion ? (((env.t * 60 - env.floor * 10) % span) + span) % span - 50 : 120;
@@ -1360,7 +1670,7 @@ const LIVE: Partial<Record<MaterialSkin, (ctx: CanvasRenderingContext2D, w: numb
 };
 
 /** Matières dont la base ne dépend ni du temps ni de la caméra : le renderer peut la mettre en cache. */
-export const CACHEABLE = new Set<MaterialSkin>(['gomme', 'strie', 'bonbon', 'graphite', 'bois', 'marbre', 'ceramique', 'verre', 'nacre', 'pixel']);
+export const CACHEABLE = new Set<MaterialSkin>(['gomme', 'strie', 'bonbon', 'graphite', 'bois', 'papier', 'marbre', 'ceramique', 'verre', 'nacre', 'pixel', 'mosaique']);
 
 /** Motif propre à la matière, dessiné dans la brique déjà découpée (sous la face supérieure). */
 export function paintMaterial(ctx: CanvasRenderingContext2D, w: number, color: Rgb, skin: MaterialSkin, env: MaterialEnv): void {
@@ -1387,6 +1697,12 @@ export const SKIN_FX: Partial<Record<MaterialSkin, SkinFx>> = {
   lave: { place: { kind: 'ember', colors: [[255, 150, 50], [255, 90, 30]], count: 7, speed: 120 } },
   or: { place: { kind: 'glint', colors: [[255, 230, 140], [255, 250, 220]], count: 5, speed: 90 } },
   neon: { place: { kind: 'spark', colors: [...NEON_TUBES], count: 7, speed: 160 } },
+  vitrail: { place: { kind: 'glint', colors: [...JEWELS.slice(0, 6)], count: 7, speed: 110 } },
+  phenix: {
+    place: { kind: 'ember', colors: [[255, 200, 90], [255, 120, 40]], count: 9, speed: 150 },
+    perfect: { kind: 'spark', colors: [[255, 220, 120], [255, 150, 60], [255, 255, 255]], count: 12, ring: [255, 190, 90] },
+    aura: [255, 140, 60],
+  },
   galaxie: {
     place: { kind: 'star', colors: [[200, 180, 255], [140, 200, 255], [255, 255, 255]], count: 8, speed: 120 },
     perfect: { kind: 'star', colors: [[220, 160, 255], [120, 220, 255], [255, 200, 240]], count: 12, ring: [190, 150, 255] },

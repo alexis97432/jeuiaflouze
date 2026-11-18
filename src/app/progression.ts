@@ -10,7 +10,7 @@
  */
 
 import { ALL_SKIN_IDS, SKIN_IDS, THEME_IDS, type AnyAppearance, type AnySkinId, type SkinId, type ThemeId } from '../game';
-import { INVENTORY_THEMES, LOCAL_SKINS } from './catalog';
+import { INVENTORY_THEMES, LOCAL_SKINS, MUSIC_CATALOG, musicInventoryId } from './catalog';
 
 // Identifiants et types d'apparence : API publique du moteur (F4, contrat C6 ; F8b pour les
 // huit matières V3), jamais redéclarés.
@@ -93,6 +93,14 @@ const REWARD_LABELS: Record<AnySkinId | ThemeId | BadgeId, string> = {
   neon: 'Néon',
   aurore: 'Aurore',
   abysse: 'Abysse',
+  papier: 'Papier',
+  mosaique: 'Mosaïque',
+  vitrail: 'Vitrail',
+  phenix: 'Phénix',
+  desert: 'Désert',
+  montagne: 'Montagne',
+  foire: 'Fête foraine',
+  nuees: 'Royaume des nuées',
   gomme: 'Gomme',
   marbre: 'Marbré',
   bonbon: 'Bonbon',
@@ -160,6 +168,26 @@ export function unlockedSkins(state: ProgressState): AnySkinId[] {
     if ((LOCAL_SKINS as readonly string[]).includes(item)) won.add(item);
   }
   return ALL_SKIN_IDS.filter((id) => id === DEFAULT_APPEARANCE.skin || won.has(id));
+}
+
+/**
+ * V7 : musique possédée. Offerte (« Premier étage »), venue avec un univers débloqué, ou achetée
+ * en pièces (inventaire). Une musique achetée reste possédée quand elle quitte la sélection du jour.
+ */
+export function ownsMusic(state: ProgressState, id: string): boolean {
+  const item = MUSIC_CATALOG.find((m) => m.id === id);
+  if (!item) return false;
+  switch (item.source.kind) {
+    case 'default': return true;
+    case 'universe': return unlockedThemes(state).includes(item.source.theme);
+    case 'shop': return (state.inventory ?? []).includes(musicInventoryId(id));
+    default: return false;
+  }
+}
+
+/** Musiques possédées, dans l'ordre du catalogue. */
+export function ownedMusic(state: ProgressState): string[] {
+  return MUSIC_CATALOG.filter((m) => ownsMusic(state, m.id)).map((m) => m.id);
 }
 
 export function earnedBadges(state: ProgressState): BadgeId[] {

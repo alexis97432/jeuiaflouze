@@ -11,16 +11,21 @@ export {
   type AnyAppearance,
   type GameEvent,
   type GameHandle,
+  type GameIncident,
   type MountOptions,
   type RunConfig,
   type RunResult,
 } from './render/mount';
 export { THEME_IDS, DEFAULT_THEME, isThemeId, THEME_RARITY, type ThemeId } from './render/themes';
+/** V7 : sortie audio partagée par l'application (un seul contexte pour la musique et les effets). */
+export type { SharedAudio } from './render/audio';
 export { SKIN_IDS, DEFAULT_SKIN, isSkinId, type SkinId } from './render/blocks';
 /** V3 (F8b) : huit apparences de plus (boutique, passe). `ALL_SKIN_IDS` = V2 + V3. */
 export { SKIN_IDS_V3, ALL_SKIN_IDS, isAnySkinId, type SkinIdV3, type AnySkinId } from './render/blocks';
 /** V6 : cinq matières de plus et la rareté de chaque cosmétique (réalisation, jamais un avantage). */
 export { SKIN_IDS_V6, SKIN_RARITY, type SkinIdV6 } from './render/blocks';
+/** V7 : une matière de plus par rareté. */
+export { SKIN_IDS_V7, type SkinIdV7 } from './render/blocks';
 export { RARITIES, RARITY_INFO, rarityRank, type Rarity, type RarityInfo } from './render/rarity';
 export { renderAppearancePreview, type PreviewOptions } from './render/preview';
 export {

@@ -61,7 +61,7 @@ describe('passe de saison', () => {
       version: 2, xp: 120, coins: 30, inventory: ['graphite'], grants: ['v2-objectives-backfill'],
       season: { id: 's1', stars: 70, claimed: ['free:1', 'free:1', 'pirate', 'premium:2'] },
     });
-    expect(migrated).toMatchObject({ version: 4, xp: 120, coins: 30, inventory: ['graphite'], season: { id: 's1', stars: 70, claimed: ['free:1', 'premium:3'] } });
+    expect(migrated).toMatchObject({ version: 5, xp: 120, coins: 30, inventory: ['graphite'], season: { id: 's1', stars: 70, claimed: ['free:1', 'premium:3'] } });
     expect(migrateProgress({ version: 3, season: { id: '<x>', stars: 5 } }).season).toBeUndefined();
     expect(nextTier(migrated, SEASON_1)?.tier).toBe(4);
   });

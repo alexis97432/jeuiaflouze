@@ -24,7 +24,7 @@ import {
 } from '../core';
 import { FixedStepDriver } from '../input/fixed-step';
 import { attachInput } from '../input/input';
-import { Sfx } from './audio';
+import { Sfx, type SharedAudio } from './audio';
 import { Renderer, type HudV2 } from './renderer';
 import { DEFAULT_SKIN, isDrawSkinId, isSkinId, type DrawSkinId, type SkinId } from './blocks';
 import { DEFAULT_THEME, getTheme, isThemeId, VOYAGE, type ThemeId } from './themes';
@@ -113,6 +113,32 @@ export type GameEvent =
   | { type: 'continue-offer'; tick: number }
   | { type: 'continue-start'; countdownTicks: number };
 
+/**
+ * V7 : incident technique signalé au shell (journal de diagnostic local). Jamais une règle :
+ * la partie continue, au besoin avec moins d'effets.
+ * - `effet` : une couche décorative a levé une exception ; elle est coupée pour la partie ;
+ * - `rendu` : le dessin principal a échoué ; mode secours (ciel, tour en aplats, HUD) ;
+ * - `evenement` : un traitement d'événement de partie a échoué (la simulation, elle, continue) ;
+ * - `son` : un effet sonore a échoué ;
+ * - `blocage` : une image a mis plus de `STALL_MS` à venir, onglet visible ;
+ * - `contexte` : contexte graphique perdu ou restauré par le navigateur.
+ */
+export type GameIncident = {
+  kind: 'effet' | 'rendu' | 'evenement' | 'son' | 'blocage' | 'contexte';
+  /** Couche ou sous-système concerné (`ondes`, `scene-ciel`, `matiere`…). */
+  layer: string;
+  message: string;
+  /** Pile d'appel abrégée, si disponible. */
+  stack?: string;
+  /** Durée du blocage (ms) ou autre mesure utile. */
+  ms?: number;
+};
+
+/** V7 : une image qui arrive plus de 1,5 s après la précédente, onglet visible, est un blocage. */
+export const STALL_MS = 1500;
+/** V7 : au plus trois blocages signalés par partie (pas d'inondation du journal). */
+export const MAX_STALL_REPORTS = 3;
+
 export type MountOptions = {
   canvas: HTMLCanvasElement;
   config: RunConfig;
@@ -140,6 +166,13 @@ export type MountOptions = {
    * le raté termine normalement (Tour du jour, défis, classées). Ignoré en v1.
    */
   allowContinue?: boolean;
+  /** V7 : incident technique (journal de diagnostic). Une erreur levée ici est ignorée. */
+  onIncident?(incident: GameIncident): void;
+  /**
+   * V7 : sortie audio partagée par l'application (un seul contexte pour la musique et les effets).
+   * Absente : le jeu crée son propre contexte au premier geste, comme avant.
+   */
+  audio?: SharedAudio | null;
 };
 
 /**
@@ -188,11 +221,12 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
   const appearance = resolveAnyAppearance(options.appearance ?? { theme: options.theme });
   const theme = options.voyage ? VOYAGE : getTheme(appearance.theme);
   const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme, isDrawSkinId(options.drawSkin) ? options.drawSkin : appearance.skin);
-  const sfx = new Sfx(options.sound ?? true, theme.audio, options.volume ?? 1);
+  const sfx = new Sfx(options.sound ?? true, theme.audio, options.volume ?? 1, options.audio ?? null);
   renderer.quality = options.effects === 'light' ? 'light' : 'full';
   // Qualité adaptative (V6) : résolution interne réduite dès qu'elle se déclenche.
   renderer.onAutoLight = () => measure();
-  renderer.onGag = (kind) => sfx.gag(kind);
+  renderer.onGag = (kind) => sound(() => sfx.gag(kind));
+  renderer.onFault = (layer, error) => incident('effet', layer, error);
 
   let destroyed = false;
   let pauseReason: 'none' | 'shell' | 'hidden' = 'none';
@@ -212,19 +246,53 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
       console.error('[game] onEvent a levé une erreur', error);
     }
   };
+  // V7 : incidents signalés une fois chacun (console et journal), jamais avalés en silence.
+  const reported = new Set<string>();
+  let stalls = 0;
+  const incident = (kind: GameIncident['kind'], layer: string, error?: unknown, ms?: number) => {
+    const key = `${kind}:${layer}`;
+    if (kind !== 'blocage' && kind !== 'contexte' && reported.has(key)) return;
+    reported.add(key);
+    const err = error instanceof Error ? error : null;
+    const message = err ? `${err.name}: ${err.message}` : error !== undefined ? String(error) : '';
+    const stack = err?.stack ? err.stack.split('\n').slice(1, 5).map((l) => l.trim()).join(' < ').slice(0, 400) : undefined;
+    if (kind === 'blocage' || kind === 'contexte') console.warn(`[jeu] ${kind} ${layer}`, ms ?? '');
+    else console.error(`[jeu] ${kind} ${layer} : couche coupée pour cette partie`, error);
+    if (!options.onIncident) return;
+    try {
+      options.onIncident({ kind, layer, message, ...(stack ? { stack } : {}), ...(ms !== undefined ? { ms: Math.round(ms) } : {}) });
+    } catch {
+      // Le journal est facultatif : son échec ne touche pas la partie.
+    }
+  };
+  /** Effet sonore protégé : une erreur audio est signalée, jamais propagée à la boucle. */
+  const sound = (play: () => void) => {
+    try {
+      play();
+    } catch (error) {
+      incident('son', 'effets-sonores', error);
+    }
+  };
   const nextBonus = (): AnyBoostId =>
     sim instanceof SimulationV3 ? sim.nextBoost : sim instanceof SimulationV2 ? sim.nextBonus : 'ralenti';
   const onEvent = (e: StepEvent | StepEventV2 | StepEventV3) => {
-    if (renderer.onEvent(e)) sfx.milestone();
+    let milestone: string | null = null;
+    try {
+      milestone = renderer.onEvent(e);
+    } catch (error) {
+      // Effets visuels de l'événement en défaut : la simulation et le shell continuent.
+      incident('evenement', `effets-${e.kind}`, error);
+    }
+    if (milestone) sound(() => sfx.milestone());
     if (e.kind === 'resumed') {
-      if ('cause' in e && e.cause === 'save') sfx.rearm();
-      else sfx.countdown(0);
+      if ('cause' in e && e.cause === 'save') sound(() => sfx.rearm());
+      else sound(() => sfx.countdown(0));
       return;
     }
     if (e.kind === 'saved') {
       // Bouclier : la tour reste ; les appuis sont ignorés par la simulation jusqu'à la reprise.
       notify({ type: 'saved', tick: e.tick, floor: e.floor, recoverTicks: SAVE_TICKS });
-      sfx.shieldSave();
+      sound(() => sfx.shieldSave());
       if (e.fever) notify({ type: 'fever-end' });
       return;
     }
@@ -239,26 +307,26 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
         height: isV2 ? (e as { height: number }).height : e.floor,
         ...(v3 ? { snapped: v3.snapped, fever: v3.fever } : {}),
       });
-      if (v3?.snapped) sfx.snap();
-      if (e.perfect) sfx.perfect(e.perfectStreak);
-      else sfx.place(e.placed.width / START_WIDTH);
+      if (v3?.snapped) sound(() => sfx.snap());
+      if (e.perfect) sound(() => sfx.perfect(e.perfectStreak));
+      else sound(() => sfx.place(e.placed.width / START_WIDTH));
       const ended = v3 ? v3.boostEnded : v2?.bonusEnded ?? null;
       const started = v3 ? v3.boostStarted : v2?.bonusStarted ?? null;
       if (ended) {
         notify({ type: 'bonus-end', bonus: ended });
-        sfx.bonusEnd();
+        sound(() => sfx.bonusEnd());
       }
       if (started) {
         notify({ type: 'bonus-start', bonus: started, floors: v3 ? BOOST_FLOORS[started as BoostId] : BONUS_FLOORS });
-        sfx.bonusStart(started);
+        sound(() => sfx.bonusStart(started));
       }
       if (v3?.feverEnded) {
         notify({ type: 'fever-end' });
-        sfx.feverEnd();
+        sound(() => sfx.feverEnd());
       }
       if (v3?.feverStarted) {
         notify({ type: 'fever-start' });
-        sfx.feverStart();
+        sound(() => sfx.feverStart());
       }
       // Jauge changée : toute pose hors boost, et le retour à zéro en fin de boost.
       if (v3 ? v3.boost === null || v3.boostEnded : v2 ? v2.bonus === null || v2.bonusEnded : false) {
@@ -268,7 +336,7 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
     }
     notify({ type: 'miss', tick: e.tick, floor: e.floor });
     if ('fever' in e && e.fever) notify({ type: 'fever-end' });
-    sfx.miss();
+    sound(() => sfx.miss());
     input.setEnabled(false); // rend l'espace au DOM (écran de résultat ou offre de reprise)
     if ('canContinue' in e && e.canContinue && resumable) {
       // Attente de décision : seulement si l'application l'a autorisée pour cette partie.
@@ -279,7 +347,7 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
   const driver = new FixedStepDriver<StepEvent | StepEventV2 | StepEventV3>(sim, onEvent);
 
   const input = attachInput(canvas, (timeStamp) => {
-    sfx.unlock(); // geste utilisateur : seul endroit où l'audio démarre
+    sound(() => sfx.unlock()); // geste utilisateur : seul endroit où l'audio démarre ; jamais avant la pose
     if (pauseReason === 'hidden') {
       // Toucher après retour d'onglet = reprise, jamais une pose.
       resumeInternal();
@@ -345,17 +413,47 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
 
   const ticking = () => sim.status === 'running' || sim.status === 'countdown';
 
+  /**
+   * V7 : dessin protégé. Une exception du dessin principal est signalée, puis le rendu passe en
+   * mode secours : la boucle continue et la partie reste jouable (avant la V7, l'exception
+   * sortait de la boucle, qui ne se reprogrammait plus : partie figée).
+   */
+  const drawSafely = (v: ReturnType<typeof view>, now: number) => {
+    try {
+      renderer.draw(v, now);
+    } catch (error) {
+      incident('rendu', renderer.safeMode ? 'secours' : 'image', error);
+      if (!renderer.safeMode) {
+        renderer.safeMode = true;
+        try {
+          renderer.draw(v, now);
+        } catch (again) {
+          incident('rendu', 'secours', again);
+        }
+      }
+    }
+  };
+
   const frame = (now: number) => {
     raf = null;
     if (destroyed) return;
     frames++;
-    driver.advance(now);
+    if (lastFrame !== null && now - lastFrame > STALL_MS && pauseReason === 'none' && doc.visibilityState === 'visible' && stalls < MAX_STALL_REPORTS) {
+      stalls++;
+      incident('blocage', `image-${stalls}`, undefined, now - lastFrame);
+    }
+    try {
+      driver.advance(now);
+    } catch (error) {
+      incident('evenement', 'boucle', error);
+    }
     const v = view();
     if (v.v2 && v.v2.countdown !== lastCountdown) {
-      if (v.v2.countdown > 0) sfx.countdown(v.v2.countdown);
-      lastCountdown = v.v2.countdown;
+      const n = v.v2.countdown;
+      if (n > 0) sound(() => sfx.countdown(n));
+      lastCountdown = n;
     }
-    renderer.draw(v, now);
+    drawSafely(v, now);
     const dt = lastFrame === null ? 0 : Math.min(now - lastFrame, 100);
     lastFrame = now;
     if (sim.status === 'ended' && !endReported) {
@@ -388,7 +486,7 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
     driver.pause();
     stopLoop();
     lastFrame = null;
-    renderer.draw(view(), win.performance.now());
+    drawSafely(view(), win.performance.now());
   };
   const resumeInternal = () => {
     if (destroyed || pauseReason === 'none') return;
@@ -401,20 +499,35 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
 
   const onVisibility = () => {
     // Arrière-plan : le son est suspendu (aucun effet sonore qui traîne), puis repris au retour.
-    if (doc.visibilityState === 'hidden') sfx.suspend();
-    else sfx.resume();
-    if (doc.visibilityState === 'hidden') pauseInternal('hidden');
-    else if (pauseReason === 'hidden') {
+    if (doc.visibilityState === 'hidden') sound(() => sfx.suspend());
+    else sound(() => sfx.resume());
+    if (doc.visibilityState === 'hidden') {
+      pauseInternal('hidden');
+      // V7 : caches d'images libérés en arrière-plan (moins de mémoire, donc moins de risque que le
+      // système ferme l'onglet) ; ils se reconstruisent au retour.
+      renderer.purgeCaches();
+    } else if (pauseReason === 'hidden') {
       // Partie finie ou en attente de décision : rien à protéger (aucun tick ne passe),
       // on reprend l'animation pour que onEnd arrive et que l'offre reste lisible.
       if (sim.status === 'ended' || sim.status === 'fallen') resumeInternal();
-      else renderer.draw(view(), win.performance.now());
+      else drawSafely(view(), win.performance.now());
     }
   };
   const onResize = () => {
     measure();
-    if (raf === null && !destroyed) renderer.draw(view(), win.performance.now());
+    if (raf === null && !destroyed) drawSafely(view(), win.performance.now());
   };
+  // V7 : perte du contexte graphique (Chrome, mémoire graphique saturée ou processus GPU relancé) :
+  // signalée ; à la restauration, les images en cache (peut-être vides) sont jetées et l'image redessinée.
+  // Pas de preventDefault : il empêcherait la restauration.
+  const onContextLost = () => incident('contexte', 'perdu');
+  const onContextRestored = () => {
+    incident('contexte', 'restaure');
+    renderer.purgeCaches();
+    if (raf === null && !destroyed) drawSafely(view(), win.performance.now());
+  };
+  canvas.addEventListener('contextlost', onContextLost);
+  canvas.addEventListener('contextrestored', onContextRestored);
   doc.addEventListener('visibilitychange', onVisibility);
   win.addEventListener('resize', onResize);
   const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(onResize) : null;
@@ -427,7 +540,7 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
   measure();
   if (doc.visibilityState === 'hidden') {
     pauseReason = 'hidden';
-    renderer.draw(view(), win.performance.now());
+    drawSafely(view(), win.performance.now());
   } else {
     driver.resume(win.performance.now());
     schedule();
@@ -446,7 +559,9 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
       win.removeEventListener('resize', onResize);
       observer?.disconnect();
       media?.removeEventListener('change', onMotion);
-      sfx.close();
+      canvas.removeEventListener('contextlost', onContextLost);
+      canvas.removeEventListener('contextrestored', onContextRestored);
+      sound(() => sfx.close());
       renderer.dispose();
     },
     continueRun() {
@@ -464,9 +579,9 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
       }
       return true;
     },
-    setAudio(sound: boolean, volume: number) {
+    setAudio(on: boolean, volume: number) {
       if (destroyed) return;
-      sfx.setEnabled(sound);
+      sfx.setEnabled(on);
       sfx.setVolume(volume);
     },
     declineContinue() {

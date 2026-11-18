@@ -12,6 +12,9 @@ import { renderResultCard } from './game';
 import { createDemoAds, noAds } from './platform/ads/rewarded';
 import { shareLink } from './platform/share';
 import { createLocalStore, createMetaStore, getBrowserStorage } from './platform/storage';
+import { createAudioHub, unlockOnGesture } from './platform/audio-hub';
+import { createMusicPlayer } from './app/music/player';
+import { attachDiagnostics, createDiagnostics, deviceInfo } from './app/diagnostics';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('Élément #app introuvable');
@@ -27,6 +30,17 @@ const tracker = createTracker({
 tracker.track('session_start', {});
 
 const browserStorage = getBrowserStorage();
+
+// V7 : journal de diagnostic local (erreurs, blocages, rechargements pendant une partie). Le
+// rechargement inattendu d'une partie précédente est noté avant toute autre chose.
+const diagnostics = createDiagnostics(browserStorage);
+diagnostics.checkPreviousSession();
+attachDiagnostics(window, diagnostics);
+
+// V7 : un seul contexte audio (musique, effets, interface), créé au premier geste du joueur.
+const audio = createAudioHub(window);
+unlockOnGesture(window, audio);
+const music = createMusicPlayer({ hub: audio });
 
 createShell({
   root,
@@ -50,6 +64,10 @@ createShell({
   // Reprise : aucune régie réelle configurée (docs/SERVICES.md). Vidéo de démo libellée « Mode démo »
   // seulement en dev ou build de test marqué ; en production, aucune offre de vidéo.
   // Vies : celles achetées en pièces dans la boutique (progression locale, src/app/lives.ts).
+  audio,
+  music,
+  diagnostics,
+  deviceInfo: () => deviceInfo(window, __BUILD_ID__),
   revive: {
     // Condition écrite en constantes de build (même règle que demoAdsAllowed) : Vite retire
     // entièrement la démo du build de production.

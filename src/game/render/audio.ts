@@ -13,6 +13,12 @@ export type BoostSound = 'ralenti' | 'double' | 'aimant' | 'bouclier';
 /** Absurdités décoratives de la V5. */
 export type GagSound = 'duck' | 'ufo' | 'pigeon';
 
+/**
+ * V7 : sortie audio prêtée par l'application (un seul contexte pour tout le jeu). Le moteur y
+ * branche ses effets et ne ferme jamais ce contexte ; sans elle, il crée le sien (démo, tests).
+ */
+export type SharedAudio = { readonly context: AudioContext; readonly destination: AudioNode };
+
 /** Son par défaut (pentatonique majeure, triangle) si aucun univers n'est fourni. */
 const DEFAULT_AUDIO: ThemeAudio = { wave: 'triangle', root: 523.25, scale: [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24] };
 
@@ -27,8 +33,18 @@ export class Sfx {
   /** Gain maximal (volume 1). Le volume du joueur (0 à 1) le module. */
   static readonly BASE_GAIN = 0.22;
 
-  constructor(private enabled: boolean, private audio: ThemeAudio = DEFAULT_AUDIO, private volume = 1) {
+  constructor(
+    private enabled: boolean,
+    private audio: ThemeAudio = DEFAULT_AUDIO,
+    private volume = 1,
+    private readonly shared: SharedAudio | null = null,
+  ) {
     this.volume = Sfx.clampVolume(volume);
+  }
+
+  /** Contexte partagé avec l'application (jamais fermé par le jeu). */
+  get usesSharedContext(): boolean {
+    return this.shared !== null;
   }
 
   private static clampVolume(v: number): number {
@@ -61,6 +77,13 @@ export class Sfx {
 
   unlock(): void {
     if (!this.enabled || this.closed) return;
+    if (!this.ctx && this.shared) {
+      // V7 : effets branchés sur le contexte de l'application ; rien n'est créé par partie.
+      this.ctx = this.shared.context;
+      this.master = this.ctx.createGain();
+      this.master.gain.value = this.gainValue();
+      this.master.connect(this.shared.destination);
+    }
     if (!this.ctx) {
       const w = globalThis as unknown as { AudioContext?: AudioContextCtor; webkitAudioContext?: AudioContextCtor };
       const Ctor = w.AudioContext ?? w.webkitAudioContext;
@@ -75,7 +98,14 @@ export class Sfx {
       this.master.gain.value = this.gainValue();
       this.master.connect(this.ctx.destination);
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});
+    if (this.ctx.state === 'suspended') {
+      try {
+        const p = this.ctx.resume();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch {
+        // Ancien navigateur sans promesse : l'état reste celui du contexte.
+      }
+    }
   }
 
   place(widthRatio: number): void {
@@ -193,10 +223,12 @@ export class Sfx {
 
   /** Arrière-plan : le contexte audio est suspendu, puis repris au retour. */
   suspend(): void {
+    if (this.shared) return; // V7 : l'application suspend son contexte elle-même en arrière-plan
     if (this.ctx && this.ctx.state === 'running') void this.ctx.suspend().catch(() => {});
   }
 
   resume(): void {
+    if (this.shared) return;
     if (this.ctx && this.ctx.state === 'suspended' && this.enabled) void this.ctx.resume().catch(() => {});
   }
 
@@ -214,9 +246,19 @@ export class Sfx {
   close(): void {
     this.closed = true;
     const ctx = this.ctx;
+    const master = this.master;
     this.ctx = null;
     this.master = null;
     this.noiseBuffer = null;
+    if (this.shared) {
+      // Contexte de l'application : on débranche seulement nos effets (aucun son ne traîne).
+      try {
+        master?.disconnect();
+      } catch {
+        // Déjà débranché.
+      }
+      return;
+    }
     if (ctx && ctx.state !== 'closed') void ctx.close().catch(() => {});
   }
 

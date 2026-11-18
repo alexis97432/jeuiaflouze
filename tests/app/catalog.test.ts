@@ -1,3 +1,4 @@
+import { getTrack } from '../../src/app/music/tracks';
 import { describe, expect, it } from 'vitest';
 import { RARITIES, SKIN_RARITY, THEME_RARITY } from '../../src/game';
 import { CATALOG, catalogCoverage, catalogItem, LOCAL_SKINS, LOCAL_THEMES, sourceLabel } from '../../src/app/catalog';
@@ -15,11 +16,16 @@ describe('V6 : catalogue et raretés', () => {
 
   it('la rareté du catalogue est celle du moteur ; toutes les raretés sont représentées', () => {
     for (const item of CATALOG) {
-      expect(item.rarity, item.id).toBe(item.kind === 'skin' ? SKIN_RARITY[item.id as keyof typeof SKIN_RARITY] : THEME_RARITY[item.id as keyof typeof THEME_RARITY]);
+      const expected = item.kind === 'skin' ? SKIN_RARITY[item.id as keyof typeof SKIN_RARITY]
+        : item.kind === 'theme' ? THEME_RARITY[item.id as keyof typeof THEME_RARITY]
+          : getTrack(item.id)?.rarity;
+      expect(item.rarity, item.id).toBe(expected);
     }
     for (const r of RARITIES) expect(CATALOG.some((i) => i.kind === 'skin' && i.rarity === r), r).toBe(true);
-    expect(CATALOG.filter((i) => i.kind === 'skin')).toHaveLength(19);
-    expect(CATALOG.filter((i) => i.kind === 'theme')).toHaveLength(5);
+    // V7 : 23 matières (4 nouvelles) et 9 univers (4 nouveaux), une nouveauté par rareté.
+    expect(CATALOG.filter((i) => i.kind === 'skin')).toHaveLength(23);
+    expect(CATALOG.filter((i) => i.kind === 'theme')).toHaveLength(9);
+    for (const r of RARITIES) expect(CATALOG.some((i) => i.kind === 'theme' && i.rarity === r), r).toBe(true);
   });
 
   it('provenances cohérentes : boutique = catalogue en pièces, passe = récompenses du passe', () => {

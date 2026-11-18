@@ -19,18 +19,21 @@ import {
   type ThemeId,
 } from '../game';
 import type { ObjectiveId } from './progression';
+import { TRACKS } from './music/tracks';
 
-export type CosmeticKind = 'skin' | 'theme';
+export type CosmeticKind = 'skin' | 'theme' | 'music';
 
 export type Source =
   | { kind: 'default' }
   | { kind: 'mission'; objective: ObjectiveId }
   | { kind: 'shop'; price: number }
-  | { kind: 'pass'; track: 'free' | 'premium'; tier: number };
+  | { kind: 'pass'; track: 'free' | 'premium'; tier: number }
+  /** V7 : musique d'un univers, possédée avec lui. */
+  | { kind: 'universe'; theme: ThemeId };
 
 export type CatalogItem = {
   readonly kind: CosmeticKind;
-  readonly id: AnySkinId | ThemeId;
+  readonly id: AnySkinId | ThemeId | string;
   readonly name: string;
   readonly rarity: Rarity;
   /** Une phrase : ce qu'on voit (révélation, collection). */
@@ -68,6 +71,11 @@ export const SKIN_CATALOG: readonly CatalogItem[] = [
   skin('cristal', 'Cristal', 'Facettes, lumière qui traverse et arêtes de prisme.', premium(19)),
   skin('aurore', 'Aurore', 'Rideaux d’aurore qui ondulent dans une nuit étoilée.', free(30)),
   skin('abysse', 'Abysse', 'L’océan profond, ses reflets et un poisson qui passe.', premium(30)),
+  // V7 : une matière de plus par rareté, vendues en pièces dans la sélection du jour.
+  skin('papier', 'Papier', 'Papier fait main : fibres, pli et bord déchiré.', shop(70)),
+  skin('mosaique', 'Mosaïque', 'Tesselles émaillées posées à la main ; le reflet glisse.', shop(140)),
+  skin('vitrail', 'Vitrail', 'Verres de couleur sertis de plomb, traversés par la lumière.', shop(260)),
+  skin('phenix', 'Phénix', 'Un plumage de feu traverse toute la tour, braises qui montent.', shop(520)),
 ];
 
 export const THEME_CATALOG: readonly CatalogItem[] = [
@@ -76,9 +84,46 @@ export const THEME_CATALOG: readonly CatalogItem[] = [
   theme('orbital', 'Orbital', 'Du pas de tir à la nébuleuse, en passant par l’orbite.', mission('floors-12')),
   theme('recif', 'Récif', 'Du fond marin à la surface, puis l’aurore sur la mer.', shop(320)),
   theme('cite', 'Cité néon', 'De la rue sous la pluie jusqu’à l’anneau orbital.', premium(24)),
+  // V7 : un univers de plus par rareté, vendus en pièces dans la sélection du jour.
+  theme('desert', 'Désert', 'Du campement dans les dunes à la Voie lactée, caravane et mirage.', shop(140)),
+  theme('montagne', 'Montagne', 'Des chalets du col aux sommets roses du soir, téléphérique et aigle.', shop(220)),
+  theme('foire', 'Fête foraine', 'Grande roue, manège et montagnes russes, jusqu’aux feux d’artifice.', shop(320)),
+  theme('nuees', 'Royaume des nuées', 'Îles suspendues et cascades, baleine céleste et citadelle dorée.', shop(560)),
 ];
 
-export const CATALOG: readonly CatalogItem[] = [...SKIN_CATALOG, ...THEME_CATALOG];
+/**
+ * V7 : musiques. Chaque univers a sa musique, possédée avec lui ; « Premier étage » est offerte à
+ * tous ; les autres s'achètent en pièces du jeu. Compositions originales (src/app/music/tracks.ts).
+ */
+const UNIVERSE_TRACK: Partial<Record<ThemeId, string>> = {
+  confiserie: 'sucre-glace', jardin: 'rosee', orbital: 'apesanteur', recif: 'lagon', cite: 'nocturne-neon',
+  desert: 'mirage', montagne: 'cimes', foire: 'manege', nuees: 'nuees',
+};
+const MUSIC_SOURCE: Record<string, Source> = {
+  'premier-etage': { kind: 'default' },
+  'gouter-lofi': shop(90),
+  'pixel-parade': shop(150),
+  'fanfare-de-poche': shop(150),
+  'funk-des-briques': shop(240),
+  'aurore-polaire': shop(420),
+};
+
+/** Musique d'un univers (mode « musique de l'univers »), ou undefined. */
+export const universeTrack = (theme: ThemeId): string | undefined => UNIVERSE_TRACK[theme];
+
+export const MUSIC_CATALOG: readonly CatalogItem[] = TRACKS.flatMap((t) => {
+  const theme = (Object.keys(UNIVERSE_TRACK) as ThemeId[]).find((k) => UNIVERSE_TRACK[k] === t.id);
+  const source: Source | undefined = theme ? { kind: 'universe', theme } : MUSIC_SOURCE[t.id];
+  return source ? [{ kind: 'music' as const, id: t.id, name: t.name, rarity: t.rarity, blurb: `${t.mood[0]!.toUpperCase()}${t.mood.slice(1)}.`, source }] : [];
+});
+
+/** Musique offerte à tous (au moins une musique gratuite par joueur). */
+export const DEFAULT_MUSIC = 'premier-etage';
+
+/** Identifiant d'inventaire d'une musique achetée (préfixe : pas de collision avec les matières). */
+export const musicInventoryId = (id: string): string => `musique-${id}`;
+
+export const CATALOG: readonly CatalogItem[] = [...SKIN_CATALOG, ...THEME_CATALOG, ...MUSIC_CATALOG];
 
 export function catalogItem(kind: CosmeticKind, id: string): CatalogItem | undefined {
   return CATALOG.find((i) => i.kind === kind && i.id === id);
@@ -108,6 +153,7 @@ export function sourceLabel(source: Source): string {
     case 'mission': return 'Mission';
     case 'shop': return `Boutique · ${source.price} pièces`;
     case 'pass': return source.track === 'free' ? `Passe gratuit · niveau ${source.tier}` : `Passe premium · niveau ${source.tier}`;
+    case 'universe': return `Avec l’univers ${THEME_CATALOG.find((t) => t.id === source.theme)?.name ?? source.theme}`;
   }
 }
 

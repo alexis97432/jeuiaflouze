@@ -13,6 +13,11 @@ import { CACHEABLE, hasLiveLayer, isRealContext, paintMaterial, releaseTextures,
 
 /** Briques en cache au plus (images à la résolution de l'écran) : mémoire bornée. */
 export const MAX_BLOCK_CACHE = 40;
+/**
+ * V7 : budget mémoire du cache de briques (pixels, environ 8 Mo). À ×3, une brique large pèse
+ * près de 80 000 pixels : 40 briques gardaient jusqu'à 12 Mo, renouvelés à chaque étage.
+ */
+export const BLOCK_PIXEL_BUDGET = 2_000_000;
 type BlockCanvas = HTMLCanvasElement | OffscreenCanvas;
 import {
   CosmeticRng,
@@ -47,7 +52,7 @@ import {
   type Theme,
   type TierIndex,
 } from './themes';
-import type { SceneEnv } from './scene';
+import { releaseSprites, type SceneEnv } from './scene';
 
 export { BLOCK_HEIGHT, reliefParts, SKIN_IDS, type ReliefParts, type SkinId } from './blocks';
 /** Bornes des effets : jamais plus d'objets que ça, quelle que soit la série. */
@@ -154,6 +159,9 @@ const unit = (n: number) => hash(n) / 4294967296;
  * Rendu Canvas 2D. Ne lit que des états de la simulation ou ses événements :
  * aucun effet visuel ne modifie les règles.
  */
+/** Ovni de la V5 : arrive, aspire le morceau coupé, repart. */
+type UfoGag = { t: number; x: number; y: number; w: number; color: Rgb; floor: number; dir: -1 | 1 };
+
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private theme: Theme;
@@ -211,7 +219,7 @@ export class Renderer {
   private hudBottom = 0;
   private wordSide: -1 | 1 = 1;
   private duck: { t: number; dir: 1 | -1; y: number } | null = null;
-  private ufo: { t: number; x: number; y: number; w: number; color: Rgb; floor: number; dir: -1 | 1 } | null = null;
+  private ufo: UfoGag | null = null;
   private pigeon: { floor: number; side: -1 | 1; flying: number; x: number; y: number } | null = null;
   /** Son des absurdités (branché par le montage sur Sfx.gag). */
   public onGag: ((kind: GagKind) => void) | null = null;
@@ -229,6 +237,9 @@ export class Renderer {
   private readonly origins = new Map<number, number>();
   /** V6 : briques communes et rares déjà dessinées (une seule copie d'image par brique et par image). */
   private readonly blockCache = new Map<string, BlockCanvas>();
+  private blockPixels = 0;
+  /** Canvas de briques réellement créés depuis le début (tests : le recyclage limite ce nombre). */
+  private blockCanvasCreated = 0;
   private readonly canCacheBlocks: boolean;
   /** V6 : instant, mouvement et qualité de l'image en cours (matières vivantes). */
   private frameT = 0;
@@ -240,6 +251,18 @@ export class Renderer {
   public autoLight = false;
   /** Appelé quand la qualité adaptative se déclenche (le montage recalcule alors la résolution). */
   public onAutoLight: (() => void) | null = null;
+  /** V7 : couches décoratives coupées après une erreur, pour le reste de la partie. */
+  private readonly faulted = new Set<string>();
+  /** V7 : rapport d'une couche en défaut (branché par le montage sur le journal de diagnostic). */
+  public onFault: ((layer: string, error: unknown) => void) | null = null;
+  /**
+   * V7 : mode secours, activé par le montage si le dessin principal a échoué : ciel, tour en
+   * aplats, bloc mobile et HUD seulement. La partie continue, ses règles ne changent pas.
+   */
+  public safeMode = false;
+  /** V7 : une image s'est interrompue ou une couche a échoué : contexte à remettre à plat. */
+  private unbalanced = false;
+  private drawing = false;
   /**
    * V4 : `light` (mode Fluide) = résolution interne plafonnée à 1,5, étincelles divisées par
    * trois, débris et décor réduits. Purement visuel.
@@ -258,6 +281,21 @@ export class Renderer {
     this.theme = theme;
     this.skin = skin;
     this.canCacheBlocks = isRealContext(ctx) && (typeof OffscreenCanvas !== 'undefined' || typeof document !== 'undefined');
+  }
+
+  private clearBlockCache(): void {
+    this.blockCache.clear();
+    this.blockPixels = 0;
+  }
+
+  /** Canvas de briques créés depuis le début de la partie (tests de recyclage). */
+  get blockCanvasCount(): number {
+    return this.blockCanvasCreated;
+  }
+
+  /** Pixels gardés par le cache de briques (tests de bornes). */
+  get blockCachePixels(): number {
+    return this.blockPixels;
   }
 
   /** Briques en cache (tests de bornes). */
@@ -311,23 +349,24 @@ export class Renderer {
   setTheme(theme: Theme): void {
     this.theme = theme;
     this.gradients.clear();
-    this.blockCache.clear();
+    this.clearBlockCache();
   }
 
   setSkin(skin: DrawSkinId): void {
     this.skin = skin;
     this.gradients.clear();
-    this.blockCache.clear();
+    this.clearBlockCache();
     releaseTextures();
   }
 
   /** Fin de vie (destroy) : caches graphiques libérés. */
   dispose(): void {
     this.gradients.clear();
-    this.blockCache.clear();
+    this.clearBlockCache();
     this.origins.clear();
     this.particles.clear();
     releaseTextures();
+    releaseSprites();
   }
 
   /** Qualité effective : réglage du joueur, puis qualité adaptative. */
@@ -344,7 +383,7 @@ export class Renderer {
     this.cssH = Math.max(1, cssHeight);
     this.dpr = dpr;
     if (this.canvas.width === w && this.canvas.height === h) return false;
-    this.blockCache.clear();
+    this.clearBlockCache();
     this.canvas.width = w;
     this.canvas.height = h;
     return true;
@@ -571,6 +610,14 @@ export class Renderer {
   }
 
   draw(view: ViewState, now: number): void {
+    // Image précédente interrompue par une exception, ou couche en défaut : contexte remis à plat.
+    if (this.drawing || this.unbalanced) this.unwindContext();
+    this.drawing = true;
+    this.drawFrame(view, now);
+    this.drawing = false;
+  }
+
+  private drawFrame(view: ViewState, now: number): void {
     const dt = this.lastNow === null ? 0 : Math.min((now - this.lastNow) / 1000, 0.1);
     this.lastNow = now;
     const t = now / 1000;
@@ -640,34 +687,35 @@ export class Renderer {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, this.cssW, this.cssH);
     const scene = this.sceneEnv(scale, groundY, t, motion, full);
-    this.safeScene(() => theme.scene.far(scene));
+    this.guard('scene-ciel', () => theme.scene.far(scene));
 
     // 2. Fièvre : rayons de BD derrière la tour (fixes et discrets si le mouvement est réduit).
     if (this.feverMix > 0.02 && full) {
       const alpha = (motion ? 0.16 : 0.08) * this.feverMix * (1 + 0.35 * this.feverBeat);
-      drawSunburst(ctx, this.cssW / 2, this.cssH * 0.42, Math.max(this.cssW, this.cssH) * 1.2, motion ? t * 0.22 : 0, [255, 255, 240], alpha);
+      this.guard('fievre', () => drawSunburst(ctx, this.cssW / 2, this.cssH * 0.42, Math.max(this.cssW, this.cssH) * 1.2, motion ? t * 0.22 : 0, [255, 255, 240], alpha));
     }
 
     // 3. Décor en parallaxe (atténué pendant la Fièvre), puis absurdité du ciel (canard).
     ctx.save();
     if (this.feverMix > 0) ctx.globalAlpha = 1 - this.feverMix * 0.6;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.safeScene(() => theme.scene.back(scene));
-    this.drawDecor(scale, groundY, t, motion, tierIndex(Math.max(0, len - 1)));
+    this.guard('scene-fond', () => theme.scene.back(scene));
+    this.guard('decor', () => this.drawDecor(scale, groundY, t, motion, tierIndex(Math.max(0, len - 1))));
     ctx.restore();
-    if (this.duck) {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const p = this.duck.t / DUCK_TIME;
-      const span = this.cssW + 200;
-      const x = this.duck.dir > 0 ? -100 + p * span : this.cssW + 100 - p * span;
-      ctx.save();
-      if (this.duck.dir < 0) {
-        ctx.translate(x, 0);
-        ctx.scale(-1, 1);
-        ctx.translate(-x, 0);
-      }
-      drawDuck(ctx, x, this.cssH * this.duck.y, Math.min(1.1, this.cssW / 380), t, motion);
-      ctx.restore();
+    const duck = this.duck;
+    if (duck) {
+      this.guard('absurdites', () => {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const p = duck.t / DUCK_TIME;
+        const span = this.cssW + 200;
+        const x = duck.dir > 0 ? -100 + p * span : this.cssW + 100 - p * span;
+        if (duck.dir < 0) {
+          ctx.translate(x, 0);
+          ctx.scale(-1, 1);
+          ctx.translate(-x, 0);
+        }
+        drawDuck(ctx, x, this.cssH * duck.y, Math.min(1.1, this.cssW / 380), t, motion);
+      });
     }
 
     // 4. Sol thématique sous l'étage 0, puis premier plan léger (derrière la tour).
@@ -676,11 +724,11 @@ export class Renderer {
     if (groundTop < this.cssH) {
       ctx.fillStyle = css(theme.ground.body);
       ctx.fillRect(0, groundTop, this.cssW, this.cssH - groundTop);
-      this.safeScene(() => theme.scene.ground(scene, groundTop));
+      this.guard('scene-sol', () => theme.scene.ground(scene, groundTop));
     }
     if (full) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      this.safeScene(() => theme.scene.near(scene));
+      this.guard('scene-premier-plan', () => theme.scene.near(scene));
     }
 
     // 5. Monde : x en unités, y vers le haut depuis le sol.
@@ -743,18 +791,135 @@ export class Renderer {
     }
 
     // Pigeon perché sur le flanc d'un étage inférieur (jamais sur la base ni le bloc mobile).
-    if (this.pigeon && this.pigeon.floor < len - 1) {
-      const pb = view.stack[this.pigeon.floor]!;
-      const px = this.pigeon.side < 0 ? pb.left / MILLI + 9 : (pb.left + pb.width) / MILLI - 9;
-      const py = (this.pigeon.floor + 1) * BLOCK_HEIGHT;
-      const fly = this.pigeon.flying;
-      this.pigeon.x = px + this.pigeon.side * fly * 140;
-      this.pigeon.y = py + fly * 170;
-      drawPigeon(ctx, this.pigeon.x, yScreen(this.pigeon.y), this.pigeon.side, fly);
+    const pigeon = this.pigeon;
+    if (pigeon && pigeon.floor < len - 1) {
+      this.guard('absurdites', () => {
+        const pb = view.stack[pigeon.floor]!;
+        const px = pigeon.side < 0 ? pb.left / MILLI + 9 : (pb.left + pb.width) / MILLI - 9;
+        const py = (pigeon.floor + 1) * BLOCK_HEIGHT;
+        const fly = pigeon.flying;
+        pigeon.x = px + pigeon.side * fly * 140;
+        pigeon.y = py + fly * 170;
+        drawPigeon(ctx, pigeon.x, yScreen(pigeon.y), pigeon.side, fly);
+      });
     }
 
     // Boosts : zone d'aimantation réelle, bulle du Bouclier, sillage du Ralenti.
     const rowTop = yScreen((len + 1) * BLOCK_HEIGHT);
+    this.guard('boosts', () => this.drawBoosts(view, len, rowTop, baseTopY, t, motion, full));
+
+    if (view.moving) {
+      // Rattrapage du Bouclier : le bloc clignote doucement avant de repartir.
+      const blink = hud?.recovering && hud.recovering > 0 ? (motion ? 0.5 + 0.5 * Math.abs(Math.sin(t * 14)) : 0.6) : 1;
+      const ml = view.moving.left / MILLI;
+      const mw = view.moving.width / MILLI;
+      // Aura des légendaires : halo doux derrière le bloc mobile (jamais au-delà de la ligne du bloc).
+      const aura = SKIN_FX[this.skin as MaterialSkin]?.aura;
+      if (aura && this.frameFull && SKIN_RARITY[this.skin] === 'legendaire') {
+        this.guard('aura', () => {
+          const pulse = motion ? 0.75 + 0.25 * Math.sin(t * 3) : 0.85;
+          const g = ctx.createLinearGradient(0, rowTop - 10, 0, rowTop + BLOCK_HEIGHT + 10);
+          g.addColorStop(0, css(aura, 0));
+          g.addColorStop(0.5, css(aura, 0.28 * pulse));
+          g.addColorStop(1, css(aura, 0));
+          ctx.fillStyle = g;
+          roundedRect(ctx, ml - 8, rowTop - 10, mw + 16, BLOCK_HEIGHT + 20, 14);
+          ctx.fill();
+        });
+      }
+      this.block(ml, rowTop, mw, this.colorFor(len), blink, len, { wx: ml, ox: ml });
+    }
+
+    if (this.debris.length > 0) {
+      this.guard('debris', () => {
+        for (const d of this.debris) {
+          const alpha = this.reducedMotion ? Math.max(0, 1 - d.age / 0.45) : Math.max(0, 1 - d.age / 1.6);
+          ctx.save();
+          ctx.translate(d.x + d.w / 2, yScreen(d.y) + BLOCK_HEIGHT / 2);
+          ctx.rotate(d.rot);
+          // Sans cache : la position change à chaque image (avant la V7, chaque image d'une chute
+          // créait une nouvelle brique en cache, environ 250 canvas pour une partie de 40 étages).
+          this.block(-d.w / 2, -BLOCK_HEIGHT / 2, d.w, d.color, alpha, d.floor, { wx: d.x, ox: d.ox }, false);
+          ctx.restore();
+        }
+      });
+    }
+
+    // Ovni : arrive, aspire le morceau coupé, repart.
+    const ufo = this.ufo;
+    if (ufo) this.guard('absurdites', () => this.drawUfoGag(ufo, t, yScreen));
+
+    if (this.particles.alive > 0) {
+      this.guard('particules', () => {
+        for (const p of this.particles.items) {
+          if (!p.alive) continue;
+          ctx.save();
+          ctx.translate(p.x, yScreen(p.y));
+          drawParticle(ctx, p);
+          ctx.restore();
+        }
+      });
+    }
+
+    // Ondes de choc des parfaits : ellipse qui s'élargit autour du bloc posé. Une onde à départ
+    // différé (célébration des légendaires, âge négatif) n'est pas encore dessinée : avant la V7,
+    // son rayon devenait négatif sur un bloc étroit et `ellipse` levait une exception qui arrêtait
+    // la boucle de jeu (partie figée).
+    if (this.rings.length > 0) {
+      this.guard('ondes', () => {
+        for (const ring of this.rings) {
+          if (ring.age < 0) continue;
+          const p = Math.min(1, ring.age / RING_TIME);
+          ctx.strokeStyle = css(ring.color, (1 - p) * 0.9);
+          ctx.lineWidth = 5 * (1 - p) + 1;
+          ctx.beginPath();
+          ctx.ellipse(ring.x, yScreen(ring.y - BLOCK_HEIGHT / 2), Math.max(0, ring.w / 2 + p * 70), Math.max(0, BLOCK_HEIGHT * 0.6 + p * 22), 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      });
+    }
+
+    // Points « +N » : montent et s'effacent (fixes en mouvement réduit).
+    if (this.floats.length > 0) {
+      this.guard('points', () => {
+        for (const f of this.floats) {
+          const rise = motion ? f.age * 40 : 0;
+          ctx.globalAlpha = Math.max(0, 1 - f.age / 0.9);
+          ctx.font = `900 20px ${GAME_FONT}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.lineWidth = 5;
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = '#1b1a3a';
+          const y = yScreen((f.floor + 1) * BLOCK_HEIGHT) - 6 - rise;
+          ctx.strokeText(f.text, f.x, y);
+          ctx.fillStyle = css(f.color);
+          ctx.fillText(f.text, f.x, y);
+          ctx.globalAlpha = 1;
+        }
+      });
+    }
+
+    // 6. Écran : bord coloré du boost actif et de la Fièvre (statique en mouvement réduit).
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const boostShown = this.boostShown;
+    if (this.boostMix > 0.01 && boostShown) this.guard('bords', () => this.vignette(BONUS_STYLE[boostShown].color, 0.32 * this.boostMix));
+    if (this.feverMix > 0.01) this.guard('bords', () => this.vignette([255, 120, 40], 0.3 * this.feverMix * (1 + 0.4 * this.feverBeat)));
+
+    // 7. HUD, puis onomatopées placées sous le HUD de cette image (jamais dessus ni sur la pose).
+    this.drawHud(view, sky.ink);
+    if (this.words.length > 0) {
+      this.guard('mots', () => {
+        this.keepWordsClear();
+        for (const w of this.words) drawWord(ctx, w, GAME_FONT, motion);
+      });
+    }
+  }
+
+  /** Boosts : zone d'aimantation réelle, bulle du Bouclier, sillage du Ralenti. */
+  private drawBoosts(view: ViewState, len: number, rowTop: number, baseTopY: number, t: number, motion: boolean, full: boolean): void {
+    const { ctx } = this;
+    const hud = view.v2;
     if (hud?.bonus === 'aimant' && view.moving && len > 0) {
       const base = view.stack[len - 1]!;
       const tol = (hud.tolerance ?? 0) / MILLI;
@@ -789,100 +954,26 @@ export class Renderer {
         this.block(left / MILLI, rowTop, view.moving.width / MILLI, this.colorFor(len), 0.28 * (1 - k / n) * this.boostMix, len, { wx: left / MILLI, ox: left / MILLI });
       }
     }
+  }
 
-    if (view.moving) {
-      // Rattrapage du Bouclier : le bloc clignote doucement avant de repartir.
-      const blink = hud?.recovering && hud.recovering > 0 ? (motion ? 0.5 + 0.5 * Math.abs(Math.sin(t * 14)) : 0.6) : 1;
-      const ml = view.moving.left / MILLI;
-      const mw = view.moving.width / MILLI;
-      // Aura des légendaires : halo doux derrière le bloc mobile (jamais au-delà de la ligne du bloc).
-      const aura = SKIN_FX[this.skin as MaterialSkin]?.aura;
-      if (aura && this.frameFull && SKIN_RARITY[this.skin] === 'legendaire') {
-        const pulse = motion ? 0.75 + 0.25 * Math.sin(t * 3) : 0.85;
-        const g = ctx.createLinearGradient(0, rowTop - 10, 0, rowTop + BLOCK_HEIGHT + 10);
-        g.addColorStop(0, css(aura, 0));
-        g.addColorStop(0.5, css(aura, 0.28 * pulse));
-        g.addColorStop(1, css(aura, 0));
-        ctx.fillStyle = g;
-        roundedRect(ctx, ml - 8, rowTop - 10, mw + 16, BLOCK_HEIGHT + 20, 14);
-        ctx.fill();
-      }
-      this.block(ml, rowTop, mw, this.colorFor(len), blink, len, { wx: ml, ox: ml });
-    }
-
-    for (const d of this.debris) {
-      const alpha = this.reducedMotion ? Math.max(0, 1 - d.age / 0.45) : Math.max(0, 1 - d.age / 1.6);
+  /** Ovni : arrive, aspire le morceau coupé (réduit dans le faisceau), repart. */
+  private drawUfoGag(u: UfoGag, t: number, yScreen: (y: number) => number): void {
+    const { ctx } = this;
+    const p = u.t;
+    const hoverY = u.y + BLOCK_HEIGHT * 4;
+    const ux = p < 0.25 ? u.x - u.dir * (1 - p / 0.25) * 220 : p < 0.85 ? u.x : u.x + u.dir * ((p - 0.85) / 0.65) * 260;
+    const uy = p < 0.85 ? hoverY : hoverY + ((p - 0.85) / 0.65) * 120;
+    if (p >= 0.25 && p < 0.85) {
+      const lift = (p - 0.25) / 0.6;
+      const py = u.y + lift * (hoverY - u.y);
       ctx.save();
-      ctx.translate(d.x + d.w / 2, yScreen(d.y) + BLOCK_HEIGHT / 2);
-      ctx.rotate(d.rot);
-      this.block(-d.w / 2, -BLOCK_HEIGHT / 2, d.w, d.color, alpha, d.floor, { wx: d.x, ox: d.ox });
+      ctx.translate(u.x, yScreen(py));
+      ctx.scale(1 - lift * 0.7, 1 - lift * 0.7);
+      // Morceau aspiré : dessiné sans cache (son échelle change à chaque image).
+      this.block(-u.w / 2, -BLOCK_HEIGHT / 2, u.w, u.color, 1, u.floor, { wx: u.x - u.w / 2, ox: u.x - u.w / 2 }, false);
       ctx.restore();
     }
-
-    // Ovni : arrive, aspire le morceau coupé, repart.
-    if (this.ufo) {
-      const u = this.ufo;
-      const p = u.t;
-      const hoverY = u.y + BLOCK_HEIGHT * 4;
-      const ux = p < 0.25 ? u.x - u.dir * (1 - p / 0.25) * 220 : p < 0.85 ? u.x : u.x + u.dir * ((p - 0.85) / 0.65) * 260;
-      const uy = p < 0.85 ? hoverY : hoverY + ((p - 0.85) / 0.65) * 120;
-      if (p >= 0.25 && p < 0.85) {
-        const lift = (p - 0.25) / 0.6;
-        const py = u.y + lift * (hoverY - u.y);
-        ctx.save();
-        ctx.translate(u.x, yScreen(py));
-        ctx.scale(1 - lift * 0.7, 1 - lift * 0.7);
-        this.block(-u.w / 2, -BLOCK_HEIGHT / 2, u.w, u.color, 1, u.floor, { wx: u.x - u.w / 2, ox: u.x - u.w / 2 });
-        ctx.restore();
-      }
-      drawUfo(ctx, ux, yScreen(uy), p >= 0.25 && p < 0.85 ? (hoverY - u.y) * 1 : 0, t);
-    }
-
-    for (const p of this.particles.items) {
-      if (!p.alive) continue;
-      ctx.save();
-      ctx.translate(p.x, yScreen(p.y));
-      drawParticle(ctx, p);
-      ctx.restore();
-    }
-    ctx.globalAlpha = 1;
-
-    // Ondes de choc des parfaits : ellipse qui s'élargit autour du bloc posé.
-    for (const ring of this.rings) {
-      const p = ring.age / RING_TIME;
-      ctx.strokeStyle = css(ring.color, (1 - p) * 0.9);
-      ctx.lineWidth = 5 * (1 - p) + 1;
-      ctx.beginPath();
-      ctx.ellipse(ring.x, yScreen(ring.y - BLOCK_HEIGHT / 2), ring.w / 2 + p * 70, BLOCK_HEIGHT * 0.6 + p * 22, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    // Points « +N » : montent et s'effacent (fixes en mouvement réduit).
-    for (const f of this.floats) {
-      const rise = motion ? f.age * 40 : 0;
-      ctx.globalAlpha = Math.max(0, 1 - f.age / 0.9);
-      ctx.font = `900 20px ${GAME_FONT}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.lineWidth = 5;
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#1b1a3a';
-      const y = yScreen((f.floor + 1) * BLOCK_HEIGHT) - 6 - rise;
-      ctx.strokeText(f.text, f.x, y);
-      ctx.fillStyle = css(f.color);
-      ctx.fillText(f.text, f.x, y);
-      ctx.globalAlpha = 1;
-    }
-
-    // 6. Écran : bord coloré du boost actif et de la Fièvre (statique en mouvement réduit).
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (this.boostMix > 0.01 && this.boostShown) this.vignette(BONUS_STYLE[this.boostShown].color, 0.32 * this.boostMix);
-    if (this.feverMix > 0.01) this.vignette([255, 120, 40], 0.3 * this.feverMix * (1 + 0.4 * this.feverBeat));
-
-    // 7. HUD, puis onomatopées placées sous le HUD de cette image (jamais dessus ni sur la pose).
-    this.drawHud(view, sky.ink);
-    this.keepWordsClear();
-    for (const w of this.words) drawWord(ctx, w, GAME_FONT, motion);
+    drawUfo(ctx, ux, yScreen(uy), p >= 0.25 && p < 0.85 ? (hoverY - u.y) * 1 : 0, t);
   }
 
   /** Bord coloré (dégradé radial) : lu comme un état, sans rien cacher au centre. */
@@ -1036,18 +1127,66 @@ export class Renderer {
     };
   }
 
-  /** Une scène décorative en échec ne doit jamais casser l'image : état du contexte restauré. */
-  private safeScene(paint: () => void): void {
+  /**
+   * V7 : couche décorative protégée. Une erreur n'est jamais avalée en silence : elle est
+   * signalée une fois (`onFault`, journal de diagnostic, console) et la couche fautive est coupée
+   * pour le reste de la partie. La tour, le bloc mobile et le HUD continuent d'être dessinés.
+   */
+  private guard(layer: string, paint: () => void): void {
+    if (this.safeMode || this.faulted.has(layer)) return;
     const { ctx } = this;
     ctx.save();
     try {
       paint();
-    } catch {
-      // Décor seulement : on continue sans lui.
+    } catch (error) {
+      this.fault(layer, error);
     }
     ctx.restore();
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /** Couche coupée et signalée une seule fois ; la pile d'états du contexte sera remise à plat. */
+  private fault(layer: string, error: unknown): void {
+    if (this.faulted.has(layer)) return;
+    this.faulted.add(layer);
+    this.unbalanced = true;
+    try {
+      this.onFault?.(layer, error);
+    } catch {
+      // Le rapport lui-même ne doit pas casser l'image ; l'erreur d'origine a déjà été transmise.
+    }
+  }
+
+  /** Couches coupées depuis le début de la partie (inspection, diagnostic). */
+  get faults(): readonly string[] {
+    return [...this.faulted];
+  }
+
+  /**
+   * Remet le contexte dans un état connu après une image interrompue (exception au milieu de
+   * `save`/`restore`) : sans cela, une découpe ou une transparence restées actives fausseraient
+   * toutes les images suivantes. `restore` sur une pile vide ne fait rien.
+   */
+  private unwindContext(): void {
+    const { ctx } = this;
+    for (let i = 0; i < 32; i++) ctx.restore();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.setLineDash?.([]);
+    this.unbalanced = false;
+  }
+
+  /**
+   * Images en cache (briques, dégradés, textures) jetées : après une perte du contexte graphique
+   * (leur contenu peut être vide) ou pour libérer de la mémoire. Elles se reconstruisent à la demande.
+   */
+  purgeCaches(): void {
+    this.gradients.clear();
+    this.clearBlockCache();
+    releaseTextures();
+    releaseSprites();
   }
 
   /**
@@ -1303,7 +1442,42 @@ export class Renderer {
    * `place` : position dans le monde (wx) et origine de la matière (ox) quand le repère local
    * n'est pas celui de la tour (débris qui tournent, bloc mobile).
    */
-  private block(x: number, y: number, w: number, color: Rgb, alpha: number, variant: number, place?: { wx: number; ox: number }): void {
+  private block(x: number, y: number, w: number, color: Rgb, alpha: number, variant: number, place?: { wx: number; ox: number }, cache = true): void {
+    if (this.safeMode || this.faulted.has('matiere')) {
+      this.flatBlock(x, y, w, color, alpha);
+      return;
+    }
+    const { ctx } = this;
+    ctx.save();
+    try {
+      this.materialBlock(x, y, w, color, alpha, variant, place, cache);
+    } catch (error) {
+      // Matière en défaut : signalée, puis blocs en aplats pour le reste de la partie.
+      this.fault('matiere', error);
+      ctx.restore();
+      this.unbalanced = true;
+      this.flatBlock(x, y, w, color, alpha);
+      return;
+    }
+    ctx.restore();
+  }
+
+  /** Bloc de secours : aplat arrondi et contour, sans texture (mode secours, matière en défaut). */
+  private flatBlock(x: number, y: number, w: number, color: Rgb, alpha: number): void {
+    if (!(w > 0)) return;
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalAlpha *= Math.max(0, Math.min(1, alpha));
+    ctx.fillStyle = css(color);
+    roundedRect(ctx, x, y, w, BLOCK_HEIGHT, RADIUS);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = css(mix(color, [20, 20, 40], 0.55));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private materialBlock(x: number, y: number, w: number, color: Rgb, alpha: number, variant: number, place: { wx: number; ox: number } | undefined, cache: boolean): void {
     const frac = Math.min(1, Math.max(0, (y + BLOCK_HEIGHT / 2) * this.frameScale / this.cssH));
     const env: MaterialEnv = {
       t: this.frameT,
@@ -1316,7 +1490,7 @@ export class Renderer {
       floor: variant,
     };
     const sky = mix(this.skyTop, this.skyBottom, frac);
-    if (this.cachedBlock(x, y, w, color, alpha, variant, env, sky)) return;
+    if (cache && this.cachedBlock(x, y, w, color, alpha, variant, env, sky)) return;
     drawBlock(this.ctx, x, y, w, color, {
       skin: this.skin,
       sky,
@@ -1344,9 +1518,28 @@ export class Renderer {
     if (!sprite) {
       const pw = Math.ceil(w * k);
       const ph = Math.ceil(BLOCK_HEIGHT * k);
-      let c: BlockCanvas | null = null;
+      // Place libérée d'abord : la brique la plus ancienne est réutilisée (redimensionnée), sans
+      // créer de nouveau canvas ; sa mémoire est rendue tout de suite, pas au ramasse-miettes.
+      let reuse: BlockCanvas | null = null;
+      while (this.blockCache.size > 0 && (this.blockCache.size >= MAX_BLOCK_CACHE || this.blockPixels + pw * ph > BLOCK_PIXEL_BUDGET)) {
+        const first = this.blockCache.keys().next().value;
+        if (first === undefined) break;
+        const old = this.blockCache.get(first);
+        this.blockCache.delete(first);
+        if (old) {
+          this.blockPixels -= old.width * old.height;
+          reuse = old;
+        }
+      }
+      let c: BlockCanvas | null = reuse;
       try {
-        c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(pw, ph) : Object.assign(document.createElement('canvas'), { width: pw, height: ph });
+        if (c) {
+          c.width = pw;
+          c.height = ph;
+        } else {
+          c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(pw, ph) : Object.assign(document.createElement('canvas'), { width: pw, height: ph });
+          this.blockCanvasCreated++;
+        }
       } catch {
         c = null;
       }
@@ -1354,11 +1547,8 @@ export class Renderer {
       if (!c || !x2) return false;
       x2.setTransform(pw / w, 0, 0, ph / BLOCK_HEIGHT, 0, 0);
       drawBlock(x2, 0, 0, w, color, { skin: this.skin, sky, alpha: 1, variant, env: { ...env, layer: 'base' } });
-      if (this.blockCache.size >= MAX_BLOCK_CACHE) {
-        const first = this.blockCache.keys().next().value;
-        if (first !== undefined) this.blockCache.delete(first);
-      }
       this.blockCache.set(key, c);
+      this.blockPixels += pw * ph;
       sprite = c;
     } else {
       // Récemment utilisée : en fin de liste (éviction de la plus ancienne).

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { dailySelection, DAY_MS, rotationDay } from '../../src/app/rotation';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { RunResult } from '../../src/app/game-contract';
 import type { StartGame, StartOptions } from '../../src/app/game-loader';
@@ -229,7 +230,8 @@ describe('record et préférences', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     toggle.click();
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-    expect(toggle.textContent).toBe('Son');
+    // V7 : « Effets sonores », réglé indépendamment de la musique.
+    expect(toggle.textContent).toBe('Effets sonores');
     expect(store.readPrefs()).toEqual({ ...DEFAULT_PREFS, muted: true });
     button('Retour').click();
     expect(document.activeElement?.getAttribute('data-testid')).toBe('nav-settings');
@@ -513,7 +515,7 @@ describe('accueil V2 et collection', () => {
   it('collection : verrous explicites, choix persistant, onglet actif et focus rendu', async () => {
     const { button, root, text, end, place, meta } = setup();
     button('Collection').click();
-    expect(text('collection-count')).toBe('2 / 21 obtenus');
+    expect(text('collection-count')).toBe('2 / 29 obtenus');
     expect(root.querySelector('[data-testid="nav-collection"]')?.getAttribute('aria-current')).toBe('page');
     // Condition courte à l'écran, « À obtenir » lu par les lecteurs d'écran.
     expect(text('card-skin-marbre')).toContain('À obtenir : Pose 5 étages en une partie');
@@ -526,7 +528,7 @@ describe('accueil V2 et collection', () => {
     place([false, false, false, false, false]);
     await end(5);
     button('Voir la collection').click();
-    expect(text('collection-count')).toBe('3 / 21 obtenus');
+    expect(text('collection-count')).toBe('3 / 29 obtenus');
     const choose = root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!;
     expect(choose.getAttribute('aria-label')).toBe('Équiper Matière Marbré');
     choose.click();
@@ -599,7 +601,7 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
 
     const saved = storage.dump('poc:meta:v1:progress');
     expect(saved).toMatchObject({
-      version: 4,
+      version: 5,
       xp: 14,
       coins: 40,
       selected: { skin: 'marbre' },
@@ -626,12 +628,12 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     expect(text('coins')).toBe('20 pièces');
     button('Jouer').click();
     await end(3); // perfectCount 1 : 1 + 1 = 2 pièces, 3 + 2 = 5 XP
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 4, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 5, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
   });
 
   it('sauvegarde d’une version future : lue, jamais réécrite', async () => {
     const storage = memoryStorage();
-    const future = { version: 5, completed: [], xp: 900, coins: 400, champInconnu: true };
+    const future = { version: 6, completed: [], xp: 900, coins: 400, champInconnu: true };
     storage.setItem('poc:meta:v1:progress', JSON.stringify(future));
     const { text, button, end } = setup({ meta: createMetaStore(storage) });
     expect(text('coins')).toBe('400 pièces');
@@ -1449,7 +1451,7 @@ describe('V3-A6b : secours du partage d’image, annonces, sauvegarde et récomp
     const again = setup({ meta: createMetaStore(storage) });
     again.day.now = new Date('2026-12-01T10:00:00Z');
     const doc = storage.dump('poc:meta:v1:progress') as Record<string, unknown>;
-    expect(doc).toMatchObject({ version: 4, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
+    expect(doc).toMatchObject({ version: 5, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
     expect(again.text('coins')).toBe('60 pièces');
     expect(storage.dump('poc:meta:v1:player')).toEqual({ id: 'c'.repeat(32), pseudo: 'Alex' });
     again.shell.destroy();
@@ -1524,7 +1526,10 @@ describe('apparences V3 branchées (F8b, revue FLK A5 m1/m2, A6 m5)', () => {
     const storage = memoryStorage();
     storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 100, grants: ['v2-objectives-backfill'], season: { id: 's1', stars: 70, claimed: [] } }));
     const a = setup({ meta: createMetaStore(storage) });
-    a.day.now = new Date('2026-12-01T10:00:00Z');
+    // V7 : la boutique ne propose que la sélection du jour ; on se place un jour où Graphite y est.
+    let day = rotationDay(Date.parse('2026-12-01T10:00:00Z'));
+    while (!dailySelection(day).some((o) => o.id === 'graphite')) day++;
+    a.day.now = new Date(day * DAY_MS + 10 * 3_600_000);
     a.button('Boutique').click();
     expect(a.text('shop-graphite')).toContain('Acheter · 60');
     expect(a.root.querySelector('[data-testid="shop-empty"]')).toBeNull();
@@ -1751,7 +1756,7 @@ describe('V6 : Stack or Crash, boutique, passe, raretés et aperçus', () => {
     button('Tout récupérer (7)').click();
     await flush();
     // 10 + 15 + 15 + 20 + 20 + 25 = 105 pièces, et Galaxie (niveau 9) révélée.
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 4, coins: 105, inventory: ['pixel', 'galaxie'] });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 5, coins: 105, inventory: ['pixel', 'galaxie'] });
     expect(text('reveal-name')).toBe('Galaxie');
     expect(root.querySelector('[data-testid="reveal"] .rarity')?.textContent).toBe('Légendaire');
     button('Équiper maintenant').click();

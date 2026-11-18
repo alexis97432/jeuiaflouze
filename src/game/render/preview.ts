@@ -74,7 +74,7 @@ export function drawAppearancePreview(
   const t = options.time ?? 0;
   const height = options.climb && animated
     ? ((t % CLIMB_SECONDS) / CLIMB_SECONDS) * 54
-    : TIER_FLOORS[options.tier ?? 0];
+    : TIER_FLOORS[Math.min(TIER_FLOORS.length - 1, Math.max(0, Math.floor(Number.isFinite(options.tier) ? options.tier! : 0)))]!;
 
   const sky = skyAt(theme, height);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

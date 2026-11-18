@@ -29,7 +29,14 @@ export type Prefs = {
   effects: EffectsPref;
   /** Vibrations, quand l'appareil en propose. */
   haptics: boolean;
+  /** V7 : musique de fond activée (indépendante des effets sonores). */
+  music: boolean;
+  /** V7 : volume de la musique, de 0 à 1. */
+  musicVolume: number;
+  /** V7 : musique de l'univers choisi, ou musique équipée. */
+  musicSource: MusicSourcePref;
 };
+export type MusicSourcePref = 'univers' | 'equipee';
 export type StoredResult = { score: number; perfectCount: number; mode: 'free' | 'challenge' | 'daily' };
 
 export type LocalStore = {
@@ -43,7 +50,10 @@ export type LocalStore = {
   writePrefs(prefs: Prefs): void;
 };
 
-export const DEFAULT_PREFS: Prefs = { muted: false, volume: 0.8, theme: 'system', motion: 'system', effects: 'full', haptics: true };
+export const DEFAULT_PREFS: Prefs = {
+  muted: false, volume: 0.8, theme: 'system', motion: 'system', effects: 'full', haptics: true,
+  music: true, musicVolume: 0.6, musicSource: 'univers',
+};
 
 const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T =>
   typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
@@ -52,6 +62,9 @@ const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T):
 export function sanitizePrefs(raw: unknown): Prefs {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const volume = typeof r.volume === 'number' && Number.isFinite(r.volume) ? Math.min(1, Math.max(0, r.volume)) : DEFAULT_PREFS.volume;
+  const musicVolume = typeof r.musicVolume === 'number' && Number.isFinite(r.musicVolume) ? Math.min(1, Math.max(0, r.musicVolume)) : DEFAULT_PREFS.musicVolume;
+  // V7 : préférences d'avant la musique. Un joueur qui avait coupé le son la retrouve coupée.
+  const music = typeof r.music === 'boolean' ? r.music : r.muted === true ? false : DEFAULT_PREFS.music;
   return {
     muted: typeof r.muted === 'boolean' ? r.muted : DEFAULT_PREFS.muted,
     volume: Math.round(volume * 100) / 100,
@@ -59,6 +72,9 @@ export function sanitizePrefs(raw: unknown): Prefs {
     motion: pick(r.motion, ['system', 'reduce', 'full'] as const, DEFAULT_PREFS.motion),
     effects: pick(r.effects, ['full', 'light'] as const, DEFAULT_PREFS.effects),
     haptics: typeof r.haptics === 'boolean' ? r.haptics : DEFAULT_PREFS.haptics,
+    music,
+    musicVolume: Math.round(musicVolume * 100) / 100,
+    musicSource: pick(r.musicSource, ['univers', 'equipee'] as const, DEFAULT_PREFS.musicSource),
   };
 }
 

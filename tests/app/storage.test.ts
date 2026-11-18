@@ -103,14 +103,21 @@ describe('createLocalStore', () => {
       const { storage, data } = fakeStorage();
       data.set(`${STORAGE_PREFIX}prefs`, JSON.stringify({ muted }));
       const store = createLocalStore(storage);
-      expect(store.readPrefs()).toEqual({ ...DEFAULT_PREFS, muted });
+      // V7 : un joueur qui avait coupé le son retrouve aussi la musique coupée.
+      expect(store.readPrefs()).toEqual({ ...DEFAULT_PREFS, muted, music: !muted });
       // Rien n'est réécrit à la lecture : la sauvegarde V3 reste intacte tant que le joueur ne change rien.
       expect(data.get(`${STORAGE_PREFIX}prefs`)).toBe(JSON.stringify({ muted }));
     }
   });
 
   it('V4 : réglages invalides ramenés à des valeurs sûres, à la lecture comme à l’écriture', () => {
-    expect(DEFAULT_PREFS).toEqual({ muted: false, volume: 0.8, theme: 'system', motion: 'system', effects: 'full', haptics: true });
+    expect(DEFAULT_PREFS).toEqual({
+      muted: false, volume: 0.8, theme: 'system', motion: 'system', effects: 'full', haptics: true,
+      // V7 : musique activée à 60 %, celle de l'univers choisi.
+      music: true, musicVolume: 0.6, musicSource: 'univers',
+    });
+    expect(sanitizePrefs({ music: 'oui', musicVolume: 3, musicSource: 'radio' })).toEqual({ ...DEFAULT_PREFS, musicVolume: 1 });
+    expect(sanitizePrefs({ music: false, musicVolume: 0.25, musicSource: 'equipee' })).toEqual({ ...DEFAULT_PREFS, music: false, musicVolume: 0.25, musicSource: 'equipee' });
     expect(sanitizePrefs({ muted: 'oui', volume: 5, theme: 'rose', motion: 'vite', effects: 'max', haptics: 1 })).toEqual({ ...DEFAULT_PREFS, volume: 1 });
     expect(sanitizePrefs({ volume: -2 }).volume).toBe(0);
     expect(sanitizePrefs({ volume: Number.NaN }).volume).toBe(DEFAULT_PREFS.volume);
