@@ -54,7 +54,7 @@ describe('F9 : summarizeRun (dérivé du rejeu)', () => {
 
 describe('F9 : renderResultCard', () => {
   const ctx = () => new Proxy({}, {
-    get: (_t, p) => (p === 'createLinearGradient' ? () => ({ addColorStop() {} }) : p === 'measureText' ? () => ({ width: 10 }) : () => {}),
+    get: (_t, p) => (p === 'createLinearGradient' || p === 'createRadialGradient' ? () => ({ addColorStop() {} }) : p === 'measureText' ? () => ({ width: 10 }) : () => {}),
     set: () => true,
   }) as unknown as CanvasRenderingContext2D;
 
@@ -79,7 +79,7 @@ describe('F8b R1 (revue Codex C8) : apparence V3 par l’entrée publique de la 
     const ctx = new Proxy({}, {
       get: (_t, p) => (...args: unknown[]) => {
         log.push(`${String(p)}(${args.map(String).join(',')})`);
-        if (p === 'createLinearGradient') return { addColorStop: (o: number, c: string) => log.push(`stop ${o} ${c}`) };
+        if (p === 'createLinearGradient' || p === 'createRadialGradient') return { addColorStop: (o: number, c: string) => log.push(`stop ${o} ${c}`) };
         if (p === 'measureText') return { width: 10 };
         return undefined;
       },

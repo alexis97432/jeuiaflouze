@@ -5,8 +5,10 @@ import {
   DEFAULT_SKIN,
   drawBlock,
   RADIUS,
+  SKIN_RARITY,
   type DrawSkinId,
 } from './blocks';
+import { releaseTextures, SKIN_FX, type MaterialEnv, type MaterialSkin } from './materials';
 import {
   CosmeticRng,
   drawDuck,
@@ -128,7 +130,7 @@ export const BONUS_STYLE: Record<BonusId | BoostId, { label: string; banner: str
 interface Float { text: string; floor: number; x: number; age: number; color: Rgb }
 export const MAX_FLOATS = 6;
 
-interface Debris { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; age: number; color: Rgb; floor: number }
+interface Debris { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; age: number; color: Rgb; floor: number; ox: number }
 interface Ring { x: number; y: number; w: number; age: number; color: Rgb }
 
 /** Hachage entier stable pour le décor (indépendant du PRNG de la partie). */
@@ -213,6 +215,16 @@ export class Renderer {
   private decorDrawn = 0;
 
   private skin: DrawSkinId;
+  /** V6 : origine de la matière de chaque pièce posée (bord gauche du bloc mobile à la pose). */
+  private readonly origins = new Map<number, number>();
+  /** V6 : instant, mouvement et qualité de l'image en cours (matières vivantes). */
+  private frameT = 0;
+  private frameMotion = true;
+  private frameFull = true;
+  /** V6 : qualité adaptative. Cadence trop basse soutenue → calques coûteux retirés (visuel seulement). */
+  private slowFrames = 0;
+  private sampledFrames = 0;
+  public autoLight = false;
   /**
    * V4 : `light` (mode Fluide) = résolution interne plafonnée à 1,5, étincelles divisées par
    * trois, débris et décor réduits. Purement visuel.
@@ -283,6 +295,20 @@ export class Renderer {
   setSkin(skin: DrawSkinId): void {
     this.skin = skin;
     this.gradients.clear();
+    releaseTextures();
+  }
+
+  /** Fin de vie (destroy) : caches graphiques libérés. */
+  dispose(): void {
+    this.gradients.clear();
+    this.origins.clear();
+    this.particles.clear();
+    releaseTextures();
+  }
+
+  /** Qualité effective : réglage du joueur, puis qualité adaptative. */
+  get effectiveFull(): boolean {
+    return this.quality === 'full' && !this.autoLight;
   }
 
   /** Ajuste la résolution interne à la taille CSS × devicePixelRatio. Renvoie true si changé. */
@@ -312,7 +338,7 @@ export class Renderer {
       const w = event.moving.width / MILLI;
       this.debris.push({
         x: event.moving.left / MILLI, y: (event.floor + 1) * BLOCK_HEIGHT, w, vx: (event.moving.left > FIELD_WIDTH / 2 ? 1 : -1) * 90,
-        vy: 380, rot: 0, vr: 3, age: 0, color: this.colorFor(event.floor), floor: event.floor,
+        vy: 380, rot: 0, vr: 3, age: 0, color: this.colorFor(event.floor), floor: event.floor, ox: event.moving.left / MILLI,
       });
       if (this.debris.length > MAX_DEBRIS) this.debris.shift();
       this.shieldBreak = 1;
@@ -332,6 +358,10 @@ export class Renderer {
     }
     // Pose réussie : le bloc s'écrase un instant (vague limitée au bloc posé, ou en chaîne si parfait).
     const v3 = 'boost' in event ? event : null;
+    // La pièce garde la matière qu'elle avait en mouvement (origine = bord gauche du bloc mobile).
+    this.origins.set(event.floor, Math.min(event.placed.left, event.cut ? event.cut.left : event.placed.left) / MILLI);
+    if (this.origins.size > 96) for (const f of this.origins.keys()) if (f < event.floor - 60) this.origins.delete(f);
+    this.skinPlacementFx(event.placed, event.floor, event.perfect);
     const placedV2 = !v3 && 'points' in event ? (event as Extract<StepEventV2, { kind: 'placed' }>) : null;
     const streak = event.perfectStreak;
     const amp = event.perfect ? Math.min(0.26, 0.12 + 0.03 * streak) : 0.09;
@@ -343,7 +373,7 @@ export class Renderer {
         this.ufo = { t: 0, x: (event.cut.left + event.cut.width / 2) / MILLI, y: (event.floor + 1) * BLOCK_HEIGHT, w: event.cut.width / MILLI, color: this.colorFor(event.floor), floor: event.floor, dir: side };
         this.gag('ufo');
       } else {
-        this.addDebris(event.cut, event.floor, side);
+        this.addDebris(event.cut, event.floor, side, Math.min(event.placed.left, event.cut.left) / MILLI);
       }
       const cx = side < 0 ? event.placed.left / MILLI : (event.placed.left + event.placed.width) / MILLI;
       this.burst('dust', cx, (event.floor + 1) * BLOCK_HEIGHT, 3, [235, 230, 240], 60);
@@ -462,7 +492,7 @@ export class Renderer {
   }
 
   /** Gerbe de particules (bornée par la réserve, réduite en mode Fluide, nulle en mouvement réduit). */
-  private burst(kind: ParticleKind, x: number, y: number, count: number, color: Rgb, speed: number): void {
+  private burst(kind: ParticleKind, x: number, y: number, count: number, color: Rgb, speed: number, palette?: readonly Rgb[]): void {
     if (this.reducedMotion) return;
     const n = this.quality === 'light' ? Math.ceil(count / 2) : count;
     const limit = this.quality === 'light' ? MAX_PARTICLES / 2 : MAX_PARTICLES;
@@ -478,11 +508,12 @@ export class Renderer {
       p.vy = Math.abs(Math.sin(a)) * v * (kind === 'dust' ? 0.5 : 1);
       p.rot = this.cos.range(0, 6);
       p.vr = this.cos.range(-6, 6);
-      p.size = kind === 'star' ? this.cos.range(4, 7) : kind === 'dust' ? this.cos.range(3, 6) : kind === 'shard' ? this.cos.range(4, 8) : this.cos.range(2, 4);
+      p.size = kind === 'star' ? this.cos.range(4, 7) : kind === 'dust' ? this.cos.range(3, 6) : kind === 'shard' ? this.cos.range(4, 8)
+        : kind === 'glint' ? this.cos.range(4, 7) : kind === 'bubble' ? this.cos.range(3, 6) : this.cos.range(2, 4);
       p.age = 0;
-      p.life = kind === 'dust' ? this.cos.range(0.4, 0.7) : kind === 'ember' ? this.cos.range(0.8, 1.4) : this.cos.range(0.45, 0.8);
-      p.color = kind === 'ember' ? (this.cos.next() < 0.5 ? [255, 120, 40] : [255, 210, 80]) : color;
-      p.gravity = kind === 'ember' ? -0.25 : kind === 'dust' ? 0.15 : kind === 'feather' ? 0.1 : 1;
+      p.life = kind === 'dust' ? this.cos.range(0.4, 0.7) : kind === 'ember' || kind === 'bubble' ? this.cos.range(0.8, 1.4) : this.cos.range(0.45, 0.8);
+      p.color = kind === 'ember' && !palette ? (this.cos.next() < 0.5 ? [255, 120, 40] : [255, 210, 80]) : palette ? palette[i % palette.length]! : color;
+      p.gravity = kind === 'ember' || kind === 'bubble' ? -0.25 : kind === 'dust' ? 0.15 : kind === 'feather' ? 0.1 : kind === 'glint' ? 0.2 : 1;
     }
   }
 
@@ -508,7 +539,20 @@ export class Renderer {
     this.lastNow = now;
     const t = now / 1000;
     const motion = !this.reducedMotion;
-    const full = this.quality === 'full';
+    // Qualité adaptative : plus de 2 s d'images lentes (> 34 ms) sur 3 s → calques coûteux retirés.
+    if (dt > 0 && dt < 0.1 && !this.autoLight) {
+      this.sampledFrames++;
+      if (dt > 0.034) this.slowFrames++;
+      if (this.sampledFrames >= 180) {
+        if (this.slowFrames > 120) this.autoLight = true;
+        this.sampledFrames = 0;
+        this.slowFrames = 0;
+      }
+    }
+    const full = this.effectiveFull;
+    this.frameT = t;
+    this.frameMotion = motion;
+    this.frameFull = full;
     const { ctx, dpr, theme } = this;
     const hud = view.v2;
     const len = view.stack.length;
@@ -695,14 +739,28 @@ export class Renderer {
       const n = Math.min(this.trailLen, full ? TRAIL_MAX : 2);
       for (let k = 0; k < n; k++) {
         const left = this.trail[(this.trailHead - 1 - k + TRAIL_MAX) % TRAIL_MAX]!;
-        this.block(left / MILLI, rowTop, view.moving.width / MILLI, this.colorFor(len), 0.28 * (1 - k / n) * this.boostMix, len);
+        this.block(left / MILLI, rowTop, view.moving.width / MILLI, this.colorFor(len), 0.28 * (1 - k / n) * this.boostMix, len, { wx: left / MILLI, ox: left / MILLI });
       }
     }
 
     if (view.moving) {
       // Rattrapage du Bouclier : le bloc clignote doucement avant de repartir.
       const blink = hud?.recovering && hud.recovering > 0 ? (motion ? 0.5 + 0.5 * Math.abs(Math.sin(t * 14)) : 0.6) : 1;
-      this.block(view.moving.left / MILLI, rowTop, view.moving.width / MILLI, this.colorFor(len), blink, len);
+      const ml = view.moving.left / MILLI;
+      const mw = view.moving.width / MILLI;
+      // Aura des légendaires : halo doux derrière le bloc mobile (jamais au-delà de la ligne du bloc).
+      const aura = SKIN_FX[this.skin as MaterialSkin]?.aura;
+      if (aura && this.frameFull && SKIN_RARITY[this.skin] === 'legendaire') {
+        const pulse = motion ? 0.75 + 0.25 * Math.sin(t * 3) : 0.85;
+        const g = ctx.createLinearGradient(0, rowTop - 10, 0, rowTop + BLOCK_HEIGHT + 10);
+        g.addColorStop(0, css(aura, 0));
+        g.addColorStop(0.5, css(aura, 0.28 * pulse));
+        g.addColorStop(1, css(aura, 0));
+        ctx.fillStyle = g;
+        roundedRect(ctx, ml - 8, rowTop - 10, mw + 16, BLOCK_HEIGHT + 20, 14);
+        ctx.fill();
+      }
+      this.block(ml, rowTop, mw, this.colorFor(len), blink, len, { wx: ml, ox: ml });
     }
 
     for (const d of this.debris) {
@@ -710,7 +768,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(d.x + d.w / 2, yScreen(d.y) + BLOCK_HEIGHT / 2);
       ctx.rotate(d.rot);
-      this.block(-d.w / 2, -BLOCK_HEIGHT / 2, d.w, d.color, alpha, d.floor);
+      this.block(-d.w / 2, -BLOCK_HEIGHT / 2, d.w, d.color, alpha, d.floor, { wx: d.x, ox: d.ox });
       ctx.restore();
     }
 
@@ -727,7 +785,7 @@ export class Renderer {
         ctx.save();
         ctx.translate(u.x, yScreen(py));
         ctx.scale(1 - lift * 0.7, 1 - lift * 0.7);
-        this.block(-u.w / 2, -BLOCK_HEIGHT / 2, u.w, u.color, 1, u.floor);
+        this.block(-u.w / 2, -BLOCK_HEIGHT / 2, u.w, u.color, 1, u.floor, { wx: u.x - u.w / 2, ox: u.x - u.w / 2 });
         ctx.restore();
       }
       drawUfo(ctx, ux, yScreen(uy), p >= 0.25 && p < 0.85 ? (hoverY - u.y) * 1 : 0, t);
@@ -1171,16 +1229,52 @@ export class Renderer {
     return g;
   }
 
-  /** Bloc en relief avec l'apparence courante, strictement contenu dans [x, x + w]. */
-  private block(x: number, y: number, w: number, color: Rgb, alpha: number, variant: number): void {
+  /**
+   * Bloc en relief avec l'apparence courante, strictement contenu dans [x, x + w].
+   * `place` : position dans le monde (wx) et origine de la matière (ox) quand le repère local
+   * n'est pas celui de la tour (débris qui tournent, bloc mobile).
+   */
+  private block(x: number, y: number, w: number, color: Rgb, alpha: number, variant: number, place?: { wx: number; ox: number }): void {
     const frac = Math.min(1, Math.max(0, (y + BLOCK_HEIGHT / 2) * this.frameScale / this.cssH));
+    const env: MaterialEnv = {
+      t: this.frameT,
+      motion: this.frameMotion,
+      full: this.frameFull,
+      wx: place?.wx ?? x,
+      wy: -(variant + 1) * BLOCK_HEIGHT,
+      ox: place?.ox ?? this.origins.get(variant) ?? x,
+      cam: this.viewCamera,
+      floor: variant,
+    };
     drawBlock(this.ctx, x, y, w, color, {
       skin: this.skin,
       sky: mix(this.skyTop, this.skyBottom, frac),
       alpha,
       gradient: this.faceGradient(color),
       variant,
+      env,
     });
+  }
+
+  /** Pose signée des matières épiques et légendaires ; célébration du parfait (légendaires). */
+  private skinPlacementFx(placed: Block, floor: number, perfect: boolean): void {
+    const fx = SKIN_FX[this.skin as MaterialSkin];
+    if (!fx) return;
+    const y = (floor + 1) * BLOCK_HEIGHT;
+    const left = placed.left / MILLI;
+    const w = placed.width / MILLI;
+    if (fx.place) {
+      const pl = fx.place;
+      const half = Math.ceil(pl.count / 2);
+      this.burst(pl.kind, left + 4, y, half, pl.colors[0]!, pl.speed, pl.colors);
+      this.burst(pl.kind, left + w - 4, y, pl.count - half, pl.colors[0]!, pl.speed, pl.colors);
+    }
+    if (perfect && fx.perfect && !this.reducedMotion) {
+      const pf = fx.perfect;
+      this.burst(pf.kind, left + w / 2, y, pf.count, pf.colors[0]!, 220, pf.colors);
+      this.rings.push({ x: left + w / 2, y: y + 6, w: w * 1.15, age: -0.08, color: pf.ring });
+      if (this.rings.length > MAX_RINGS) this.rings.shift();
+    }
   }
 
   /** Ombre portée par `above` sur le haut de `below`, limitée à leur intersection. */
@@ -1197,13 +1291,13 @@ export class Renderer {
     ctx.restore();
   }
 
-  private addDebris(b: Block, floor: number, side: -1 | 0 | 1): void {
+  private addDebris(b: Block, floor: number, side: -1 | 0 | 1, ox = b.left / MILLI): void {
     if (this.debris.length >= (this.quality === 'light' ? 6 : MAX_DEBRIS)) this.debris.shift();
     const w = b.width / MILLI;
     const push = side === 0 ? 0 : side * (40 + 60 * (w / (START_WIDTH / MILLI)));
     this.debris.push({
       x: b.left / MILLI, y: (floor + 1) * BLOCK_HEIGHT, w, vx: push, vy: 60,
-      rot: 0, vr: side === 0 ? 0.6 : side * 2.2, age: 0, color: this.colorFor(floor), floor,
+      rot: 0, vr: side === 0 ? 0.6 : side * 2.2, age: 0, color: this.colorFor(floor), floor, ox,
     });
   }
 

@@ -22,7 +22,7 @@ Point de reprise si la session s'interrompt. Mis à jour à chaque étape.
 |---|---|---|
 | E0 | Direction, état de reprise | fait |
 | E1 | Catalogue et raretés (moteur et application) | à faire |
-| E2 | Matières vivantes (`drawBlock` en couches, textures, animations, effets par rareté) | à faire |
+| E2 | Matières vivantes (`drawBlock` en couches, textures, animations, effets par rareté) | fait pour le moteur (`materials.ts`, `blocks.ts`, `rarity.ts`, effets de pose et aura dans `renderer.ts`) ; aperçus animés en E5 |
 | E3 | Univers à plusieurs plans, paliers 0/5/10/20/35/50, découvertes | à faire |
 | E4 | Stack or Crash, boutons de boutique et états, passe de 30 niveaux et migration | à faire |
 | E5 | Menus : onglets, collection, révélation, aperçus animés | à faire |

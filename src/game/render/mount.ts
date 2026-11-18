@@ -445,6 +445,7 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
       observer?.disconnect();
       media?.removeEventListener('change', onMotion);
       sfx.close();
+      renderer.dispose();
     },
     continueRun() {
       if (destroyed || !allowContinue || !resumable) return false;
