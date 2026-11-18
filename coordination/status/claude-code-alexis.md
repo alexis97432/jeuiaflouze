@@ -1,5 +1,21 @@
 # Claude Code Alexis
 
+## V5 — boosts et identité « Pop Choc » (18 novembre 2026)
+
+- **Cadre :** exception de l'utilisateur ; Alexis seul, sans revue externe, fusion et publication par Alexis. Ce sont des **auto-vérifications**.
+- **Branche :** `agent/claude-code-alexis/v5-boosts-visuels`. Le suivi est dans `coordination/V5-ETAT.md`.
+- **Livré :**
+  - règles v3 (Ralenti, Aimant, Bouclier, Fièvre) ;
+  - rendu « Pop Choc » (onomatopées, vague de compression, Fièvre, absurdités) ;
+  - sons et vibrations ;
+  - accueil et résultat.
+- **Bilan :** [`docs/V5.md`](../../docs/V5.md).
+- **Limites :**
+  - aucun téléphone physique ;
+  - sons jamais écoutés par un humain ;
+  - fluidité mesurée seulement sans affichage ;
+  - équilibrage non joué par des humains.
+
 ## V4 — interface modernisée (17 novembre 2026)
 
 - **Cadre :** exception de l'utilisateur pour la V4 uniquement.
