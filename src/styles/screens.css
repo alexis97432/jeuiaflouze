@@ -795,3 +795,27 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* V5 : exploits de la partie (Fièvre, Bouclier) sur la carte du résultat. */
+.feats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.feat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  border: 2.5px solid var(--edge);
+  color: var(--on-color);
+}
+.feat.fever {
+  background: linear-gradient(180deg, #ffd166, #ff7a3d);
+}
+.feat.shield {
+  background: linear-gradient(180deg, #a8f0dc, #48dcaa);
+}

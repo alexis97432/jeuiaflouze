@@ -12,6 +12,7 @@ import {
   replayRun,
   Simulation,
   SimulationV2,
+  SimulationV3,
   type AnyRunResult,
   type Block,
 } from '../core';
@@ -23,7 +24,7 @@ import { bestInk, css, getTheme, haloFor, mix, skyAt, type Rgb } from './themes'
 export type PatternCell = 'placed' | 'perfect' | 'bonus-placed' | 'bonus-perfect';
 
 export type RunSummary = {
-  rulesVersion: 1 | 2;
+  rulesVersion: 1 | 2 | 3;
   /** Étages posés. */
   height: number;
   /** Points (v2) ; null en v1, où le score est la hauteur. */
@@ -32,6 +33,9 @@ export type RunSummary = {
   bestPerfectStreak: number;
   bonusCount: number;
   continued: boolean;
+  /** V5 (v3) : Fièvres déclenchées et ratés rattrapés par le Bouclier (0 avant la v3). */
+  feverCount: number;
+  savedCount: number;
   /** Derniers placements, dans l'ordre (au plus MAX_PATTERN) ; `patternTotal` = nombre total. */
   pattern: PatternCell[];
   patternTotal: number;
@@ -58,8 +62,8 @@ const pushBounded = <T>(list: T[], item: T, max: number) => {
 export function summarizeRun(result: unknown): RunSummary | null {
   if (typeof result !== 'object' || result === null) return null;
   const r = result as Record<string, unknown>;
-  const input = r.rulesVersion === 2
-    ? { seed: r.seed, rulesVersion: 2, inputTicks: r.inputTicks, continueTicks: r.continueTicks ?? [] }
+  const input = r.rulesVersion === 2 || r.rulesVersion === 3
+    ? { seed: r.seed, rulesVersion: r.rulesVersion, inputTicks: r.inputTicks, continueTicks: r.continueTicks ?? [] }
     : { seed: r.seed, rulesVersion: r.rulesVersion, inputTicks: r.inputTicks };
   const outcome = replayRun(input);
   if (!outcome.ok) return null;
@@ -70,6 +74,29 @@ export function summarizeRun(result: unknown): RunSummary | null {
   const pattern: PatternCell[] = [];
   let patternTotal = 0;
   const presses = new Set(replayed.inputTicks);
+  if (replayed.rulesVersion === 3) {
+    const sim = new SimulationV3({ seed: replayed.seed, rulesVersion: 3 });
+    const continues = new Set(replayed.continueTicks);
+    while (sim.status !== 'ended') {
+      if (sim.status === 'fallen') {
+        if (continues.has(sim.tick)) sim.continueRun(); else sim.finish();
+        continue;
+      }
+      const e = sim.step(presses.has(sim.tick + 1));
+      if (e?.kind === 'placed') {
+        patternTotal++;
+        const cell: PatternCell = e.boost || e.fever ? (e.perfect ? 'bonus-perfect' : 'bonus-placed') : e.perfect ? 'perfect' : 'placed';
+        pushBounded(pattern, cell, MAX_PATTERN);
+      }
+    }
+    const towerFrom = Math.max(0, sim.stack.length - MAX_TOWER);
+    return {
+      rulesVersion: 3, height: replayed.height, points: replayed.score, perfectCount: replayed.perfectCount,
+      bestPerfectStreak: replayed.bestPerfectStreak, bonusCount: replayed.bonusCount, continued: replayed.continues > 0,
+      feverCount: replayed.feverCount, savedCount: replayed.savedCount,
+      pattern, patternTotal, tower: sim.stack.slice(towerFrom), towerFrom,
+    };
+  }
   if (replayed.rulesVersion === 2) {
     const sim = new SimulationV2({ seed: replayed.seed, rulesVersion: 2 });
     const continues = new Set(replayed.continueTicks);
@@ -89,6 +116,7 @@ export function summarizeRun(result: unknown): RunSummary | null {
     return {
       rulesVersion: 2, height: replayed.height, points: replayed.score, perfectCount: replayed.perfectCount,
       bestPerfectStreak: replayed.bestPerfectStreak, bonusCount: replayed.bonusCount, continued: replayed.continues > 0,
+      feverCount: 0, savedCount: 0,
       pattern, patternTotal, tower: sim.stack.slice(towerFrom), towerFrom,
     };
   }
@@ -104,6 +132,7 @@ export function summarizeRun(result: unknown): RunSummary | null {
   return {
     rulesVersion: 1, height: replayed.score, points: null, perfectCount: replayed.perfectCount,
     bestPerfectStreak: sim.bestPerfectStreak, bonusCount: 0, continued: false,
+    feverCount: 0, savedCount: 0,
     pattern, patternTotal, tower: sim.stack.slice(towerFrom), towerFrom,
   };
 }

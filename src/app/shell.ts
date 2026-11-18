@@ -12,10 +12,10 @@ import {
   type Challenge,
   type InvalidReason,
 } from './challenge-url';
-import { PLAY_RULES_VERSION, RULES_VERSION, type GameEvent, type GameHandle } from './game-contract';
+import { PLAY_RULES_VERSION, type GameEvent, type GameHandle } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
 import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
-import { BONUS_NAMES, continuesOf, continueTicksOf, heightOf, pointsOf, type AnyRunResult } from './run-result';
+import { BONUS_HINTS, BONUS_NAMES, continuesOf, continueTicksOf, feversOf, heightOf, pointsOf, savesOf, type AnyRunResult } from './run-result';
 import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
 import { buyLife, LIFE_PRICE, livesOf, MAX_LIVES, returnLife, useLife } from './lives';
 import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
@@ -1198,8 +1198,8 @@ export function createShell(options: ShellOptions): Shell {
     void loadBoard(kind, content, 0, []);
   };
 
-  /** Score affiché au classement : des points en règles v2 (hauteur en v1). */
-  const boardScore = (score: number) => (PLAY_RULES_VERSION === 2 ? `${score} point${score > 1 ? 's' : ''}` : floors(score));
+  /** Score affiché au classement : des points (règles v2 et v3 ; le classement en ligne est en v3). */
+  const boardScore = (score: number) => `${score} point${score > 1 ? 's' : ''}`;
 
   const loadBoard = async (kind: BoardKind, content: HTMLElement, offset: number, shown: BoardEntry[]) => {
     const request = ++boardRequest;
@@ -1396,7 +1396,8 @@ export function createShell(options: ShellOptions): Shell {
     try {
       current.handle = options.startGame({
         canvas,
-        config: mode === 'challenge' && runChallenge?.rulesVersion === RULES_VERSION ? { seed, rulesVersion: RULES_VERSION } : { seed, rulesVersion: PLAY_RULES_VERSION },
+        // Défi d'un ami : mêmes règles que la partie d'origine (v1, v2 ou v3) ; sinon règles v3.
+        config: mode === 'challenge' && runChallenge ? { seed, rulesVersion: runChallenge.rulesVersion } : { seed, rulesVersion: PLAY_RULES_VERSION },
         prefs: gamePrefs(),
         appearance: progress.selected,
         ...(allowContinue ? { allowContinue } : {}),
@@ -1597,10 +1598,23 @@ export function createShell(options: ShellOptions): Shell {
         announce(`C’est reparti ! Prêt dans ${Math.round(event.countdownTicks / 120)} secondes.`);
         break;
       case 'bonus-start':
-        announce(`Bonus ${BONUS_NAMES[event.bonus]} pour ${event.floors} étages !`);
+        // Annonce courte et explicite : le nom du boost et ce qu'il fait (sans manuel).
+        announce(`${BONUS_NAMES[event.bonus]} pour ${event.floors} étages : ${BONUS_HINTS[event.bonus]} !`);
+        fx.haptic('reward');
         break;
       case 'bonus-end':
-        announce(`Fin du bonus ${BONUS_NAMES[event.bonus]}.`);
+        announce(`Fin du ${BONUS_NAMES[event.bonus]}.`);
+        break;
+      case 'fever-start':
+        announce('Fièvre ! Points doublés tant que tu enchaînes les parfaits.');
+        fx.haptic('reward');
+        break;
+      case 'fever-end':
+        announce('Fin de la Fièvre.');
+        break;
+      case 'saved':
+        announce('Sauvé par le Bouclier ! Le bloc repart.');
+        fx.haptic('miss');
         break;
       case 'gauge':
         // Jauge « Super » dessinée dans le canvas ; on n'annonce que la jauge pleine (pas de bruit).
@@ -1685,6 +1699,25 @@ export function createShell(options: ShellOptions): Shell {
       p.append(icon(doc, 'sparkles'), el(doc, 'span', {}, plural(points, 'point')));
       card.append(p);
       summary += ` ${points} points.`;
+    }
+    // V5 : les exploits de la partie (Fièvres, rattrapages du Bouclier), en pastilles.
+    const fevers = feversOf(result);
+    const saves = savesOf(result);
+    if (fevers > 0 || saves > 0) {
+      const feats = el(doc, 'p', { class: 'feats', 'data-testid': 'feats' });
+      if (fevers > 0) {
+        const f = el(doc, 'span', { class: 'feat fever' });
+        f.append(icon(doc, 'flame'), el(doc, 'span', {}, `${fevers} Fièvre${fevers > 1 ? 's' : ''}`));
+        feats.append(f);
+      }
+      if (saves > 0) {
+        const sv = el(doc, 'span', { class: 'feat shield' });
+        sv.append(icon(doc, 'shield'), el(doc, 'span', {}, `${saves} sauvetage${saves > 1 ? 's' : ''}`));
+        if (fevers > 0) feats.append(el(doc, 'span', { class: 'sr-only' }, ' · '));
+        feats.append(sv);
+      }
+      card.append(feats);
+      summary += ` ${feats.textContent}.`;
     }
     if (outcome.gained.xp > 0 || outcome.gained.coins > 0) {
       const gains = el(doc, 'p', { class: 'gains', 'data-testid': 'gains' });
@@ -1894,7 +1927,7 @@ export function createShell(options: ShellOptions): Shell {
       playerId: player.id,
       pseudo: player.pseudo,
       inputTicks: result.inputTicks,
-      ...(result.rulesVersion === 2 ? { continueTicks: continueTicksOf(result) } : {}),
+      ...(result.rulesVersion !== 1 ? { continueTicks: continueTicksOf(result) } : {}),
     });
     if (destroyed || !status.isConnected) return;
     let text: string;

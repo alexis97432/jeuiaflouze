@@ -1,24 +1,31 @@
 import {
   advance,
   BONUS_FLOORS,
+  BOOST_FLOORS,
   COUNTDOWN_TICKS,
   GAUGE_MAX,
+  SAVE_TICKS,
   Simulation,
   SimulationV2,
+  SimulationV3,
   START_WIDTH,
   TICK_RATE,
   type BonusId,
+  type BoostId,
   type RunConfig as RunConfigV1,
   type RunConfigV2,
+  type RunConfigV3,
   type RunResult as RunResultV1,
   type RunResultV2,
+  type RunResultV3,
   type StepEvent,
   type StepEventV2,
+  type StepEventV3,
 } from '../core';
 import { FixedStepDriver } from '../input/fixed-step';
 import { attachInput } from '../input/input';
 import { Sfx } from './audio';
-import { Renderer } from './renderer';
+import { Renderer, type HudV2 } from './renderer';
 import { DEFAULT_SKIN, isDrawSkinId, isSkinId, type DrawSkinId, type SkinId } from './blocks';
 import { DEFAULT_THEME, getTheme, isThemeId, VOYAGE, type ThemeId } from './themes';
 
@@ -48,10 +55,15 @@ export function resolveAnyAppearance(raw: unknown): AnyAppearance {
   return { theme: resolveAppearance(r).theme, skin: isDrawSkinId(r.skin) ? r.skin : DEFAULT_SKIN };
 }
 
-/** Configuration de partie : rulesVersion 1 (anciens défis) ou 2 (V3 : bonus, points, reprise). */
-export type RunConfig = RunConfigV1 | RunConfigV2;
-/** Résultat final, union discriminée par `rulesVersion`. En v2, `score` = points, `height` = étages. */
-export type RunResult = RunResultV1 | RunResultV2;
+/**
+ * Configuration de partie : rulesVersion 1 (anciens défis), 2 (V3 : bonus, points, reprise) ou
+ * 3 (V5 : Ralenti, Aimant, Bouclier, Fièvre).
+ */
+export type RunConfig = RunConfigV1 | RunConfigV2 | RunConfigV3;
+/** Résultat final, union discriminée par `rulesVersion`. En v2/v3, `score` = points, `height` = étages. */
+export type RunResult = RunResultV1 | RunResultV2 | RunResultV3;
+/** Bonus v2 (Ralenti, ×2) et boosts v3 (Ralenti, Aimant, Bouclier). */
+export type AnyBoostId = BonusId | BoostId;
 
 export type GameHandle = {
   pause(): void;
@@ -79,13 +91,25 @@ export type GameEvent =
    * `points`, `score` et `height` sont toujours fournis par `mountGame` (en v1 : 1 point par étage,
    * score = hauteur). Optionnels dans le type pour rester additifs envers les doubles de test.
    */
-  | { type: 'placement'; tick: number; floor: number; perfect: boolean; perfectStreak: number; points?: number; score?: number; height?: number }
+  | {
+      type: 'placement'; tick: number; floor: number; perfect: boolean; perfectStreak: number;
+      points?: number; score?: number; height?: number;
+      /** v3 : parfait obtenu grâce à l'Aimant (le bloc s'est collé). */
+      snapped?: boolean;
+      /** v3 : pose en Fièvre (points doublés). */
+      fever?: boolean;
+    }
   | { type: 'miss'; tick: number; floor: number }
-  /** v2 : jauge après une pose qui la change (ou remise à zéro par une reprise). */
-  | { type: 'gauge'; value: number; max: number; next: BonusId }
-  | { type: 'bonus-start'; bonus: BonusId; floors: number }
-  | { type: 'bonus-end'; bonus: BonusId }
-  /** v2, `allowContinue` : la partie attend `continueRun()` ou `declineContinue()` ; pas d'onEnd. */
+  /** v2/v3 : jauge après une pose qui la change (ou remise à zéro par une reprise). */
+  | { type: 'gauge'; value: number; max: number; next: AnyBoostId }
+  | { type: 'bonus-start'; bonus: AnyBoostId; floors: number }
+  | { type: 'bonus-end'; bonus: AnyBoostId }
+  /** v3 : Fièvre (5 parfaits d'affilée) et sa fin au premier non-parfait ou au raté. */
+  | { type: 'fever-start' }
+  | { type: 'fever-end' }
+  /** v3 : raté rattrapé par le Bouclier ; l'étage repart après `recoverTicks`. */
+  | { type: 'saved'; tick: number; floor: number; recoverTicks: number }
+  /** v2/v3, `allowContinue` : la partie attend `continueRun()` ou `declineContinue()` ; pas d'onEnd. */
   | { type: 'continue-offer'; tick: number }
   | { type: 'continue-start'; countdownTicks: number };
 
@@ -112,7 +136,7 @@ export type MountOptions = {
    */
   appearance?: Appearance;
   /**
-   * V3 (F7) : proposer la reprise au premier raté (rulesVersion 2 seulement). Défaut false :
+   * V3 (F7) : proposer la reprise au premier raté (rulesVersion 2 et 3). Défaut false :
    * le raté termine normalement (Tour du jour, défis, classées). Ignoré en v1.
    */
   allowContinue?: boolean;
@@ -131,12 +155,15 @@ export type InternalMountOptions = MountOptions & {
   drawSkin?: DrawSkinId;
 };
 
-/** Délai entre le raté et onEnd, pour voir le bloc tomber (ms de rendu, gelé en pause). */
-export const END_DELAY_MS = 650;
+/**
+ * Délai entre le raté et onEnd : on voit le bloc tomber et la caméra reculer pour montrer toute
+ * la tour (ms de rendu, gelé en pause). V5 : 650 → 1000 ms.
+ */
+export const END_DELAY_MS = 1000;
 
 /** Vue d'inspection pour les tests de navigateur ; ne fait pas partie de l'API publique. */
 export interface GameInspector {
-  readonly sim: Simulation | SimulationV2;
+  readonly sim: Simulation | SimulationV2 | SimulationV3;
   readonly renderer: Renderer;
   readonly sfx: Sfx;
   readonly frames: number;
@@ -149,9 +176,12 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
   const { canvas, config, onEnd } = options;
   // Échecs de montage, synchrones et sans effet de bord (rien n'est encore attaché) :
   // RangeError si seed ou rulesVersion invalide, Error si le contexte Canvas 2D est indisponible.
-  const v2 = config.rulesVersion === 2;
-  const sim: Simulation | SimulationV2 = v2 ? new SimulationV2(config) : new Simulation(config as RunConfigV1);
-  const allowContinue = v2 && options.allowContinue === true;
+  const sim: Simulation | SimulationV2 | SimulationV3 = config.rulesVersion === 3
+    ? new SimulationV3(config)
+    : config.rulesVersion === 2 ? new SimulationV2(config) : new Simulation(config as RunConfigV1);
+  /** Simulation avec reprise (v2, v3), sinon null (v1). */
+  const resumable = sim instanceof SimulationV2 || sim instanceof SimulationV3 ? sim : null;
+  const allowContinue = resumable !== null && options.allowContinue === true;
   const doc = canvas.ownerDocument;
   const win = doc.defaultView ?? window;
   const media = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -160,6 +190,7 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
   const renderer = new Renderer(canvas, options.reducedMotion ?? media?.matches ?? false, theme, isDrawSkinId(options.drawSkin) ? options.drawSkin : appearance.skin);
   const sfx = new Sfx(options.sound ?? true, theme.audio, options.volume ?? 1);
   renderer.quality = options.effects === 'light' ? 'light' : 'full';
+  renderer.onGag = (kind) => sfx.gag(kind);
 
   let destroyed = false;
   let pauseReason: 'none' | 'shell' | 'hidden' = 'none';
@@ -179,46 +210,71 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
       console.error('[game] onEvent a levé une erreur', error);
     }
   };
-  const nextBonus = () => (sim instanceof SimulationV2 ? sim.nextBonus : 'ralenti');
-  const onEvent = (e: StepEvent | StepEventV2) => {
+  const nextBonus = (): AnyBoostId =>
+    sim instanceof SimulationV3 ? sim.nextBoost : sim instanceof SimulationV2 ? sim.nextBonus : 'ralenti';
+  const onEvent = (e: StepEvent | StepEventV2 | StepEventV3) => {
     if (renderer.onEvent(e)) sfx.milestone();
     if (e.kind === 'resumed') {
-      sfx.countdown(0);
+      if ('cause' in e && e.cause === 'save') sfx.rearm();
+      else sfx.countdown(0);
+      return;
+    }
+    if (e.kind === 'saved') {
+      // Bouclier : la tour reste ; les appuis sont ignorés par la simulation jusqu'à la reprise.
+      notify({ type: 'saved', tick: e.tick, floor: e.floor, recoverTicks: SAVE_TICKS });
+      sfx.shieldSave();
+      if (e.fever) notify({ type: 'fever-end' });
       return;
     }
     if (e.kind === 'placed') {
-      const ev = e as StepEventV2 & { kind: 'placed' };
       const isV2 = 'points' in e;
+      const v3 = 'boost' in e ? e : null;
+      const v2 = !v3 && isV2 ? (e as Extract<StepEventV2, { kind: 'placed' }>) : null;
       notify({
         type: 'placement', tick: e.tick, floor: e.floor, perfect: e.perfect, perfectStreak: e.perfectStreak,
-        points: isV2 ? ev.points : 1, score: isV2 ? ev.score : e.floor, height: isV2 ? ev.height : e.floor,
+        points: isV2 ? (e as { points: number }).points : 1,
+        score: isV2 ? (e as { score: number }).score : e.floor,
+        height: isV2 ? (e as { height: number }).height : e.floor,
+        ...(v3 ? { snapped: v3.snapped, fever: v3.fever } : {}),
       });
+      if (v3?.snapped) sfx.snap();
       if (e.perfect) sfx.perfect(e.perfectStreak);
       else sfx.place(e.placed.width / START_WIDTH);
-      if (isV2) {
-        if (ev.bonusEnded) {
-          notify({ type: 'bonus-end', bonus: ev.bonusEnded });
-          sfx.bonusEnd();
-        }
-        if (ev.bonusStarted) {
-          notify({ type: 'bonus-start', bonus: ev.bonusStarted, floors: BONUS_FLOORS });
-          sfx.bonusStart(ev.bonusStarted);
-        }
-        // Jauge changée : toute pose hors bonus, et le retour à zéro en fin de bonus.
-        if (ev.bonus === null || ev.bonusEnded) notify({ type: 'gauge', value: ev.gauge, max: GAUGE_MAX, next: nextBonus() });
+      const ended = v3 ? v3.boostEnded : v2?.bonusEnded ?? null;
+      const started = v3 ? v3.boostStarted : v2?.bonusStarted ?? null;
+      if (ended) {
+        notify({ type: 'bonus-end', bonus: ended });
+        sfx.bonusEnd();
+      }
+      if (started) {
+        notify({ type: 'bonus-start', bonus: started, floors: v3 ? BOOST_FLOORS[started as BoostId] : BONUS_FLOORS });
+        sfx.bonusStart(started);
+      }
+      if (v3?.feverEnded) {
+        notify({ type: 'fever-end' });
+        sfx.feverEnd();
+      }
+      if (v3?.feverStarted) {
+        notify({ type: 'fever-start' });
+        sfx.feverStart();
+      }
+      // Jauge changée : toute pose hors boost, et le retour à zéro en fin de boost.
+      if (v3 ? v3.boost === null || v3.boostEnded : v2 ? v2.bonus === null || v2.bonusEnded : false) {
+        notify({ type: 'gauge', value: (v3 ?? v2)!.gauge, max: GAUGE_MAX, next: nextBonus() });
       }
       return;
     }
     notify({ type: 'miss', tick: e.tick, floor: e.floor });
+    if ('fever' in e && e.fever) notify({ type: 'fever-end' });
     sfx.miss();
     input.setEnabled(false); // rend l'espace au DOM (écran de résultat ou offre de reprise)
-    if ('canContinue' in e && e.canContinue && sim instanceof SimulationV2) {
+    if ('canContinue' in e && e.canContinue && resumable) {
       // Attente de décision : seulement si l'application l'a autorisée pour cette partie.
       if (allowContinue) notify({ type: 'continue-offer', tick: e.tick });
-      else sim.finish();
+      else resumable.finish();
     }
   };
-  const driver = new FixedStepDriver<StepEvent | StepEventV2>(sim, onEvent);
+  const driver = new FixedStepDriver<StepEvent | StepEventV2 | StepEventV3>(sim, onEvent);
 
   const input = attachInput(canvas, (timeStamp) => {
     sfx.unlock(); // geste utilisateur : seul endroit où l'audio démarre
@@ -246,21 +302,41 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
     } else if (sim.status === 'countdown') {
       moving = sim.moving; // bloc réapparu, immobile jusqu'à la fin du compte à rebours
     }
-    const hud = sim instanceof SimulationV2
+    const hud: HudV2 | undefined = sim instanceof SimulationV3
       ? {
           height: sim.height,
           gauge: sim.gauge,
           gaugeMax: GAUGE_MAX,
-          next: sim.nextBonus,
-          bonus: sim.bonus,
-          bonusLeft: sim.bonusFloorsLeft,
-          bonusFloors: BONUS_FLOORS,
-          countdown: sim.status === 'countdown' ? Math.ceil(sim.countdownLeft / TICK_RATE) : 0,
+          next: sim.nextBoost,
+          bonus: sim.boost,
+          bonusLeft: sim.boostFloorsLeft,
+          bonusFloors: BOOST_FLOORS[sim.boost ?? sim.nextBoost],
+          // Le compte à rebours chiffré (3, 2, 1) n'existe que pour la reprise ; le rattrapage du
+          // Bouclier (0,75 s) est montré autrement.
+          countdown: sim.status === 'countdown' && sim.countdownKind === 'continue' ? Math.ceil(sim.countdownLeft / TICK_RATE) : 0,
           fallen: sim.status === 'fallen',
+          rules: 3,
+          fever: sim.fever,
+          streak: sim.perfectStreak,
+          tolerance: sim.tolerance,
+          recovering: sim.status === 'countdown' && sim.countdownKind === 'save' ? sim.countdownLeft / SAVE_TICKS : 0,
         }
-      : undefined;
+      : sim instanceof SimulationV2
+        ? {
+            height: sim.height,
+            gauge: sim.gauge,
+            gaugeMax: GAUGE_MAX,
+            next: sim.nextBonus,
+            bonus: sim.bonus,
+            bonusLeft: sim.bonusFloorsLeft,
+            bonusFloors: BONUS_FLOORS,
+            countdown: sim.status === 'countdown' ? Math.ceil(sim.countdownLeft / TICK_RATE) : 0,
+            fallen: sim.status === 'fallen',
+          }
+        : undefined;
     return {
       stack: sim.stack, moving, score: sim.score, perfectStreak: sim.perfectStreak, pause: pauseReason,
+      ended: sim.status === 'ended',
       ...(hud ? { v2: hud } : {}),
     };
   };
@@ -322,6 +398,9 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
   };
 
   const onVisibility = () => {
+    // Arrière-plan : le son est suspendu (aucun effet sonore qui traîne), puis repris au retour.
+    if (doc.visibilityState === 'hidden') sfx.suspend();
+    else sfx.resume();
     if (doc.visibilityState === 'hidden') pauseInternal('hidden');
     else if (pauseReason === 'hidden') {
       // Partie finie ou en attente de décision : rien à protéger (aucun tick ne passe),
@@ -368,13 +447,13 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
       sfx.close();
     },
     continueRun() {
-      if (destroyed || !allowContinue || !(sim instanceof SimulationV2)) return false;
-      if (!sim.continueRun()) return false;
+      if (destroyed || !allowContinue || !resumable) return false;
+      if (!resumable.continueRun()) return false;
       renderer.onContinue();
       input.setEnabled(true); // les appuis du compte à rebours sont refusés par le driver
       lastCountdown = 0;
       notify({ type: 'continue-start', countdownTicks: COUNTDOWN_TICKS });
-      notify({ type: 'gauge', value: 0, max: GAUGE_MAX, next: sim.nextBonus });
+      notify({ type: 'gauge', value: 0, max: GAUGE_MAX, next: nextBonus() });
       if (pauseReason === 'none') {
         lastFrame = null;
         driver.resume(win.performance.now());
@@ -388,7 +467,7 @@ export function createGame(options: InternalMountOptions): Required<GameHandle> 
       sfx.setVolume(volume);
     },
     declineContinue() {
-      if (destroyed || !(sim instanceof SimulationV2) || !sim.finish()) return;
+      if (destroyed || !resumable || !resumable.finish()) return;
       // Partie finie : rien à protéger, l'animation de fin reprend pour que onEnd arrive.
       if (pauseReason === 'shell') pauseReason = 'none';
       lastFrame = null;

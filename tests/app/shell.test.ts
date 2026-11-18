@@ -123,7 +123,7 @@ describe('parcours libre', () => {
     button('Jouer').click();
     expect(shell.screen).toBe('game');
     const mount = game.mounts[0]!;
-    expect(mount.options.config).toEqual({ seed: 100, rulesVersion: 2 }); // nouvelles parties : règles v2 (F7)
+    expect(mount.options.config).toEqual({ seed: 100, rulesVersion: 3 }); // nouvelles parties : règles v3 (V5)
     expect(document.activeElement).toBe(mount.options.canvas);
 
     await end(4);
@@ -915,7 +915,7 @@ describe('classement (V3-A3)', () => {
   const T = (mode: 'free' | 'daily', n = 1, seed = 4242, day?: string): RankTicket => ({
     ticket: n.toString(16).padStart(32, '0'),
     seed,
-    rulesVersion: 2,
+    rulesVersion: 3,
     mode,
     ...(day ? { day } : {}),
     expiresAt: Date.parse('2026-11-17T02:00:00Z'),
@@ -1230,20 +1230,31 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
     expect(g.mounts[0]!.options.allowContinue).toBeUndefined();
   });
 
-  it('bonus annoncés pour les lecteurs d’écran', () => {
+  it('boosts annoncés pour les lecteurs d’écran : nom, durée et ce qu’ils font (v2 et v3)', () => {
     const g = reviveGame();
     const { button, text } = setup({ startGame: g.startGame });
     button('Jouer').click();
-    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-start', bonus: 'double', floors: 5 });
-    expect(text('live')).toBe('Bonus ×2 pour 5 étages !');
-    g.mounts[0]!.options.onGameEvent!({ type: 'bonus-end', bonus: 'double' });
-    expect(text('live')).toBe('Fin du bonus ×2.');
+    const emit = g.mounts[0]!.options.onGameEvent!;
+    emit({ type: 'bonus-start', bonus: 'double', floors: 5 });
+    expect(text('live')).toBe('×2 pour 5 étages : les points comptent double !');
+    emit({ type: 'bonus-end', bonus: 'double' });
+    expect(text('live')).toBe('Fin du ×2.');
+    emit({ type: 'bonus-start', bonus: 'aimant', floors: 5 });
+    expect(text('live')).toBe('Aimant pour 5 étages : les blocs presque bien placés se collent !');
+    emit({ type: 'bonus-start', bonus: 'bouclier', floors: 6 });
+    expect(text('live')).toBe('Bouclier pour 6 étages : un raté sera rattrapé !');
+    emit({ type: 'saved', tick: 300, floor: 9, recoverTicks: 90 });
+    expect(text('live')).toBe('Sauvé par le Bouclier ! Le bloc repart.');
+    emit({ type: 'fever-start' });
+    expect(text('live')).toBe('Fièvre ! Points doublés tant que tu enchaînes les parfaits.');
+    emit({ type: 'fever-end' });
+    expect(text('live')).toBe('Fin de la Fièvre.');
   });
 
   it('résultat v2 : points affichés, gains et record sur la hauteur ; reprise hors classement', async () => {
     const g = reviveGame();
     const storage = memoryStorage();
-    const svc = { available: true, issueTicket: vi.fn(async (mode: 'free' | 'daily') => ({ ok: true as const, value: { ticket: '1'.padStart(32, '0'), seed: 5, rulesVersion: 2, mode, expiresAt: Date.parse('2026-11-17T02:00:00Z'), ...(mode === 'daily' ? { day: '2026-11-16' } : {}) } })), submit: vi.fn(), read: vi.fn() };
+    const svc = { available: true, issueTicket: vi.fn(async (mode: 'free' | 'daily') => ({ ok: true as const, value: { ticket: '1'.padStart(32, '0'), seed: 5, rulesVersion: 3, mode, expiresAt: Date.parse('2026-11-17T02:00:00Z'), ...(mode === 'daily' ? { day: '2026-11-16' } : {}) } })), submit: vi.fn(), read: vi.fn() };
     const meta = createMetaStore(storage);
     meta.writePlayer({ id: 'c'.repeat(32), pseudo: 'Alex' });
     const { button, text, store } = setup({ startGame: g.startGame, meta, leaderboard: svc as unknown as LeaderboardService });

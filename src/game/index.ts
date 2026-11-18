@@ -1,5 +1,5 @@
 /** API publique du jeu, consommée par le shell (A1, A3/A4). Contrat : docs/CONTRACTS.md. */
-export type { RunConfig as RunConfigV1, RunResult as RunResultV1, RunConfigV2, RunResultV2, BonusId } from './core';
+export type { RunConfig as RunConfigV1, RunResult as RunResultV1, RunConfigV2, RunResultV2, BonusId, RunConfigV3, RunResultV3, BoostId } from './core';
 export { BONUS_IDS, GAUGE_MAX, BONUS_FLOORS, COUNTDOWN_TICKS } from './core';
 export { replayRun, verifyRunResult, type ReplayOutcome, type ReplayLimits, type ReplayErrorCode, type AnyRunResult } from './core';
 export {

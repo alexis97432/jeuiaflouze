@@ -1,4 +1,4 @@
-import { FIELD_WIDTH, MILLI, START_WIDTH, type BonusId, type Block, type StepEvent, type StepEventV2 } from '../core';
+import { FIELD_WIDTH, MILLI, START_WIDTH, type BonusId, type BoostId, type Block, type StepEvent, type StepEventV2, type StepEventV3 } from '../core';
 import {
   BLOCK_HEIGHT,
   createFaceGradient,
@@ -7,6 +7,24 @@ import {
   RADIUS,
   type DrawSkinId,
 } from './blocks';
+import {
+  CosmeticRng,
+  drawDuck,
+  drawHudIcon,
+  drawMagnetField,
+  drawParticle,
+  drawPigeon,
+  drawShieldDome,
+  drawSunburst,
+  drawUfo,
+  drawWord,
+  MAX_WORDS,
+  ParticlePool,
+  WORDS,
+  type HudIcon,
+  type ParticleKind,
+  type Word,
+} from './fx';
 import {
   css,
   getTheme,
@@ -26,7 +44,25 @@ export { BLOCK_HEIGHT, reliefParts, SKIN_IDS, type ReliefParts, type SkinId } fr
 /** Police du canvas, alignée sur l'interface V4 (Fredoka embarquée, sinon police arrondie du système). */
 export const GAME_FONT = '"Fredoka Variable", "Fredoka", ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif';
 export const MAX_DEBRIS = 16;
-export const MAX_SPARKS = 48;
+/** V5 : réserve unique de particules (étoiles, poussière, braises, éclats, plumes). */
+export const MAX_PARTICLES = 64;
+/** Compatibilité des tests V2 : les « étincelles » sont désormais les particules de la réserve. */
+export const MAX_SPARKS = MAX_PARTICLES;
+export const MAX_RINGS = 4;
+/** Ligne des onomatopées (fraction de la hauteur) : entre le HUD et le bloc mobile, jamais dessus. */
+const WORD_LINE = 0.285;
+const WAVE_DEPTH = 10;
+const WAVE_TIME = 0.22;
+const RIM_DEPTH = 6;
+const RING_TIME = 0.5;
+const TRAIL_MAX = 5;
+const DUCK_TIME = 4.2;
+/** Recul de caméra de fin de partie (s). */
+const REVEAL_TIME = 0.8;
+const FEVER_TOP: Rgb = [255, 64, 104];
+const FEVER_BOTTOM: Rgb = [255, 176, 64];
+const easeInOut = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+type GagKind = 'duck' | 'ufo' | 'pigeon';
 /** Au plus ce nombre d'éléments de décor dessinés par image. */
 export const MAX_DECOR = 28;
 
@@ -50,6 +86,8 @@ export interface ViewState {
   readonly score: number;
   readonly perfectStreak: number;
   readonly pause: 'none' | 'shell' | 'hidden';
+  /** Partie finie (raté définitif) : déclenche le recul de caméra qui montre la tour. */
+  readonly ended?: boolean;
   /** Règles v2 (V3, F7) : HUD des points, de la hauteur, de la jauge et de la reprise. */
   readonly v2?: HudV2;
 }
@@ -60,20 +98,30 @@ export interface HudV2 {
   readonly height: number;
   readonly gauge: number;
   readonly gaugeMax: number;
-  readonly next: BonusId;
-  readonly bonus: BonusId | null;
+  readonly next: BonusId | BoostId;
+  readonly bonus: BonusId | BoostId | null;
   readonly bonusLeft: number;
   readonly bonusFloors: number;
   /** Chiffre du compte à rebours (3, 2, 1) ; 0 hors compte à rebours. */
   readonly countdown: number;
   /** Attente d'une décision de reprise (l'offre est un écran DOM du shell). */
   readonly fallen: boolean;
+  /** V5 : règles v3 (boosts Ralenti, Aimant, Bouclier et Fièvre). */
+  readonly rules?: 3;
+  readonly fever?: boolean;
+  readonly streak?: number;
+  /** Tolérance du parfait en milli (élargie sous l'Aimant) : la zone d'aimantation dessinée est la vraie. */
+  readonly tolerance?: number;
+  /** Rattrapage du Bouclier en cours : fraction restante (1 → 0), 0 sinon. */
+  readonly recovering?: number;
 }
 
 /** Libellés et couleurs des bonus : un mot court et une teinte, lisibles sans explication. */
-export const BONUS_STYLE: Record<BonusId, { label: string; banner: string; color: Rgb }> = {
+export const BONUS_STYLE: Record<BonusId | BoostId, { label: string; banner: string; color: Rgb }> = {
   ralenti: { label: 'Ralenti', banner: 'RALENTI !', color: [86, 170, 255] },
   double: { label: '×2', banner: '×2 POINTS !', color: [255, 190, 40] },
+  aimant: { label: 'Aimant', banner: 'AIMANT !', color: [255, 72, 120] },
+  bouclier: { label: 'Bouclier', banner: 'BOUCLIER !', color: [72, 220, 170] },
 };
 
 /** Texte flottant « +N » au-dessus d'un étage posé. */
@@ -81,7 +129,7 @@ interface Float { text: string; floor: number; x: number; age: number; color: Rg
 export const MAX_FLOATS = 6;
 
 interface Debris { x: number; y: number; w: number; vx: number; vy: number; rot: number; vr: number; age: number; color: Rgb; floor: number }
-interface Spark { x: number; y: number; vx: number; vy: number; age: number; life: number; color: Rgb; rot: number }
+interface Ring { x: number; y: number; w: number; age: number; color: Rgb }
 
 /** Hachage entier stable pour le décor (indépendant du PRNG de la partie). */
 function hash(n: number): number {
@@ -116,15 +164,42 @@ export class Renderer {
   private milestoneName = '';
   /** Annonce d'un bonus (1 → 0) et son nom ; fin de bonus ; « C'est parti ! » après reprise. */
   private bonusBanner = 0;
-  private bonusBannerId: BonusId = 'ralenti';
   private bonusEndFlash = 0;
   private goBanner = 0;
   private readonly floats: Float[] = [];
   private landing = 0;
-  private landingFloor = -1;
   private lastNow: number | null = null;
   private readonly debris: Debris[] = [];
-  private readonly sparks: Spark[] = [];
+  /** V5 « Pop Choc » : particules, onomatopées, ondes, vague de compression, ambiances, absurdités. */
+  private readonly particles = new ParticlePool(MAX_PARTICLES);
+  private readonly words: Word[] = [];
+  private readonly rings: Ring[] = [];
+  private readonly cos = new CosmeticRng();
+  private wave: { t: number; top: number; amp: number; chain: boolean } | null = null;
+  private readonly waveOffsets = new Float64Array(WAVE_DEPTH + 1);
+  private feverMix = 0;
+  private feverTarget = 0;
+  private feverBeat = 0;
+  private boostMix = 0;
+  private boostTarget = 0;
+  private boostShown: BonusId | BoostId | null = null;
+  private shieldBreak = 0;
+  private scoreBump = 0;
+  private lastScore = 0;
+  private emberClock = 0;
+  private readonly trail = new Float64Array(TRAIL_MAX);
+  private trailHead = 0;
+  private trailLen = 0;
+  private trailClock = 0;
+  private reveal = 0;
+  private revealTarget = false;
+  /** Caméra effectivement dessinée (recul de fin de partie compris). */
+  private viewCamera = 0;
+  private duck: { t: number; dir: 1 | -1; y: number } | null = null;
+  private ufo: { t: number; x: number; y: number; w: number; color: Rgb; floor: number; dir: -1 | 1 } | null = null;
+  private pigeon: { floor: number; side: -1 | 1; flying: number; x: number; y: number } | null = null;
+  /** Son des absurdités (branché par le montage sur Sfx.gag). */
+  public onGag: ((kind: GagKind) => void) | null = null;
   private readonly gradients = new Map<string, CanvasGradient>();
   /** Ciel de l'image courante (haut, bas) et échelle, pour choisir le contour selon le fond réel. */
   private skyTop: Rgb = [255, 255, 255];
@@ -133,7 +208,6 @@ export class Renderer {
   /** Palier mémorisé par élément de décor (borné aux éléments proches de l'écran). */
   private readonly decorTiers = new Map<number, { tier: number; born: number }>();
   private decorDrawn = 0;
-  private seed = 0x9e3779b9;
 
   private skin: DrawSkinId;
   /**
@@ -158,7 +232,15 @@ export class Renderer {
   get skinId(): DrawSkinId { return this.skin; }
 
   get debrisCount(): number { return this.debris.length; }
-  get sparkCount(): number { return this.sparks.length; }
+  get sparkCount(): number { return this.particles.alive; }
+  /** Inspection (tests) : effets V5 vivants. */
+  get fxState(): { words: string[]; rings: number; particles: number; fever: number; boost: number; duck: boolean; ufo: boolean; pigeon: boolean; reveal: number } {
+    return {
+      words: this.words.map((w) => w.text), rings: this.rings.length, particles: this.particles.alive,
+      fever: this.feverMix, boost: this.boostMix, duck: this.duck !== null, ufo: this.ufo !== null,
+      pigeon: this.pigeon !== null, reveal: this.reveal,
+    };
+  }
   /** Éléments de décor dessinés à la dernière image (borné par MAX_DECOR). */
   get decorCount(): number { return this.decorDrawn; }
   get gradientCacheSize(): number { return this.gradients.size; }
@@ -174,6 +256,11 @@ export class Renderer {
     this.bonusBanner = 0;
     this.bonusEndFlash = 0;
     this.floats.length = 0;
+    this.words.length = 0;
+    this.rings.length = 0;
+    this.particles.clear();
+    this.wave = null;
+    this.reveal = 0;
   }
 
   get floatCount(): number { return this.floats.length; }
@@ -203,50 +290,179 @@ export class Renderer {
   }
 
   /** Événement de simulation → effets visuels bornés. Renvoie le nom du palier atteint, s'il y en a un. */
-  onEvent(event: StepEvent | StepEventV2): string | null {
+  onEvent(event: StepEvent | StepEventV2 | StepEventV3): string | null {
+    const motion = !this.reducedMotion;
     if (event.kind === 'resumed') {
-      this.goBanner = 1;
+      if (!('cause' in event) || event.cause === 'continue') this.goBanner = 1;
+      else this.addWord('PRÊT ?', [255, 255, 255], 30, 0.7, 1);
+      return null;
+    }
+    if (event.kind === 'saved') {
+      // Bouclier : le bloc rebondit sur la bulle qui éclate ; la tour ne bouge pas.
+      const w = event.moving.width / MILLI;
+      this.debris.push({
+        x: event.moving.left / MILLI, y: (event.floor + 1) * BLOCK_HEIGHT, w, vx: (event.moving.left > FIELD_WIDTH / 2 ? 1 : -1) * 90,
+        vy: 380, rot: 0, vr: 3, age: 0, color: this.colorFor(event.floor), floor: event.floor,
+      });
+      if (this.debris.length > MAX_DEBRIS) this.debris.shift();
+      this.shieldBreak = 1;
+      this.addWord(this.cos.pick(WORDS.saved), [72, 220, 170], 46, 1.1, 3);
+      this.burst('shard', event.moving.left / MILLI + w / 2, (event.floor + 1.5) * BLOCK_HEIGHT, 14, [150, 255, 220], 260);
+      if (motion) this.trauma = Math.min(0.45, this.trauma + 0.35);
+      this.pigeonScare();
       return null;
     }
     if (event.kind === 'missed') {
       this.addDebris(event.moving, event.floor, 0);
-      if (!this.reducedMotion) this.trauma = Math.min(1, this.trauma + 0.65);
+      this.addWord(this.cos.pick(WORDS.crash), [255, 110, 70], 50, 1.3, 3);
+      this.burst('dust', event.moving.left / MILLI + event.moving.width / MILLI / 2, (event.floor + 0.5) * BLOCK_HEIGHT, 10, [200, 196, 210], 120);
+      if (motion) this.trauma = Math.min(0.6, this.trauma + 0.5);
+      this.pigeonScare();
       return null;
     }
-    this.landing = 1;
-    this.landingFloor = event.floor;
-    if (event.cut) this.addDebris(event.cut, event.floor, event.placed.left > event.cut.left ? -1 : 1);
+    // Pose réussie : le bloc s'écrase un instant (vague limitée au bloc posé, ou en chaîne si parfait).
+    const v3 = 'boost' in event ? event : null;
+    const placedV2 = !v3 && 'points' in event ? (event as Extract<StepEventV2, { kind: 'placed' }>) : null;
+    const streak = event.perfectStreak;
+    const amp = event.perfect ? Math.min(0.26, 0.12 + 0.03 * streak) : 0.09;
+    this.wave = { t: 0, top: event.floor, amp, chain: event.perfect };
+    if (event.cut) {
+      const side = event.placed.left > event.cut.left ? -1 : 1;
+      if (v3?.fever && !this.ufo && motion && this.quality === 'full' && this.cos.next() < 0.35) {
+        // Absurdité : pendant la Fièvre, un ovni vient parfois chiper le morceau coupé.
+        this.ufo = { t: 0, x: (event.cut.left + event.cut.width / 2) / MILLI, y: (event.floor + 1) * BLOCK_HEIGHT, w: event.cut.width / MILLI, color: this.colorFor(event.floor), floor: event.floor, dir: side };
+        this.gag('ufo');
+      } else {
+        this.addDebris(event.cut, event.floor, side);
+      }
+      const cx = side < 0 ? event.placed.left / MILLI : (event.placed.left + event.placed.width) / MILLI;
+      this.burst('dust', cx, (event.floor + 1) * BLOCK_HEIGHT, 3, [235, 230, 240], 60);
+    }
     if (event.perfect) {
       this.flash = 1;
-      this.ripple = this.reducedMotion ? 0 : 1;
       this.flashFloor = event.floor;
-      this.streakValue = event.perfectStreak;
-      this.streakLabel = event.perfectStreak >= 2 ? 1 : 0;
-      if (!this.reducedMotion) this.addSparks(event.placed, event.floor, 8 + Math.min(event.perfectStreak * 2, 16));
+      this.ripple = motion ? 1 : 0;
+      this.streakValue = streak;
+      this.streakLabel = streak >= 2 ? 1 : 0;
+      const cx = (event.placed.left + event.placed.width / 2) / MILLI;
+      const y = (event.floor + 1) * BLOCK_HEIGHT;
+      this.rings.push({ x: cx, y, w: event.placed.width / MILLI, age: 0, color: v3?.snapped ? [255, 72, 120] : v3?.fever ? [255, 170, 60] : [255, 255, 255] });
+      if (this.rings.length > MAX_RINGS) this.rings.shift();
+      this.addSparks(event.placed, event.floor, 6 + Math.min(streak * 2, 12));
+      if (v3?.snapped) this.addWord(this.cos.pick(WORDS.snap), [255, 72, 120], 36, 0.8, 1);
+      else if (!(v3?.feverStarted)) {
+        const list = streak >= 3 ? WORDS.streak3 : streak === 2 ? WORDS.streak2 : WORDS.perfect;
+        this.addWord(this.cos.pick(list), streak >= 3 ? [255, 214, 64] : [255, 255, 255], 30 + Math.min(streak, 5) * 3, 0.8, 1);
+      }
+      this.pigeonScare();
+    } else if (!this.pigeon && motion && this.quality === 'full' && event.floor >= 8 && this.cos.next() < 0.12) {
+      // Absurdité : un pigeon se pose sur le flanc d'un étage plus bas, jusqu'au prochain parfait.
+      const floor = Math.max(1, event.floor - 3 - Math.floor(this.cos.next() * 3));
+      this.pigeon = { floor, side: this.cos.next() < 0.5 ? -1 : 1, flying: 0, x: 0, y: 0 };
     }
-    if ('points' in event) {
-      // Points de la pose, au-dessus du bloc ; teinte du ×2 quand il s'applique.
+    if (v3 || placedV2) {
+      const points = (v3 ?? placedV2)!.points;
       if (this.floats.length >= MAX_FLOATS) this.floats.shift();
       this.floats.push({
-        text: `+${event.points}`,
+        text: `+${points}`,
         floor: event.floor,
         x: (event.placed.left + event.placed.width / 2) / MILLI,
         age: 0,
-        color: event.bonus === 'double' ? BONUS_STYLE.double.color : [255, 255, 255],
+        color: v3?.fever ? [255, 170, 60] : placedV2?.bonus === 'double' ? BONUS_STYLE.double.color : [255, 255, 255],
       });
-      if (event.bonusStarted) {
+      const started = v3 ? v3.boostStarted : placedV2!.bonusStarted;
+      if (started) {
         this.bonusBanner = 1;
-        this.bonusBannerId = event.bonusStarted;
+        const st = BONUS_STYLE[started];
+        this.addWord(st.banner, st.color, 44, 1.5, 4);
+        this.burst('star', (event.placed.left + event.placed.width / 2) / MILLI, (event.floor + 1) * BLOCK_HEIGHT, 10, st.color, 240);
       }
-      if (event.bonusEnded) this.bonusEndFlash = 1;
+      if (v3 ? v3.boostEnded : placedV2!.bonusEnded) this.bonusEndFlash = 1;
+      if (v3?.feverStarted) {
+        this.addWord(WORDS.fever[0], [255, 140, 40], 52, 1.6, 5);
+        this.feverBeat = 1;
+        this.burst('ember', (event.placed.left + event.placed.width / 2) / MILLI, (event.floor + 1) * BLOCK_HEIGHT, 16, [255, 170, 60], 300);
+      } else if (v3?.fever) {
+        this.feverBeat = 1;
+      }
+      if (v3?.feverEnded) this.burst('dust', (event.placed.left + event.placed.width / 2) / MILLI, (event.floor + 1) * BLOCK_HEIGHT, 8, [230, 230, 240], 80);
     }
     const tier = (TIER_FLOORS as readonly number[]).indexOf(event.floor);
     if (tier > 0) {
       this.milestoneName = this.theme.tiers[tier as 1 | 2 | 3].name;
       this.milestone = 1;
+      if (!this.duck && motion && this.cos.next() < 0.7) {
+        // Absurdité : un canard géant traverse le ciel pour fêter le nouveau monde.
+        this.duck = { t: 0, dir: this.cos.next() < 0.5 ? 1 : -1, y: 0.46 + this.cos.next() * 0.12 };
+        this.gag('duck');
+      }
       return this.milestoneName;
     }
     return null;
+  }
+
+  /** Onomatopée : un mot plus fort remplace le plus faible quand la place manque (au plus 3). */
+  private addWord(text: string, color: Rgb, size: number, life: number, weight: number): void {
+    if (this.words.length >= MAX_WORDS) {
+      let weakest = 0;
+      for (let i = 1; i < this.words.length; i++) if (this.words[i]!.weight <= this.words[weakest]!.weight) weakest = i;
+      if (this.words[weakest]!.weight > weight) return;
+      this.words.splice(weakest, 1);
+    }
+    // Un seul mot lisible à la fois : les précédents s'effacent tout de suite, en remontant à peine.
+    for (const w of this.words) {
+      w.age = Math.max(w.age, w.life * 0.68);
+      w.y -= Math.min(12, size * 0.3);
+    }
+    const s = Math.min(size, this.cssW * 0.13);
+    this.words.push({
+      text, color, size: s, life: this.reducedMotion ? Math.min(life, 0.9) : life, weight, age: 0,
+      x: this.cssW / 2 + (this.reducedMotion ? 0 : this.cos.range(-0.08, 0.08) * this.cssW),
+      y: this.cssH * WORD_LINE,
+      rot: this.cos.range(-0.09, 0.09),
+    });
+  }
+
+  /** Gerbe de particules (bornée par la réserve, réduite en mode Fluide, nulle en mouvement réduit). */
+  private burst(kind: ParticleKind, x: number, y: number, count: number, color: Rgb, speed: number): void {
+    if (this.reducedMotion) return;
+    const n = this.quality === 'light' ? Math.ceil(count / 2) : count;
+    const limit = this.quality === 'light' ? MAX_PARTICLES / 2 : MAX_PARTICLES;
+    for (let i = 0; i < n; i++) {
+      const p = this.particles.spawn(limit);
+      if (!p) return;
+      const a = kind === 'ember' ? Math.PI / 2 + this.cos.range(-0.8, 0.8) : this.cos.range(0, Math.PI * 2);
+      const v = speed * this.cos.range(0.35, 1);
+      p.kind = kind;
+      p.x = x + this.cos.range(-6, 6);
+      p.y = y + this.cos.range(-4, 4);
+      p.vx = Math.cos(a) * v;
+      p.vy = Math.abs(Math.sin(a)) * v * (kind === 'dust' ? 0.5 : 1);
+      p.rot = this.cos.range(0, 6);
+      p.vr = this.cos.range(-6, 6);
+      p.size = kind === 'star' ? this.cos.range(4, 7) : kind === 'dust' ? this.cos.range(3, 6) : kind === 'shard' ? this.cos.range(4, 8) : this.cos.range(2, 4);
+      p.age = 0;
+      p.life = kind === 'dust' ? this.cos.range(0.4, 0.7) : kind === 'ember' ? this.cos.range(0.8, 1.4) : this.cos.range(0.45, 0.8);
+      p.color = kind === 'ember' ? (this.cos.next() < 0.5 ? [255, 120, 40] : [255, 210, 80]) : color;
+      p.gravity = kind === 'ember' ? -0.25 : kind === 'dust' ? 0.15 : kind === 'feather' ? 0.1 : 1;
+    }
+  }
+
+  /** Le pigeon s'envole (plumes) au prochain parfait, à une chute ou à un rattrapage. */
+  private pigeonScare(): void {
+    const p = this.pigeon;
+    if (!p || p.flying > 0) return;
+    p.flying = 0.0001;
+    this.burst('feather', p.x, p.y, 4, [200, 205, 220], 90);
+    this.gag('pigeon');
+  }
+
+  private gag(kind: GagKind): void {
+    try {
+      this.onGag?.(kind);
+    } catch {
+      // Un son d'absurdité ne doit jamais casser le rendu.
+    }
   }
 
   draw(view: ViewState, now: number): void {
@@ -254,39 +470,83 @@ export class Renderer {
     this.lastNow = now;
     const t = now / 1000;
     const motion = !this.reducedMotion;
+    const full = this.quality === 'full';
     const { ctx, dpr, theme } = this;
-    const scale = this.scale();
+    const hud = view.v2;
+    const len = view.stack.length;
+    // Fin de partie : recul de caméra qui montre toute la tour (supprimé en mouvement réduit).
+    this.revealTarget = view.ended === true && motion;
+    const baseScale = this.scale();
+    const groundY = this.cssH * GROUND_FRAC;
+    const towerTop = (len + 1) * BLOCK_HEIGHT;
+    this.update(dt, view, baseScale, groundY);
+    const r = easeInOut(this.reveal);
+    const fitZoom = Math.min(1, Math.max(0.3, (groundY - this.cssH * 0.3) / (towerTop * baseScale)));
+    const scale = baseScale * (1 + (fitZoom - 1) * r);
+    const camEnd = Math.max(0, towerTop - (groundY - this.cssH * 0.3) / scale);
+    this.viewCamera = this.camera + (camEnd - this.camera) * r;
     const viewH = this.cssH / scale;
     const offsetX = (this.cssW - FIELD_U * scale) / 2;
-    const groundY = this.cssH * GROUND_FRAC;
-    this.update(dt, view, scale, groundY);
 
     let shakeX = 0;
     let shakeY = 0;
     if (this.trauma > 0 && motion) {
-      const s = this.trauma * this.trauma * 10;
+      const s = this.trauma * this.trauma * 9;
       shakeX = s * Math.sin(now * 0.047);
       shakeY = s * Math.sin(now * 0.061);
     }
 
-    // 1. Ciel : interpolé en continu selon la hauteur atteinte.
+    // 1. Ciel : selon la hauteur, réchauffé par la Fièvre, refroidi par le Ralenti.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const sky = skyAt(theme, this.height);
-    this.skyTop = sky.top;
-    this.skyBottom = sky.bottom;
+    let skyTop = sky.top;
+    let skyBottom = sky.bottom;
+    if (this.feverMix > 0) {
+      skyTop = mix(skyTop, FEVER_TOP, this.feverMix * 0.85);
+      skyBottom = mix(skyBottom, FEVER_BOTTOM, this.feverMix * 0.85);
+    }
+    if (this.boostMix > 0 && this.boostShown === 'ralenti') {
+      skyTop = mix(skyTop, [150, 185, 255], this.boostMix * 0.3);
+      skyBottom = mix(skyBottom, [205, 225, 255], this.boostMix * 0.3);
+    }
+    this.skyTop = skyTop;
+    this.skyBottom = skyBottom;
     this.frameScale = scale;
     const g = ctx.createLinearGradient(0, 0, 0, this.cssH);
-    g.addColorStop(0, css(sky.top));
-    g.addColorStop(1, css(sky.bottom));
+    g.addColorStop(0, css(skyTop));
+    g.addColorStop(1, css(skyBottom));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, this.cssW, this.cssH);
 
-    // 2. Décor en parallaxe : le style de chaque élément dépend de la hauteur où il apparaît.
-    this.drawDecor(scale, groundY, t, motion, tierIndex(Math.max(0, view.stack.length - 1)));
+    // 2. Fièvre : rayons de BD derrière la tour (fixes et discrets si le mouvement est réduit).
+    if (this.feverMix > 0.02 && full) {
+      const alpha = (motion ? 0.16 : 0.08) * this.feverMix * (1 + 0.35 * this.feverBeat);
+      drawSunburst(ctx, this.cssW / 2, this.cssH * 0.42, Math.max(this.cssW, this.cssH) * 1.2, motion ? t * 0.22 : 0, [255, 255, 240], alpha);
+    }
 
-    // 3. Sol thématique sous l'étage 0 (repère écran : le décor a changé la transformation).
+    // 3. Décor en parallaxe (atténué pendant la Fièvre), puis absurdité du ciel (canard).
+    ctx.save();
+    if (this.feverMix > 0) ctx.globalAlpha = 1 - this.feverMix * 0.6;
+    this.drawDecor(scale, groundY, t, motion, tierIndex(Math.max(0, len - 1)));
+    ctx.restore();
+    if (this.duck) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const p = this.duck.t / DUCK_TIME;
+      const span = this.cssW + 200;
+      const x = this.duck.dir > 0 ? -100 + p * span : this.cssW + 100 - p * span;
+      ctx.save();
+      if (this.duck.dir < 0) {
+        ctx.translate(x, 0);
+        ctx.scale(-1, 1);
+        ctx.translate(-x, 0);
+      }
+      drawDuck(ctx, x, this.cssH * this.duck.y, Math.min(1.1, this.cssW / 380), t, motion);
+      ctx.restore();
+    }
+
+    // 4. Sol thématique sous l'étage 0.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const groundTop = groundY + this.camera * scale + shakeY;
+    const groundTop = groundY + this.viewCamera * scale + shakeY;
     if (groundTop < this.cssH) {
       ctx.fillStyle = css(theme.ground.body);
       ctx.fillRect(0, groundTop, this.cssW, this.cssH - groundTop);
@@ -294,46 +554,117 @@ export class Renderer {
       ctx.fillRect(0, groundTop, this.cssW, Math.min(8, this.cssH - groundTop));
     }
 
-    // 4. Monde : x en unités, y vers le haut depuis le sol.
+    // 5. Monde : x en unités, y vers le haut depuis le sol.
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * (offsetX + shakeX), 0);
-    const yScreen = (y: number) => (groundY - (y - this.camera) * scale + shakeY) / scale;
-    const bottomY = this.camera - (this.cssH - groundY) / scale;
+    const yScreen = (y: number) => (groundY - (y - this.viewCamera) * scale + shakeY) / scale;
+    const bottomY = this.viewCamera - (this.cssH - groundY) / scale;
     const firstVisible = Math.max(0, Math.floor(bottomY / BLOCK_HEIGHT) - 1);
-    const lastVisible = Math.min(view.stack.length, Math.ceil((bottomY + viewH) / BLOCK_HEIGHT) + 1);
+    const lastVisible = Math.min(len, Math.ceil((bottomY + viewH) / BLOCK_HEIGHT) + 1);
 
+    // Vague de compression : le bloc posé s'écrase ; sur un parfait, la vague descend la tour.
+    const waveFrom = Math.max(0, len - WAVE_DEPTH);
+    let acc = 0;
+    for (let i = waveFrom; i < len; i++) {
+      this.waveOffsets[i - waveFrom] = acc;
+      acc += BLOCK_HEIGHT * this.compressionAt(i);
+    }
+    const rim = hud?.fever ? 0.9 : Math.min(0.6, Math.max(0, (view.perfectStreak - 2) * 0.2));
+    const rimColor: Rgb = hud?.fever ? [255, 170, 60] : [255, 255, 255];
     for (let i = firstVisible; i < lastVisible; i++) {
       const b = view.stack[i]!;
-      const top = yScreen((i + 1) * BLOCK_HEIGHT);
-      let lift = 0;
-      if (i === this.landingFloor && this.landing > 0 && motion) lift = this.landing * this.landing * 5;
-      this.block(b.left / MILLI, top - lift, b.width / MILLI, this.colorFor(i), 1, i);
-      // Ombre de contact du bloc du dessus, limitée à l'intersection (jamais plus large).
-      const above = i + 1 < view.stack.length ? view.stack[i + 1]! : view.moving;
-      if (above) this.contactShadow(b, above, top);
-    }
-
-    // Parfait : la face s'illumine (dans le bloc) ; l'onde extérieure s'efface en 0,45 s.
-    if (this.flash > 0 && this.flashFloor < view.stack.length) {
-      const b = view.stack[this.flashFloor]!;
+      const inWave = i >= waveFrom;
+      const off = inWave ? this.waveOffsets[i - waveFrom]! : 0;
+      const c = inWave ? this.compressionAt(i) : 0;
+      const top = yScreen(i * BLOCK_HEIGHT - off + BLOCK_HEIGHT * (1 - c));
       const x = b.left / MILLI;
       const w = b.width / MILLI;
-      const y = yScreen((this.flashFloor + 1) * BLOCK_HEIGHT);
-      ctx.fillStyle = css([255, 255, 255], this.flash * 0.55);
-      roundedRect(ctx, x, y, w, BLOCK_HEIGHT, RADIUS);
-      ctx.fill();
-      if (this.ripple > 0) {
-        const grow = (1 - this.ripple) * 16;
-        // Onde blanche et épaisse : lue comme un éclat, pas comme un cadre de sélection.
-        ctx.strokeStyle = css([255, 255, 255], this.ripple * 0.85);
-        ctx.lineWidth = 3 * this.ripple + 1;
-        roundedRect(ctx, x - grow, y - grow, w + grow * 2, BLOCK_HEIGHT + grow * 2, RADIUS + grow);
+      if (c > 0.002) {
+        ctx.save();
+        ctx.translate(0, top);
+        ctx.scale(1, 1 - c);
+        this.block(x, 0, w, this.colorFor(i), 1, i);
+        ctx.restore();
+      } else {
+        this.block(x, top, w, this.colorFor(i), 1, i);
+      }
+      // Liseré lumineux des étages du haut pendant une série ; en Fièvre, ils chauffent (teinte).
+      if (rim > 0 && i >= len - RIM_DEPTH) {
+        const k = 1 - (len - 1 - i) / RIM_DEPTH;
+        if (this.feverMix > 0) {
+          ctx.fillStyle = css([255, 120, 40], 0.22 * this.feverMix * k * (1 + 0.5 * this.feverBeat));
+          roundedRect(ctx, x, top, w, BLOCK_HEIGHT * (1 - c), RADIUS);
+          ctx.fill();
+        }
+        ctx.strokeStyle = css(rimColor, rim * k);
+        ctx.lineWidth = hud?.fever ? 3 : 2;
+        roundedRect(ctx, x + 1, top + 1, w - 2, BLOCK_HEIGHT * (1 - c) - 2, RADIUS);
         ctx.stroke();
+      }
+      const above = i + 1 < len ? view.stack[i + 1]! : view.moving;
+      if (above) this.contactShadow(b, above, top);
+    }
+    const baseTopY = len > 0 ? yScreen(len * BLOCK_HEIGHT - (len - 1 >= waveFrom ? this.waveOffsets[len - 1 - waveFrom]! + BLOCK_HEIGHT * this.compressionAt(len - 1) : 0)) : 0;
+
+    // Parfait : la face s'illumine brièvement (dans le bloc).
+    if (this.flash > 0 && this.flashFloor < len && this.flashFloor >= firstVisible) {
+      const b = view.stack[this.flashFloor]!;
+      ctx.fillStyle = css([255, 255, 255], this.flash * 0.45);
+      roundedRect(ctx, b.left / MILLI, yScreen((this.flashFloor + 1) * BLOCK_HEIGHT), b.width / MILLI, BLOCK_HEIGHT, RADIUS);
+      ctx.fill();
+    }
+
+    // Pigeon perché sur le flanc d'un étage inférieur (jamais sur la base ni le bloc mobile).
+    if (this.pigeon && this.pigeon.floor < len - 1) {
+      const pb = view.stack[this.pigeon.floor]!;
+      const px = this.pigeon.side < 0 ? pb.left / MILLI + 9 : (pb.left + pb.width) / MILLI - 9;
+      const py = (this.pigeon.floor + 1) * BLOCK_HEIGHT;
+      const fly = this.pigeon.flying;
+      this.pigeon.x = px + this.pigeon.side * fly * 140;
+      this.pigeon.y = py + fly * 170;
+      drawPigeon(ctx, this.pigeon.x, yScreen(this.pigeon.y), this.pigeon.side, fly);
+    }
+
+    // Boosts : zone d'aimantation réelle, bulle du Bouclier, sillage du Ralenti.
+    const rowTop = yScreen((len + 1) * BLOCK_HEIGHT);
+    if (hud?.bonus === 'aimant' && view.moving && len > 0) {
+      const base = view.stack[len - 1]!;
+      const tol = (hud.tolerance ?? 0) / MILLI;
+      const bl = base.left / MILLI;
+      const br = (base.left + base.width) / MILLI;
+      const a = this.boostMix;
+      ctx.fillStyle = `rgba(255,72,120,${0.2 * a})`;
+      ctx.fillRect(bl - tol, rowTop, tol * 2, BLOCK_HEIGHT);
+      ctx.fillRect(br - tol, rowTop, tol * 2, BLOCK_HEIGHT);
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = `rgba(255,72,120,${0.75 * a})`;
+      ctx.lineWidth = 1.5;
+      roundedRect(ctx, bl, rowTop, br - bl, BLOCK_HEIGHT, RADIUS);
+      ctx.stroke();
+      ctx.restore();
+      const ml = view.moving.left / MILLI;
+      const strength = a * Math.max(0, 1 - Math.abs(ml - bl) / Math.max(1, tol * 4));
+      const mw = view.moving.width / MILLI;
+      drawMagnetField(ctx, ml, rowTop + BLOCK_HEIGHT, bl, baseTopY, strength, t, motion);
+      drawMagnetField(ctx, ml + mw, rowTop + BLOCK_HEIGHT, br, baseTopY, strength, t, motion);
+    }
+    if ((hud?.bonus === 'bouclier' || this.shieldBreak > 0) && len > 0) {
+      const charge = hud?.bonus === 'bouclier' ? hud.bonusLeft / Math.max(1, hud.bonusFloors) : 0;
+      const alpha = hud?.bonus === 'bouclier' ? this.boostMix * 0.9 : this.shieldBreak * 0.6;
+      drawShieldDome(ctx, -10, baseTopY, FIELD_U + 20, BLOCK_HEIGHT * 2.6 * (1 + (1 - Math.min(1, alpha)) * 0.1), alpha, t, charge, motion);
+    }
+    if (hud?.bonus === 'ralenti' && view.moving && motion) {
+      const n = Math.min(this.trailLen, full ? TRAIL_MAX : 2);
+      for (let k = 0; k < n; k++) {
+        const left = this.trail[(this.trailHead - 1 - k + TRAIL_MAX) % TRAIL_MAX]!;
+        this.block(left / MILLI, rowTop, view.moving.width / MILLI, this.colorFor(len), 0.28 * (1 - k / n) * this.boostMix, len);
       }
     }
 
     if (view.moving) {
-      const top = yScreen((view.stack.length + 1) * BLOCK_HEIGHT);
-      this.block(view.moving.left / MILLI, top, view.moving.width / MILLI, this.colorFor(view.stack.length), 1, view.stack.length);
+      // Rattrapage du Bouclier : le bloc clignote doucement avant de repartir.
+      const blink = hud?.recovering && hud.recovering > 0 ? (motion ? 0.5 + 0.5 * Math.abs(Math.sin(t * 14)) : 0.6) : 1;
+      this.block(view.moving.left / MILLI, rowTop, view.moving.width / MILLI, this.colorFor(len), blink, len);
     }
 
     for (const d of this.debris) {
@@ -345,26 +676,54 @@ export class Renderer {
       ctx.restore();
     }
 
-    for (const s of this.sparks) {
-      ctx.save();
-      ctx.translate(s.x, yScreen(s.y));
-      ctx.rotate(s.rot);
-      ctx.fillStyle = css(s.color, Math.max(0, 1 - s.age / s.life));
-      roundedRect(ctx, -2.5, -2.5, 5, 5, 1.5);
-      ctx.fill();
-      ctx.restore();
+    // Ovni : arrive, aspire le morceau coupé, repart.
+    if (this.ufo) {
+      const u = this.ufo;
+      const p = u.t;
+      const hoverY = u.y + BLOCK_HEIGHT * 4;
+      const ux = p < 0.25 ? u.x - u.dir * (1 - p / 0.25) * 220 : p < 0.85 ? u.x : u.x + u.dir * ((p - 0.85) / 0.65) * 260;
+      const uy = p < 0.85 ? hoverY : hoverY + ((p - 0.85) / 0.65) * 120;
+      if (p >= 0.25 && p < 0.85) {
+        const lift = (p - 0.25) / 0.6;
+        const py = u.y + lift * (hoverY - u.y);
+        ctx.save();
+        ctx.translate(u.x, yScreen(py));
+        ctx.scale(1 - lift * 0.7, 1 - lift * 0.7);
+        this.block(-u.w / 2, -BLOCK_HEIGHT / 2, u.w, u.color, 1, u.floor);
+        ctx.restore();
+      }
+      drawUfo(ctx, ux, yScreen(uy), p >= 0.25 && p < 0.85 ? (hoverY - u.y) * 1 : 0, t);
     }
 
-    // Points « +N » : montent et s'effacent (fixes en reduced-motion).
+    for (const p of this.particles.items) {
+      if (!p.alive) continue;
+      ctx.save();
+      ctx.translate(p.x, yScreen(p.y));
+      drawParticle(ctx, p);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
+    // Ondes de choc des parfaits : ellipse qui s'élargit autour du bloc posé.
+    for (const ring of this.rings) {
+      const p = ring.age / RING_TIME;
+      ctx.strokeStyle = css(ring.color, (1 - p) * 0.9);
+      ctx.lineWidth = 5 * (1 - p) + 1;
+      ctx.beginPath();
+      ctx.ellipse(ring.x, yScreen(ring.y - BLOCK_HEIGHT / 2), ring.w / 2 + p * 70, BLOCK_HEIGHT * 0.6 + p * 22, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Points « +N » : montent et s'effacent (fixes en mouvement réduit).
     for (const f of this.floats) {
       const rise = motion ? f.age * 40 : 0;
       ctx.globalAlpha = Math.max(0, 1 - f.age / 0.9);
-      ctx.font = `800 20px ${GAME_FONT}`;
+      ctx.font = `900 20px ${GAME_FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 5;
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(32,33,61,0.85)';
+      ctx.strokeStyle = '#1b1a3a';
       const y = yScreen((f.floor + 1) * BLOCK_HEIGHT) - 6 - rise;
       ctx.strokeText(f.text, f.x, y);
       ctx.fillStyle = css(f.color);
@@ -372,21 +731,48 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
 
-    // Bonus actif : teinte légère de tout l'écran (statique, compatible reduced-motion).
-    if (view.v2?.bonus) {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = css(BONUS_STYLE[view.v2.bonus].color, 0.13);
-      ctx.fillRect(0, 0, this.cssW, this.cssH);
-    }
+    // 6. Écran : bord coloré du boost actif et de la Fièvre (statique en mouvement réduit).
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (this.boostMix > 0.01 && this.boostShown) this.vignette(BONUS_STYLE[this.boostShown].color, 0.32 * this.boostMix);
+    if (this.feverMix > 0.01) this.vignette([255, 120, 40], 0.3 * this.feverMix * (1 + 0.4 * this.feverBeat));
 
+    // 7. Onomatopées, puis HUD.
+    for (const w of this.words) drawWord(ctx, w, GAME_FONT, motion);
     this.drawHud(view, sky.ink);
+  }
+
+  /** Bord coloré (dégradé radial) : lu comme un état, sans rien cacher au centre. */
+  private vignette(color: Rgb, alpha: number): void {
+    const { ctx } = this;
+    const cx = this.cssW / 2;
+    const cy = this.cssH / 2;
+    const g = ctx.createRadialGradient(cx, cy, Math.min(cx, cy) * 0.75, cx, cy, Math.hypot(cx, cy));
+    g.addColorStop(0, css(color, 0));
+    g.addColorStop(1, css(color, Math.min(0.5, alpha)));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, this.cssW, this.cssH);
+  }
+
+  /** Compression (0-1) du bloc `i` dans la vague en cours ; nulle en mouvement réduit. */
+  private compressionAt(i: number): number {
+    const w = this.wave;
+    if (!w || this.reducedMotion) return 0;
+    const depth = w.top - i;
+    if (depth < 0 || (!w.chain && depth > 0)) return 0;
+    const x = w.t - depth * 0.045;
+    if (x <= 0 || x >= WAVE_TIME) return 0;
+    return w.amp * 0.8 ** depth * Math.sin((Math.PI * x) / WAVE_TIME);
   }
 
   /** true si un effet est encore en cours (le rendu peut alors s'arrêter). */
   get animating(): boolean {
-    return this.debris.length > 0 || this.sparks.length > 0 || this.flash > 0 || this.trauma > 0 ||
+    return this.debris.length > 0 || this.particles.alive > 0 || this.flash > 0 || this.trauma > 0 ||
       this.streakLabel > 0 || this.landing > 0 || this.milestone > 0 || this.ripple > 0 ||
       this.floats.length > 0 || this.bonusBanner > 0 || this.bonusEndFlash > 0 || this.goBanner > 0 ||
+      this.words.length > 0 || this.rings.length > 0 || this.wave !== null || this.duck !== null ||
+      this.ufo !== null || (this.pigeon !== null && this.pigeon.flying > 0) || this.shieldBreak > 0 ||
+      this.scoreBump > 0 || this.feverBeat > 0 || (this.revealTarget && this.reveal < 1) ||
+      Math.abs(this.feverMix - this.feverTarget) > 0.01 || Math.abs(this.boostMix - this.boostTarget) > 0.01 ||
       Math.abs(this.camera - this.cameraTarget) > 0.05;
   }
 
@@ -400,6 +786,8 @@ export class Renderer {
 
   private update(dt: number, view: ViewState, scale: number, groundY: number): void {
     const len = view.stack.length;
+    const hud = view.v2;
+    const motion = !this.reducedMotion;
     this.cameraTarget = Math.max(0, (len + 1) * BLOCK_HEIGHT - (groundY - ACTIVE_FRAC * this.cssH) / scale);
     const heightTarget = len - 1;
     if (this.reducedMotion) {
@@ -409,7 +797,24 @@ export class Renderer {
       this.camera += (this.cameraTarget - this.camera) * (1 - Math.exp(-dt * 7));
       this.height += (heightTarget - this.height) * (1 - Math.exp(-dt * 2.5));
     }
-    this.trauma = Math.max(0, this.trauma - dt * 1.6);
+    const approach = (cur: number, target: number, rate: number) => (motion ? cur + (target - cur) * (1 - Math.exp(-dt * rate)) : target);
+    this.feverTarget = hud?.fever ? 1 : 0;
+    this.boostTarget = hud?.bonus ? 1 : 0;
+    this.feverMix = approach(this.feverMix, this.feverTarget, 3);
+    this.boostMix = approach(this.boostMix, this.boostTarget, 4);
+    if (hud?.bonus) this.boostShown = hud.bonus;
+    else if (this.boostMix < 0.01) this.boostShown = null;
+    this.reveal = this.revealTarget ? Math.min(1, this.reveal + dt / REVEAL_TIME) : 0;
+    this.feverBeat = Math.max(0, this.feverBeat - dt * 3);
+    this.shieldBreak = Math.max(0, this.shieldBreak - dt * 2.2);
+    this.scoreBump = Math.max(0, this.scoreBump - dt * 4);
+    if (view.score > this.lastScore) this.scoreBump = 1;
+    this.lastScore = view.score;
+    if (this.wave) {
+      this.wave.t += dt;
+      if (this.wave.t > 1) this.wave = null;
+    }
+    this.trauma = Math.max(0, this.trauma - dt * 1.8);
     this.flash = Math.max(0, this.flash - dt * 3.5);
     this.ripple = Math.max(0, this.ripple - dt / 0.45);
     this.landing = Math.max(0, this.landing - dt * 10);
@@ -423,7 +828,49 @@ export class Renderer {
       f.age += dt;
       if (f.age > 0.9) this.floats.splice(i, 1);
     }
-
+    for (let i = this.words.length - 1; i >= 0; i--) {
+      const w = this.words[i]!;
+      w.age += dt;
+      if (w.age > w.life) this.words.splice(i, 1);
+    }
+    for (let i = this.rings.length - 1; i >= 0; i--) {
+      const ring = this.rings[i]!;
+      ring.age += dt;
+      if (ring.age > RING_TIME) this.rings.splice(i, 1);
+    }
+    this.particles.update(dt, GRAVITY);
+    // Braises de la Fièvre : montent du haut de la tour, en petit nombre.
+    if (this.feverMix > 0.5 && motion && this.quality === 'full' && len > 0) {
+      this.emberClock += dt;
+      while (this.emberClock > 0.09) {
+        this.emberClock -= 0.09;
+        this.burst('ember', this.cos.range(10, FIELD_U - 10), (len - this.cos.range(0, 5)) * BLOCK_HEIGHT, 1, [255, 170, 60], 60);
+      }
+    }
+    // Sillage du Ralenti : quelques positions passées du bloc mobile (jamais à venir).
+    if (hud?.bonus === 'ralenti' && view.moving && motion) {
+      this.trailClock += dt;
+      if (this.trailClock > 0.05) {
+        this.trailClock = 0;
+        this.trail[this.trailHead] = view.moving.left;
+        this.trailHead = (this.trailHead + 1) % TRAIL_MAX;
+        this.trailLen = Math.min(TRAIL_MAX, this.trailLen + 1);
+      }
+    } else {
+      this.trailLen = 0;
+    }
+    if (this.duck) {
+      this.duck.t += dt;
+      if (this.duck.t > DUCK_TIME) this.duck = null;
+    }
+    if (this.ufo) {
+      this.ufo.t += dt;
+      if (this.ufo.t > 1.5) this.ufo = null;
+    }
+    if (this.pigeon) {
+      if (this.pigeon.flying > 0) this.pigeon.flying += dt;
+      if (this.pigeon.flying > 1.4 || this.pigeon.floor < len - 16) this.pigeon = null;
+    }
     for (let i = this.debris.length - 1; i >= 0; i--) {
       const d = this.debris[i]!;
       d.age += dt;
@@ -435,15 +882,6 @@ export class Renderer {
       }
       if (d.age > (this.reducedMotion ? 0.45 : 1.6)) this.debris.splice(i, 1);
     }
-    for (let i = this.sparks.length - 1; i >= 0; i--) {
-      const s = this.sparks[i]!;
-      s.age += dt;
-      s.vy -= GRAVITY * 0.5 * dt;
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
-      s.rot += dt * 6;
-      if (s.age >= s.life) this.sparks.splice(i, 1);
-    }
   }
 
   /**
@@ -453,7 +891,7 @@ export class Renderer {
    */
   private drawDecor(scale: number, groundY: number, t: number, motion: boolean, currentTier: number): void {
     const { ctx, dpr, theme } = this;
-    const camP = this.camera * PARALLAX;
+    const camP = this.viewCamera * PARALLAX;
     const low = camP - (this.cssH - groundY) / scale - DECOR_SLOT;
     const high = camP + groundY / scale + DECOR_SLOT;
     const first = Math.max(2, Math.floor(low / DECOR_SLOT));
@@ -511,8 +949,7 @@ export class Renderer {
     ctx.textBaseline = 'top';
     const big = Math.round(Math.min(72, this.cssW * 0.17));
     const font = (weight: number, size: number) => `${weight} ${size}px ${GAME_FONT}`;
-    // Liseré de la couleur opposée : le texte reste lisible même quand le ciel passe par des
-    // tons moyens pendant une transition de palier.
+    // Liseré de la couleur opposée : le texte reste lisible quand le ciel passe par des tons moyens.
     const halo = css(haloFor(ink), 0.7);
     const text = (s: string, y: number, size: number, color: string, alpha = 1) => {
       ctx.globalAlpha = alpha;
@@ -526,28 +963,33 @@ export class Renderer {
       ctx.globalAlpha = 1;
     };
     const top = this.cssH * 0.055;
+    // Score : il rebondit quand il augmente (fixe si le mouvement est réduit).
+    const bump = this.reducedMotion ? 0 : this.scoreBump;
+    ctx.save();
+    if (bump > 0) {
+      const k = 1 + 0.16 * bump;
+      ctx.translate(this.cssW / 2, top + big / 2);
+      ctx.scale(k, k);
+      ctx.translate(-this.cssW / 2, -(top + big / 2));
+    }
     text(String(view.score), top, big, css(ink));
+    ctx.restore();
     let line = top + big * 1.08;
     const v2 = view.v2;
     if (v2) {
-      // En v2 le grand nombre est en points : la hauteur est rappelée, en plus petit.
+      // En v2/v3 le grand nombre est en points : la hauteur est rappelée, en plus petit.
       const small = Math.round(big * 0.28);
       text(`${v2.height} étage${v2.height > 1 ? 's' : ''}`, line - big * 0.06, small, css(ink), 0.9);
       line += small * 1.35;
       line = this.drawGauge(v2, line, big, ink, halo, font);
+      if (v2.fever) line = this.drawFeverBadge(line, big, font);
     }
     if (this.milestone > 0) {
       text(`Palier : ${this.milestoneName}`, line, Math.round(big * 0.3), css(ink), Math.min(1, this.milestone * 2.5));
       line += big * 0.42;
     }
-    if (this.streakLabel > 0) {
-      text(`PARFAIT ×${this.streakValue}`, line, Math.round(big * 0.32), css(ink), Math.min(1, this.streakLabel * 1.5));
-    }
-    if (this.bonusBanner > 0) {
-      const st = BONUS_STYLE[this.bonusBannerId];
-      text(st.banner, this.cssH * 0.42, Math.round(big * 0.55), css(st.color), Math.min(1, this.bonusBanner * 2));
-    } else if (this.goBanner > 0 && !v2?.countdown) {
-      text('C’est parti !', this.cssH * 0.42, Math.round(big * 0.5), css(ink), Math.min(1, this.goBanner * 2));
+    if (this.streakLabel > 0 && !v2?.fever) {
+      text(`SÉRIE ×${this.streakValue}`, line, Math.round(big * 0.3), css(ink), Math.min(1, this.streakLabel * 1.5));
     }
     if (v2?.fallen && view.pause === 'none') {
       // Attente de la décision : la scène est figée sous un voile, l'offre est un écran DOM.
@@ -581,6 +1023,36 @@ export class Renderer {
     }
   }
 
+  /** Pastille « FIÈVRE ×2 » sous la jauge (flamme qui vacille, fixe si le mouvement est réduit). */
+  private drawFeverBadge(line: number, big: number, font: (w: number, s: number) => string): number {
+    const { ctx } = this;
+    const size = Math.round(big * 0.28);
+    const label = 'FIÈVRE ×2';
+    ctx.font = font(900, size);
+    const tw = ctx.measureText(label).width;
+    const h = size + 10;
+    const w = tw + size * 1.6 + 18;
+    const x = (this.cssW - w) / 2;
+    const flicker = this.reducedMotion ? 0 : Math.sin((this.lastNow ?? 0) / 70) * 0.06;
+    const g = ctx.createLinearGradient(0, line, 0, line + h);
+    g.addColorStop(0, '#ffd166');
+    g.addColorStop(1, '#ff7a3d');
+    ctx.fillStyle = g;
+    roundedRect(ctx, x, line, w, h, h / 2);
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#1b1a3a';
+    ctx.stroke();
+    drawHudIcon(ctx, 'fievre', x + 9 + size * 0.5, line + h / 2, size * (1 + flicker), [255, 72, 40]);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#1b1a3a';
+    ctx.fillText(label, x + 14 + size, line + h / 2 + 1);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    return line + h + big * 0.12;
+  }
+
   /**
    * Jauge « Super » sous le score : 10 cases qui se remplissent, avec le nom du prochain bonus.
    * Pendant un bonus : 5 cases aux couleurs du bonus, qui se vident à chaque pose.
@@ -592,10 +1064,11 @@ export class Renderer {
     const style = BONUS_STYLE[active ?? v2.next];
     const cells = active ? v2.bonusFloors : v2.gaugeMax;
     const filled = active ? v2.bonusLeft : Math.min(v2.gauge, v2.gaugeMax);
-    const label = active ? style.label : `${style.label}`;
+    const label = style.label;
     const labelSize = Math.round(big * 0.26);
     ctx.font = font(800, labelSize);
-    const labelW = ctx.measureText(label).width + 10;
+    const iconSize = Math.round(labelSize * 1.05);
+    const labelW = ctx.measureText(label).width + 14 + iconSize;
     const barW = Math.min(200, this.cssW * 0.5);
     const barH = Math.max(12, Math.round(big * 0.2));
     const total = barW + labelW;
@@ -625,8 +1098,11 @@ export class Renderer {
     ctx.textBaseline = 'middle';
     ctx.lineWidth = Math.max(2, labelSize * 0.12);
     ctx.strokeStyle = halo;
-    const lx = x0 + barW + 8;
     const ly = line + barH / 2;
+    drawHudIcon(ctx, (active ?? v2.next) as HudIcon, x0 + barW + 8 + iconSize / 2, ly, iconSize, style.color);
+    const lx = x0 + barW + 12 + iconSize;
+    ctx.lineWidth = Math.max(2, labelSize * 0.12);
+    ctx.strokeStyle = halo;
     ctx.strokeText(label, lx, ly);
     ctx.fillStyle = active ? css(style.color) : css(ink);
     ctx.fillText(label, lx, ly);
@@ -690,35 +1166,13 @@ export class Renderer {
     });
   }
 
+  /** Étoiles d'un parfait, aux deux bords du bloc posé (couleurs de l'univers). */
   private addSparks(b: Block, floor: number, count: number): void {
     const y = (floor + 1) * BLOCK_HEIGHT;
     const colors = this.theme.sparks;
-    if (this.quality === 'light') count = Math.ceil(count / 3);
     for (let i = 0; i < count; i++) {
-      if (this.sparks.length >= MAX_SPARKS) this.sparks.shift();
-      const r1 = this.rand();
-      const r2 = this.rand();
-      const left = r1 < 0.5;
-      this.sparks.push({
-        x: left ? b.left / MILLI : (b.left + b.width) / MILLI,
-        y: y - BLOCK_HEIGHT * r2,
-        vx: (left ? -1 : 1) * (60 + 160 * this.rand()),
-        vy: 80 + 220 * this.rand(),
-        age: 0,
-        life: 0.4 + 0.3 * r2,
-        color: colors[i % colors.length]!,
-        rot: r1 * 6,
-      });
+      const left = i % 2 === 0;
+      this.burst('star', left ? b.left / MILLI : (b.left + b.width) / MILLI, y - BLOCK_HEIGHT * this.cos.next(), 1, colors[i % colors.length]!, 260);
     }
-  }
-
-  /** Aléa purement visuel, séparé de la simulation. */
-  private rand(): number {
-    let x = this.seed;
-    x ^= x << 13; x >>>= 0;
-    x ^= x >>> 17;
-    x ^= x << 5; x >>>= 0;
-    this.seed = x;
-    return x / 4294967296;
   }
 }
