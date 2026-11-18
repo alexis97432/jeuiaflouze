@@ -471,6 +471,9 @@ export function createShell(options: ShellOptions): Shell {
     view.dataset.tabs = tab ? 'true' : 'false';
     // Les aperçus de l'écran précédent sont oubliés : rien ne continue de tourner.
     animator.prune();
+    // V7 : boutons « Écouter » de l'écran affiché alignés sur l'état réel du lecteur (l'écoute de
+    // l'écran précédent vient d'être arrêtée, après la construction de ce nouvel écran).
+    if (changed) refreshListen();
     // Nouvel écran : on repart du haut (pas la position de défilement de l'écran précédent).
     if (changed) {
       try {

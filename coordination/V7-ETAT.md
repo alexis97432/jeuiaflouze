@@ -30,8 +30,8 @@ Point de reprise si la session s'interrompt. Mis à jour à chaque étape.
 | V7-1 | Crashs : reproduction, corrections, diagnostic | fait : corrections moteur (`738c6eb`), journal branché (Réglages → Diagnostic) |
 | V7-2 | Musique procédurale originale, réglages audio | fait : 15 pistes, lecteur, centrale audio, réglages ; pistes des 4 nouveaux univers écrites, branchées en V7-4 |
 | V7-3 | Boutique tournante, musiques en boutique, migration | fait : sélection du jour, musiques achetables, sauvegarde v5, tests `tests/app/v7-*.test.ts` |
-| V7-4 | Nouvelles matières et nouveaux univers | à faire |
-| V7-5 | Vérifications, publication, bilan | à faire |
+| V7-4 | Nouvelles matières et nouveaux univers | fait : Papier, Mosaïque, Vitrail, Phénix ; Désert, Montagne, Fête foraine, Royaume des nuées (`461fb16`) |
+| V7-5 | Vérifications, publication, bilan | vérifications faites (voir `docs/V7.md`) ; PR, fusion, Pages et vérification en ligne en cours |
 
 ## Crashs : constats (V7-1)
 
@@ -51,13 +51,8 @@ Outils : fuzzeur du rendu (parties simulées, tailles et densités extrêmes, bl
 
 ## Prochaines étapes
 
-1. V7-4 : 4 matières (Papier, Mosaïque, Vitrail, Phénix) et 4 univers (Désert, Montagne, Fête foraine, Royaume des nuées), une de chaque rareté. Chaque univers reçoit sa musique (mirage, cimes, manege, nuees, déjà écrites dans `src/app/music/tracks.ts`). Puis mise à jour des pools de rotation et des tests de catalogue.
-2. V7-5 :
-   - e2e ;
-   - stress multi-parties ;
-   - captures ;
-   - docs `docs/V7.md` et `docs/MUSIQUE.md` ;
-   - PR, CI, fusion, Pages et vérification en ligne.
+1. PR vers `claude/youthful-mayer-n4f7oy`, CI verte, fusion (exception V7).
+2. `pages.yml` avec `ref` = le SHA fusionné, puis vérification de `source-commit.txt` et du site servi.
 
 ## Reprise
 

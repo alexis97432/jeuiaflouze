@@ -29,21 +29,25 @@
     linear-gradient(135deg, var(--r-legendaire-bg), color-mix(in srgb, var(--r-legendaire-gem) 50%, var(--r-legendaire-bg)));
 }
 .music-art.large { max-width: 280px; margin-inline: auto; }
+/* Dans une carte, le visuel occupe la hauteur prévue (jamais coupé). */
+.item-visual .music-art { height: 100%; aspect-ratio: auto; }
 
 .music-disc {
   display: grid;
   place-items: center;
-  width: 56%;
-  max-width: 64px;
+  height: 74%;
+  max-height: 64px;
+  width: auto;
   aspect-ratio: 1;
   border-radius: 50%;
   color: var(--ink, #20213d);
   background:
-    radial-gradient(circle, var(--surface, #fff) 0 18%, #1f2033 19% 21%, #2c2e47 22% 100%);
+    radial-gradient(circle, #4a4c74 0 34%, #1f2033 35% 37%, transparent 38%),
+    repeating-radial-gradient(circle, #2c2e47 0 3px, #34365a 3px 4px);
   box-shadow: 0 2px 6px rgb(0 0 0 / 0.25), inset 0 0 0 3px rgb(255 255 255 / 0.08);
 }
-.music-art.large .music-disc { max-width: 96px; }
-.music-disc .ic { width: 38%; height: 38%; color: #fff4db; }
+.music-art.large .music-disc { max-height: 96px; }
+.music-disc .ic { width: 42%; height: 42%; color: #fff4db; fill: none; stroke-width: 2; }
 
 /* Écoute en cours : le disque tourne doucement (fixe en animations réduites). */
 .item.cos:has(button[data-listen][aria-pressed='true']) .music-disc {

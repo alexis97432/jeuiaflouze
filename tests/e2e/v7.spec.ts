@@ -7,7 +7,7 @@
  * techniques (contexte, sources, boutons) sont vérifiés.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { noHorizontalOverflow, tapUntilResult, trackErrors } from './helpers';
+import { noHorizontalOverflow, playUntilResult, trackErrors } from './helpers';
 
 let errors: string[] = [];
 test.beforeEach(({ page }) => {
@@ -37,6 +37,15 @@ const audio = (page: Page) => page.evaluate(() => {
   return { created: a.created, state: a.last?.state ?? 'none' };
 });
 
+/** Joue jusqu'au résultat : toucher sur mobile, clic sur ordinateur. */
+async function play(page: Page, isMobile: boolean) {
+  const box = await page.getByTestId('game-canvas').boundingBox();
+  if (!box) throw new Error('canvas invisible');
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await playUntilResult(page, () => (isMobile ? page.touchscreen.tap(x, y) : page.mouse.click(x, y)));
+}
+
 const RICH = { version: 5, coins: 2000, xp: 260, grants: ['v2-objectives-backfill'] };
 async function seeded(page: Page, doc: Record<string, unknown> = RICH) {
   await page.addInitScript((seed) => {
@@ -47,7 +56,7 @@ async function seeded(page: Page, doc: Record<string, unknown> = RICH) {
   }, doc);
 }
 
-test('un seul contexte audio pour trois parties ; écoute en boutique arrêtée en changeant d’écran', async ({ page }) => {
+test('un seul contexte audio pour trois parties ; écoute en boutique arrêtée en changeant d’écran', async ({ page, isMobile }) => {
   await watchAudio(page);
   await page.goto('/');
   await page.getByTestId('nav-shop').click();
@@ -60,10 +69,10 @@ test('un seul contexte audio pour trois parties ; écoute en boutique arrêtée 
   await expect(page.locator('button[data-listen][aria-pressed="true"]')).toHaveCount(0);
   await page.getByTestId('nav-home').click();
   await page.getByTestId('play').click();
-  await tapUntilResult(page);
+  await play(page, isMobile);
   for (let k = 0; k < 2; k++) {
     await page.getByTestId('retry').click();
-    await tapUntilResult(page);
+    await play(page, isMobile);
   }
   expect((await audio(page)).created).toBe(1);
 });
@@ -137,14 +146,16 @@ test('diagnostic : une partie interrompue par un rechargement est notée, le rap
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/');
   await page.getByTestId('play').click();
-  // Rechargement brutal pendant la partie (pas de fin propre ni de fermeture de page).
+  // Pendant la partie, le battement de cœur est écrit (partie en cours, onglet visible).
+  const live = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:diag:v1:session') ?? 'null'));
+  expect(live).toMatchObject({ visible: true, closed: false, info: { mode: 'free' } });
+  await page.getByTestId('pause-button').click();
+  await page.getByTestId('quit').click();
+  // Plantage simulé : la page redémarre alors qu'une partie était ouverte et visible, sans
+  // fermeture propre (un vrai plantage n'envoie aucun événement de fermeture).
   await page.evaluate(() => {
-    const s = JSON.parse(localStorage.getItem('poc:diag:v1:session')!);
-    s.closed = false;
-    localStorage.setItem('poc:diag:v1:session', JSON.stringify(s));
-  });
-  await page.evaluate(() => {
-    window.addEventListener('pagehide', (e) => e.stopImmediatePropagation(), { capture: true });
+    const now = Date.now();
+    localStorage.setItem('poc:diag:v1:session', JSON.stringify({ start: now - 40_000, beat: now - 3_000, visible: true, closed: false, info: { mode: 'free', theme: 'cite', skin: 'galaxie', floor: 18 } }));
   });
   await page.reload();
   await page.getByTestId('nav-settings').click();
