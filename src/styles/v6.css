@@ -409,3 +409,12 @@
   height: 18px;
   flex: none;
 }
+
+/* Très petits écrans (≤ 340 px) : les cinq libellés d'onglets tiennent en entier. */
+@media (max-width: 340px) {
+  .tabbar .dock-btn,
+  .tabbar .tab {
+    font-size: 0.6rem;
+    letter-spacing: -0.015em;
+  }
+}

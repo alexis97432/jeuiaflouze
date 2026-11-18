@@ -26,11 +26,11 @@ Point de reprise si la session s'interrompt. Mis à jour à chaque étape.
 | E3 | Univers à plusieurs plans, paliers 0/5/10/20/35/50, découvertes | fait pour le moteur (`scene.ts`, `worlds/*.ts`, `themes.ts`, aperçus vivants `preview.ts`, carte avec scène et cadre de rareté) ; 236 tests moteur verts |
 | E4 | Stack or Crash, boutons de boutique et états, passe de 30 niveaux et migration | fait (nom, manifeste, icône ; `shop.ts`, `season.ts`, `economy.ts` v4) ; tests à adapter en E6 |
 | E5 | Menus : onglets, collection, révélation, aperçus animés | fait (`shell.ts`, `collection-view.ts`, `preview-animator.ts`, `styles/v6.css`) ; tests à adapter en E6 |
-| E6 | Vérifications, séquences animées avant/après, corrections | en cours : typecheck, 556 unitaires, build, 96 e2e, 49 moteur verts ; optimisations (cache des briques communes/rares, halos, nébuleuses, immeubles) ; captures et séquences à faire |
+| E6 | Vérifications, séquences animées avant/après, corrections | fait : typecheck, 556 unitaires, build, 96 e2e, 49 moteur ; optimisations mesurées ; captures et GIF dans `coordination/captures/v6/` ; bilan `docs/V6.md` |
 | E7 | PR, CI, fusion, Pages, vérification en ligne, bilan | à faire |
 
 ## Reprise
 
 Repartir de la première étape « à faire » ci-dessus. Les étapes faites sont committées sur la branche V6.
 
-Prochaine action précise (E6) : séquences animées (GIF) et captures avant/après dans `coordination/captures/v6/`, contrôle clair/sombre, animations réduites, qualité basse et petits écrans ; puis bilan `docs/V6.md` et E7.
+Prochaine action précise (E7) : PR de `agent/claude-code-alexis/v6-stack-or-crash` vers `claude/youthful-mayer-n4f7oy`, CI, fusion, `pages.yml` avec le SHA fusionné, vérification du site servi et de `source-commit.txt`, puis bilan court.

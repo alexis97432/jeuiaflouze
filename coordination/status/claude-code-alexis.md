@@ -1,5 +1,23 @@
 # Claude Code Alexis
 
+## V6 — « Stack or Crash » (18 novembre 2026)
+
+- **Cadre :** exception de l'utilisateur ; Alexis seul, sans FLK ni revue externe, fusion et publication par Alexis. Ce sont des **auto-vérifications**.
+- **Branche :** `agent/claude-code-alexis/v6-stack-or-crash`. Le suivi est dans `coordination/V6-ETAT.md`.
+- **Livré :**
+  - nom anglais, manifeste et icône ;
+  - 19 matières vivantes à 4 raretés ;
+  - 5 univers à 6 paliers, avec découvertes ;
+  - boutique aux prix dans les boutons ;
+  - passe de 30 niveaux et migration v4 ;
+  - barre d'onglets, collection filtrée, fenêtre de révélation, aperçus vivants.
+- **Bilan :** [`docs/V6.md`](../../docs/V6.md).
+- **Limites :**
+  - aucun téléphone physique ;
+  - fluidité mesurée seulement sans GPU ;
+  - équilibrage non joué ;
+  - paiements réels non connectés (premium préparé, pas en vente).
+
 ## V5 — boosts et identité « Pop Choc » (18 novembre 2026)
 
 - **Cadre :** exception de l'utilisateur ; Alexis seul, sans revue externe, fusion et publication par Alexis. Ce sont des **auto-vérifications**.
