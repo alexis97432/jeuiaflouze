@@ -6,7 +6,7 @@
  */
 import { mountGame } from '../game';
 import type { Appearance, GameEvent, GameHandle, MountOptions } from './game-contract';
-import type { AnyAppearance } from '../game';
+import type { AnyAppearance, GameIncident, SharedAudio } from '../game';
 
 /**
  * Préférences utiles au moteur (V4). `reducedMotion` absent : le moteur suit l'appareil en direct.
@@ -26,15 +26,21 @@ export type StartOptions = Pick<MountOptions, 'canvas' | 'config' | 'onEnd'> & {
   onFirstPlacement?(): void;
   /** Tous les événements du moteur, dans l'ordre (résumé de partie pour les objectifs). */
   onGameEvent?(event: GameEvent): void;
+  /** V7 : incidents techniques du moteur (journal de diagnostic local). */
+  onIncident?(incident: GameIncident): void;
+  /** V7 : sortie audio partagée (contexte unique de l'application). */
+  audio?: SharedAudio | null;
 };
 export type StartGame = (options: StartOptions) => GameHandle;
 
 /** Adaptateur pur, testable avec un faux `mountGame`. */
 export function createStartGame(mount: (options: MountOptions) => GameHandle): StartGame {
-  return ({ prefs, appearance, allowContinue, onFirstPlacement, onGameEvent, canvas, config, onEnd }) => {
+  return ({ prefs, appearance, allowContinue, onFirstPlacement, onGameEvent, onIncident, audio, canvas, config, onEnd }) => {
     let placed = false;
     return mount({
       ...(allowContinue ? { allowContinue: true } : {}),
+      ...(onIncident ? { onIncident } : {}),
+      ...(audio ? { audio } : {}),
       canvas,
       config,
       onEnd,

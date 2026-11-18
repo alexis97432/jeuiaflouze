@@ -154,7 +154,35 @@ export function cloud(ctx: CanvasRenderingContext2D, x: number, y: number, s: nu
 
 type SpriteCanvas = HTMLCanvasElement | OffscreenCanvas;
 const MAX_SPRITES = 24;
+/**
+ * V7 : budget mémoire des images en cache (pixels). Avant, seules 24 images étaient comptées,
+ * jusqu'à 1,2 million de pixels chacune : en théorie plus de 100 Mo de canvas gardés d'une partie
+ * à l'autre. Les plus anciennes sont libérées au-delà de 3 millions de pixels (environ 12 Mo).
+ */
+export const SPRITE_PIXEL_BUDGET = 3_000_000;
+/** V7 : résolution maximale des images de décor (le décor flou au-delà de ×2 ne se voit pas). */
+export const SPRITE_MAX_RES = 2;
 const sprites = new Map<string, SpriteCanvas>();
+let spritePixels = 0;
+
+const pixelsOf = (c: SpriteCanvas): number => c.width * c.height;
+
+function dropOldestSprite(): void {
+  const first = sprites.keys().next().value;
+  if (first === undefined) return;
+  const c = sprites.get(first);
+  sprites.delete(first);
+  if (c) spritePixels -= pixelsOf(c);
+}
+
+/** Libère toutes les images en cache (fin de partie, perte du contexte graphique, manque de mémoire). */
+export function releaseSprites(): void {
+  sprites.clear();
+  spritePixels = 0;
+}
+
+/** Pixels gardés par le cache d'images (tests de bornes). */
+export const spritePixelCount = (): number => spritePixels;
 
 function newCanvas(w: number, h: number): SpriteCanvas | null {
   try {
@@ -184,22 +212,25 @@ export function drawCached(
   paint: (c: CanvasRenderingContext2D) => void,
 ): void {
   const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
-  const res = m && typeof m.a === 'number' ? Math.max(1, Math.round(Math.hypot(m.a, m.b) * 4) / 4) : 0;
+  const res = m && typeof m.a === 'number' ? Math.min(SPRITE_MAX_RES, Math.max(1, Math.round(Math.hypot(m.a, m.b) * 4) / 4)) : 0;
   const pw = Math.ceil(w * res);
   const ph = Math.ceil(h * res);
   const full = `${key}|${res}|${pw}x${ph}`;
-  let sprite = res > 0 && pw > 0 && ph > 0 && pw * ph < 1_200_000 ? sprites.get(full) : undefined;
-  if (!sprite && res > 0 && pw > 0 && ph > 0 && pw * ph < 1_200_000) {
+  const cacheable = res > 0 && pw > 0 && ph > 0 && pw * ph < 1_200_000;
+  let sprite = cacheable ? sprites.get(full) : undefined;
+  if (sprite) {
+    // Récemment utilisée : en fin de liste (les plus anciennes partent en premier).
+    sprites.delete(full);
+    sprites.set(full, sprite);
+  } else if (cacheable) {
     const c = newCanvas(pw, ph);
     const x2 = (c?.getContext('2d') ?? null) as CanvasRenderingContext2D | null;
     if (c && x2) {
       x2.setTransform(res, 0, 0, res, 0, 0);
       paint(x2);
-      if (sprites.size >= MAX_SPRITES) {
-        const first = sprites.keys().next().value;
-        if (first !== undefined) sprites.delete(first);
-      }
+      while (sprites.size > 0 && (sprites.size >= MAX_SPRITES || spritePixels + pw * ph > SPRITE_PIXEL_BUDGET)) dropOldestSprite();
       sprites.set(full, c);
+      spritePixels += pixelsOf(c);
       sprite = c;
     }
   }
