@@ -108,7 +108,8 @@ test('v3 : chute finale — « CRASH », recul de caméra, une seule fin, rien q
   await g.pilot('miss');
   expect((await g.fx()).words.some((w: string) => ['CRASH !', 'BADABOUM !', 'PATATRAS !'].includes(w))).toBe(true);
   await g.seq('chute-recul', 12, 80);
-  await page.waitForTimeout(400);
+  // Fin unique après END_DELAY_MS (1 s : chute et recul de caméra), avec ou sans captures.
+  await expect.poll(async () => (await g.ends()).length, { timeout: 4000 }).toBe(1);
   const ends = await g.ends();
   expect(ends).toHaveLength(1);
   expect(ends[0]).toMatchObject({ rulesVersion: 3, verified: true });
@@ -183,3 +184,31 @@ test('8 parties v3 enchaînées : pas d’écouteur ni de RAF restants, coût de
   expect(stats.p95).toBeLessThan(16);
   expect((await g.ends())).toHaveLength(8);
 });
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
+  test(`onomatopées ${viewport.width}×${viewport.height} : jamais sur la zone de pose ni sur le HUD`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto(URL);
+    const g = flk(page);
+    await g.mount({ seed: 5, v3: true, sound: false });
+    let checked = 0;
+    for (let i = 0; i < 7; i++) {
+      await g.pilot('align', 1);
+      const fx = await g.fx();
+      for (let k = 0; k < fx.boxes.length; k++) {
+        const b = fx.boxes[k];
+        const landscape = fx.fieldLeft > 150;
+        if (landscape) {
+          const half = (b.size * fx.words[k].length * 0.62) / 2;
+          expect(b.x + half < fx.fieldLeft || b.x - half > fx.fieldRight, `${fx.words[k]} à côté de la tour`).toBe(true);
+        } else {
+          expect(b.y + b.size * 0.65, `${fx.words[k]} au-dessus du bloc mobile`).toBeLessThanOrEqual(fx.activeTop);
+          expect(b.y - b.size * 0.65, `${fx.words[k]} sous le HUD`).toBeGreaterThanOrEqual(fx.hudBottom - 4);
+        }
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(3);
+    await g.seq(`mots-${viewport.width}x${viewport.height}`, 2, 120);
+  });
+}

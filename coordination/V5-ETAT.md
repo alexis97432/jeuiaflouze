@@ -27,17 +27,20 @@ Voir [`docs/V5-DIRECTION.md`](../docs/V5-DIRECTION.md) : style « Pop Choc », r
 | E2 | Branchement v3 : contrat, liens `?v=3`, résultat, carte, classement, serveur | fait (519 tests unitaires) |
 | E3 | Rendu « Pop Choc » : effets de pose, parfait, séries, Fièvre, boosts, chute, absurdités, interface en jeu | fait (`src/game/render/fx.ts`, `renderer.ts` ; 7 scénarios navigateur `tests/game/browser/v5.spec.ts`) |
 | E4 | Son et vibrations coordonnés | fait (`audio.ts` : signatures des boosts, clac, boing, Fièvre, absurdités, suspension en arrière-plan ; vibrations dans le shell) |
-| E5 | Accueil et résultat dans la nouvelle personnalité | à faire |
-| E6 | Tests, séquences en navigateur, petits écrans, animations réduites, mode Fluide | à faire |
+| E5 | Accueil et résultat dans la nouvelle personnalité | fait (rayons et logo qui s'écrase à l'accueil, tampon et score qui surgit au résultat, aide des boosts) |
+| E6 | Tests, séquences en navigateur, petits écrans, animations réduites, mode Fluide | fait (520 unitaires, 92 e2e, 49 moteur dont 10 V5 ; mots jamais sur la zone de pose en 390×844, 320×568, 844×390) |
 | E7 | Bilan, PR, CI, fusion, publication Pages, vérification en ligne | à faire |
 
 ## Reprise
 
-- **Dernier état :**
-  - règles v3 et rendu « Pop Choc » en place ;
-  - `npm test` : 519 tests ;
-  - `tests/game/browser/v5.spec.ts` : 7 tests passés. La commande `V5_CAPTURES=<dossier> npx playwright test -c tests/game/browser/playwright.config.ts tests/game/browser/v5.spec.ts` enregistre aussi des séquences d'images.
-- **Prochaine action :**
-  1. E5 : accueil et résultat dans la nouvelle personnalité ;
-  2. E6 : e2e à adapter (liens `?v=3`, textes), captures et séquences, petits écrans ;
-  3. E7 : publication.
+- **Dernier état :** chaîne complète verte en local.
+  - `npm run typecheck` : OK ;
+  - `npm test` : 520 tests ;
+  - `npm run build` : OK ;
+  - `CI=1 npm run test:e2e` : 92 tests passés, 46 ignorés par conception, plus 49 tests moteur.
+- **Prochaine action :** E7.
+  1. Séquences et captures dans `coordination/captures/v5/` ;
+  2. `docs/V5.md`, statut et README ;
+  3. PR vers `claude/youthful-mayer-n4f7oy`, CI, fusion ;
+  4. `pages.yml` avec le SHA exact ;
+  5. vérification en ligne.

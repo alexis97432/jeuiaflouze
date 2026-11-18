@@ -45,6 +45,8 @@ export interface Word {
   life: number;
   /** Ordre d'importance : un mot plus fort remplace les plus faibles. */
   weight: number;
+  /** Paysage : écrit à côté de la tour (sa hauteur ne dépend pas du HUD). */
+  side?: boolean;
 }
 export const MAX_WORDS = 3;
 
@@ -76,10 +78,9 @@ export function drawWord(ctx: CanvasRenderingContext2D, w: Word, font: string, m
   const a = wordAlpha(w);
   if (a <= 0) return;
   const s = wordScale(w.age, motion);
-  const rise = motion ? Math.min(w.age, 0.6) * 18 : 0;
   ctx.save();
   ctx.globalAlpha = a;
-  ctx.translate(w.x, w.y - rise);
+  ctx.translate(w.x, w.y);
   ctx.rotate(motion ? w.rot : 0);
   ctx.scale(s, s);
   ctx.font = `900 ${w.size}px ${font}`;

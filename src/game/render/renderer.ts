@@ -195,6 +195,9 @@ export class Renderer {
   private revealTarget = false;
   /** Caméra effectivement dessinée (recul de fin de partie compris). */
   private viewCamera = 0;
+  /** Bas du HUD (px) à la dernière image : les onomatopées s'écrivent dessous. */
+  private hudBottom = 0;
+  private wordSide: -1 | 1 = 1;
   private duck: { t: number; dir: 1 | -1; y: number } | null = null;
   private ufo: { t: number; x: number; y: number; w: number; color: Rgb; floor: number; dir: -1 | 1 } | null = null;
   private pigeon: { floor: number; side: -1 | 1; flying: number; x: number; y: number } | null = null;
@@ -234,11 +237,18 @@ export class Renderer {
   get debrisCount(): number { return this.debris.length; }
   get sparkCount(): number { return this.particles.alive; }
   /** Inspection (tests) : effets V5 vivants. */
-  get fxState(): { words: string[]; rings: number; particles: number; fever: number; boost: number; duck: boolean; ufo: boolean; pigeon: boolean; reveal: number } {
+  get fxState(): {
+    words: string[]; rings: number; particles: number; fever: number; boost: number; duck: boolean; ufo: boolean;
+    pigeon: boolean; reveal: number; boxes: { x: number; y: number; size: number }[]; hudBottom: number;
+    activeTop: number; fieldLeft: number; fieldRight: number;
+  } {
     return {
       words: this.words.map((w) => w.text), rings: this.rings.length, particles: this.particles.alive,
       fever: this.feverMix, boost: this.boostMix, duck: this.duck !== null, ufo: this.ufo !== null,
       pigeon: this.pigeon !== null, reveal: this.reveal,
+      boxes: this.words.map((w) => ({ x: w.x, y: w.y, size: w.size })),
+      hudBottom: this.hudBottom, activeTop: this.cssH * ACTIVE_FRAC, fieldLeft: (this.cssW - FIELD_U * this.scale()) / 2,
+      fieldRight: (this.cssW + FIELD_U * this.scale()) / 2,
     };
   }
   /** Éléments de décor dessinés à la dernière image (borné par MAX_DECOR). */
@@ -414,13 +424,41 @@ export class Renderer {
       w.age = Math.max(w.age, w.life * 0.68);
       w.y -= Math.min(12, size * 0.3);
     }
-    const s = Math.min(size, this.cssW * 0.13);
+    const { x, y, s, side } = this.wordSpot(size);
     this.words.push({
       text, color, size: s, life: this.reducedMotion ? Math.min(life, 0.9) : life, weight, age: 0,
-      x: this.cssW / 2 + (this.reducedMotion ? 0 : this.cos.range(-0.08, 0.08) * this.cssW),
-      y: this.cssH * WORD_LINE,
-      rot: this.cos.range(-0.09, 0.09),
+      x, y, rot: this.cos.range(-0.09, 0.09), side,
     });
+  }
+
+  /** À chaque image : les mots restent entre le HUD (qui peut grandir) et la zone de pose. */
+  private keepWordsClear(): void {
+    const limit = this.cssH * ACTIVE_FRAC - BLOCK_HEIGHT * this.frameScale * 0.5;
+    for (const w of this.words) {
+      if (w.side) continue;
+      w.y = Math.max(this.hudBottom + w.size * 0.7, Math.min(limit - w.size * 0.75, w.y));
+    }
+  }
+
+  /**
+   * Où écrire une onomatopée sans jamais couvrir la zone de pose : en portrait, entre le HUD et
+   * le bloc mobile ; en paysage (peu de hauteur), à côté de la tour, du côté opposé au précédent.
+   */
+  private wordSpot(size: number): { x: number; y: number; s: number; side: boolean } {
+    const fieldW = FIELD_U * this.scale();
+    const side = (this.cssW - fieldW) / 2;
+    if (side > 150) {
+      this.wordSide = -this.wordSide as -1 | 1;
+      const s = Math.min(size, side * 0.17, this.cssH * 0.1);
+      return { x: this.cssW / 2 + this.wordSide * (fieldW / 2 + side / 2), y: this.cssH * 0.45, s, side: true };
+    }
+    // Marge d'un demi-bloc : la caméra rattrape le nouvel étage juste après une pose.
+    const active = this.cssH * ACTIVE_FRAC - BLOCK_HEIGHT * this.scale() * 0.5;
+    const s = Math.min(size, this.cssW * 0.13, Math.max(18, (active - this.hudBottom) * 0.42));
+    const top = this.hudBottom + s * 0.7;
+    const bottom = active - s * 0.75;
+    const y = Math.max(top, Math.min(bottom, this.cssH * WORD_LINE));
+    return { x: this.cssW / 2 + (this.reducedMotion ? 0 : this.cos.range(-0.08, 0.08) * this.cssW), y, s, side: false };
   }
 
   /** Gerbe de particules (bornée par la réserve, réduite en mode Fluide, nulle en mouvement réduit). */
@@ -736,9 +774,10 @@ export class Renderer {
     if (this.boostMix > 0.01 && this.boostShown) this.vignette(BONUS_STYLE[this.boostShown].color, 0.32 * this.boostMix);
     if (this.feverMix > 0.01) this.vignette([255, 120, 40], 0.3 * this.feverMix * (1 + 0.4 * this.feverBeat));
 
-    // 7. Onomatopées, puis HUD.
-    for (const w of this.words) drawWord(ctx, w, GAME_FONT, motion);
+    // 7. HUD, puis onomatopées placées sous le HUD de cette image (jamais dessus ni sur la pose).
     this.drawHud(view, sky.ink);
+    this.keepWordsClear();
+    for (const w of this.words) drawWord(ctx, w, GAME_FONT, motion);
   }
 
   /** Bord coloré (dégradé radial) : lu comme un état, sans rien cacher au centre. */
@@ -947,7 +986,7 @@ export class Renderer {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    const big = Math.round(Math.min(72, this.cssW * 0.17));
+    const big = Math.round(Math.min(72, this.cssW * 0.17, this.cssH * 0.11));
     const font = (weight: number, size: number) => `${weight} ${size}px ${GAME_FONT}`;
     // Liseré de la couleur opposée : le texte reste lisible quand le ciel passe par des tons moyens.
     const halo = css(haloFor(ink), 0.7);
@@ -990,7 +1029,9 @@ export class Renderer {
     }
     if (this.streakLabel > 0 && !v2?.fever) {
       text(`SÉRIE ×${this.streakValue}`, line, Math.round(big * 0.3), css(ink), Math.min(1, this.streakLabel * 1.5));
+      line += big * 0.36;
     }
+    this.hudBottom = line + big * 0.1;
     if (v2?.fallen && view.pause === 'none') {
       // Attente de la décision : la scène est figée sous un voile, l'offre est un écran DOM.
       ctx.fillStyle = 'rgba(20,20,40,0.45)';

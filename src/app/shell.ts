@@ -187,6 +187,8 @@ type RunControls = {
 };
 
 const BOARD_LABELS: Record<BoardKind, string> = { global: 'Monde', weekly: 'Semaine', daily: 'Aujourd’hui' };
+/** Tampons de fin de partie (variété cosmétique, sans effet sur le jeu). */
+const STAMPS = ['CRASH !', 'BOUM !', 'PATATRAS !'] as const;
 const ordinal = (n: number) => (n === 1 ? '1er' : `${n}e`);
 const SERVICE_MESSAGES: Record<ServiceError, string> = {
   unavailable: 'Classement en ligne indisponible pour l’instant.',
@@ -791,7 +793,8 @@ export function createShell(options: ShellOptions): Shell {
       ['hand', 'Touche l’écran pour poser le bloc qui bouge.'],
       ['target', 'Pose-le bien au-dessus : ce qui dépasse tombe.'],
       ['sparkles', 'Un bloc parfait donne plus de points et remplit la jauge Super.'],
-      ['zap', 'Jauge pleine = bonus : Ralenti ou points ×2 pendant 5 étages.'],
+      ['zap', 'Jauge pleine = un boost, à tour de rôle : Ralenti (plus lent), Aimant (les blocs se collent), Bouclier (un raté rattrapé).'],
+      ['flame', '5 parfaits d’affilée = Fièvre : points ×2 tant que tu restes parfait !'],
       ['heart', 'Après une chute, une vie te laisse continuer.'],
       ['trophy', 'Monte le plus haut possible et bats ton record !'],
     ];
@@ -1683,7 +1686,9 @@ export function createShell(options: ShellOptions): Shell {
     // --- Carte du score : titre, rubans, hauteur en grand, points, gains -------------------
     const card = el(doc, 'section', { class: 'card result-card', 'aria-labelledby': 'result-title' });
     const title = el(doc, 'h2', { id: 'result-title', class: 'result-title', tabindex: '-1' }, 'Partie terminée');
-    card.append(title);
+    // V5 : tampon de BD qui prolonge la chute du jeu (décoratif, jamais lu).
+    const stampWord = isRecord ? 'RECORD !' : outcome.gained.levelUp ? 'BRAVO !' : STAMPS[Math.floor(Math.random() * STAMPS.length)]!;
+    card.append(el(doc, 'p', { class: 'stamp', 'aria-hidden': 'true' }, stampWord), title);
     let summary = `Partie terminée. Hauteur : ${height}.`;
     if (isRecord) {
       const ribbon = el(doc, 'p', { class: 'ribbon', 'data-testid': 'new-record' });
