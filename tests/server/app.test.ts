@@ -3,6 +3,8 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { replayRun } from '../../src/game/core';
 import { botRun } from '../game/bot';
+import { SimulationV3 } from '../../src/game/core';
+import { playV3, shrinkThenMissV3 } from '../game/bot-v3';
 import { dailySeed } from '../../src/platform/daily';
 import { createApp, DEFAULT_CONFIG, type AppConfig } from '../../server/app';
 import { seedDemo } from '../../server/demo';
@@ -55,7 +57,7 @@ afterEach(() => new Promise<void>((r) => server.close(() => r())));
 describe('serveur de classement', () => {
   it('santé', async () => {
     const r = await fetch(base + '/health');
-    expect(await r.json()).toEqual({ ok: true, rulesVersions: [1, 2], demo: false });
+    expect(await r.json()).toEqual({ ok: true, rulesVersions: [1, 2, 3], demo: false });
   });
 
   it('ticket → rejeu → classement global et hebdomadaire ; score recalculé, pas déclaré', async () => {
@@ -75,6 +77,25 @@ describe('serveur de classement', () => {
     expect(JSON.stringify(board)).not.toContain(PLAYER); // identifiant jamais exposé
     const weekly = (await (await fetch(`${base}/leaderboards/weekly`)).json()) as { period: string };
     expect(weekly.period).toBe('2026-W47');
+  });
+
+  it('V5 : partie v3 (Fièvre comprise) rejouée par le serveur, classée dans le tableau v3, points recalculés', async () => {
+    const r = await post('/tickets', { mode: 'free', rulesVersion: 3 });
+    expect(r.status).toBe(201);
+    const t = (await r.json()) as { ticket: string; seed: number; rulesVersion: number };
+    expect(t.rulesVersion).toBe(3);
+    const sim = new SimulationV3({ seed: t.seed, rulesVersion: 3 });
+    for (let i = 0; i < 6; i++) playV3(sim, 'perfect');
+    shrinkThenMissV3(sim);
+    if (sim.status === 'fallen') sim.finish();
+    const result = sim.result()!;
+    expect(result.feverCount).toBe(1);
+    now += 60 * 60_000;
+    const res = await post('/scores', { ticket: t.ticket, playerId: PLAYER, pseudo: 'Alex', inputTicks: result.inputTicks, continueTicks: [], score: 1 });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ranked: true, score: result.score, height: result.height });
+    expect(store.listBoard('global:v3').map((e) => e.score)).toEqual([result.score]);
+    expect(store.listBoard('global:v1')).toHaveLength(0);
   });
 
   it('idempotence : même soumission rejouée → même réponse, un seul enregistrement ; autre partie refusée', async () => {

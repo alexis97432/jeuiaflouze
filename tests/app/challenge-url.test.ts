@@ -19,7 +19,7 @@ describe('parseChallenge', () => {
   });
 
   it.each([
-    ['?v=3&seed=1&target=1', 'version'],
+    ['?v=4&seed=1&target=1', 'version'],
     ['?seed=1&target=1', 'malformed'],
     ['?v=1&target=1', 'malformed'],
     ['?v=1&seed=1', 'malformed'],
@@ -70,6 +70,9 @@ describe('liens v2 (V3)', () => {
   it('accepte ?v=2 et construit un lien dans la version de la partie', () => {
     expect(parseChallenge('?v=2&seed=5&target=9')).toEqual({ kind: 'challenge', challenge: { seed: 5, target: 9, rulesVersion: 2 } });
     expect(buildChallengeUrl('https://jeu.test/', 5, 9, 2)).toBe('https://jeu.test/?v=2&seed=5&target=9');
+    // V5 : liens v3 (Ralenti, Aimant, Bouclier, Fièvre), toujours en étages.
+    expect(parseChallenge('?v=3&seed=5&target=9')).toEqual({ kind: 'challenge', challenge: { seed: 5, target: 9, rulesVersion: 3 } });
+    expect(buildChallengeUrl('https://jeu.test/', 5, 9, 3)).toBe('https://jeu.test/?v=3&seed=5&target=9');
     expect(buildChallengeUrl('https://jeu.test/', 5, 9)).toBe('https://jeu.test/?v=1&seed=5&target=9');
   });
 });

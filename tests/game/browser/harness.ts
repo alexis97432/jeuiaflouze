@@ -73,12 +73,15 @@ function snapshot() {
 }
 
 const api = {
-  mount(opts: { seed?: number; sound?: boolean; reducedMotion?: boolean; theme?: string; skin?: string; voyage?: boolean; v2?: boolean; allowContinue?: boolean } = {}) {
+  mount(opts: { seed?: number; sound?: boolean; reducedMotion?: boolean; theme?: string; skin?: string; voyage?: boolean; v2?: boolean; v3?: boolean; allowContinue?: boolean; effects?: 'full' | 'light' } = {}) {
     game?.destroy();
+    const seed = opts.seed ?? 1;
     const options: Parameters<typeof createGame>[0] = {
-      canvas, config: opts.v2 ? { seed: opts.seed ?? 1, rulesVersion: 2 } : { seed: opts.seed ?? 1, rulesVersion: 1 },
+      canvas,
+      config: opts.v3 ? { seed, rulesVersion: 3 } : opts.v2 ? { seed, rulesVersion: 2 } : { seed, rulesVersion: 1 },
       onEnd: (r) => ends.push(r), onEvent: (e) => gameEvents.push(e),
     };
+    if (opts.effects) options.effects = opts.effects;
     if (opts.allowContinue) options.allowContinue = true;
     if (opts.sound !== undefined) options.sound = opts.sound;
     if (opts.reducedMotion !== undefined) options.reducedMotion = opts.reducedMotion;
@@ -130,16 +133,33 @@ const api = {
     if (!sim || !('gauge' in sim)) return null;
     return {
       status: sim.status, tick: sim.tick, score: sim.score, height: sim.height, gauge: sim.gauge,
-      bonus: sim.bonus, bonusLeft: sim.bonusFloorsLeft, countdownLeft: sim.countdownLeft, moving: sim.moving,
+      bonus: 'boost' in sim ? sim.boost : sim.bonus,
+      bonusLeft: 'boost' in sim ? sim.boostFloorsLeft : sim.bonusFloorsLeft,
+      countdownLeft: sim.countdownLeft, moving: sim.moving,
       inputs: (sim.inputTicks as number[]).length,
+      // V5 (v3) : Fièvre, série, rattrapages, cause du compte à rebours, tolérance courante.
+      fever: sim.fever ?? false, streak: sim.perfectStreak, saved: sim.savedCount ?? 0, fevers: sim.feverCount ?? 0,
+      countdownKind: sim.countdownKind ?? 'continue', tolerance: sim.tolerance ?? 4000, stack: (sim.stack as unknown[]).length,
     };
+  },
+  /** Effets V5 vivants (onomatopées, ondes, particules, ambiances, absurdités). */
+  fx() {
+    return game ? game.inspect().renderer.fxState : null;
+  },
+  /** Test seulement : force une absurdité pour la filmer (le jeu les déclenche au hasard cosmétique). */
+  forceGag(kind: 'duck' | 'pigeon') {
+    const r = game?.inspect().renderer as unknown as Record<string, unknown> | undefined;
+    if (!r) return;
+    const sim = game!.inspect().sim;
+    if (kind === 'duck') r.duck = { t: 0, dir: 1, y: 0.5 };
+    else r.pigeon = { floor: Math.max(1, sim.stack.length - 4), side: 1, flying: 0, x: 0, y: 0 };
   },
   /**
    * Pilote automatique dans la page (pas de latence Playwright) : appuie quand le bloc,
    * deux ticks plus loin, sera aligné à `tolerance` près ; s'arrête après `count` poses
    * réussies. mode 'miss' : appuie dès qu'un raté est possible, sinon aux extrémités.
    */
-  pilot(mode: 'align' | 'miss', count = 1, tolerance = 2500) {
+  pilot(mode: 'align' | 'miss' | 'near' | 'edge', count = 1, tolerance = 2500) {
     return new Promise<number>((resolve) => {
       let placed = 0;
       const startEvents = gameEvents.length;
@@ -148,7 +168,8 @@ const api = {
         const { sim } = game.inspect();
         placed = gameEvents.slice(startEvents).filter((e) => (e as { type: string }).type === 'placement').length;
         const missed = gameEvents.slice(startEvents).some((e) => (e as { type: string }).type === 'miss');
-        if (missed || (mode === 'align' && placed >= count) || sim.status === 'ended' || sim.status === 'fallen') return resolve(placed);
+        const saved = gameEvents.slice(startEvents).some((e) => (e as { type: string }).type === 'saved');
+        if (missed || saved || (mode !== 'miss' && placed >= count) || sim.status === 'ended' || sim.status === 'fallen') return resolve(placed);
         if (sim.status === 'running') {
           const w = sim.base.width;
           const max = 360_000 - w;
@@ -156,8 +177,13 @@ const api = {
           if (lead > max) lead = 2 * max - lead; else if (lead < 0) lead = -lead;
           const off = Math.abs(lead - sim.base.left);
           const canMiss = Math.max(sim.base.left, max - sim.base.left) >= w;
+          // near : écart de 7 à 11 unités (coupé hors Aimant, collé sous l'Aimant).
+          const atEdge = lead <= 2 * sim.speed || lead >= max - 2 * sim.speed;
+          // edge : pose à une extrémité (grosse coupe, pour rétrécir la base sans rater).
           const press = mode === 'align' ? off <= tolerance
-            : canMiss ? off >= w : (lead <= 2 * sim.speed || lead >= max - 2 * sim.speed) && off < w;
+            : mode === 'edge' ? atEdge && off < w && off > 15000
+            : mode === 'near' ? off >= 7000 && off <= 11000
+              : canMiss ? off >= w : (lead <= 2 * sim.speed || lead >= max - 2 * sim.speed) && off < w;
           if (press) canvas.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
         }
         requestAnimationFrame(loop);

@@ -21,7 +21,7 @@ Lire le [protocole de coordination autonome](coordination/AUTONOMIE.md) : les se
 
 ## Version actuelle
 
-[V4 : interface modernisée, vrai menu Réglages (thème clair/sombre, son et volume, vibrations, animations, effets), pause et retour du téléphone](docs/V4.md). Réalisée par Claude Code Alexis seul, sur exception décidée par l'utilisateur : auto-vérification, sans revue indépendante.
+[V5 : boosts Ralenti, Aimant, Bouclier et Fièvre (règles v3), identité « Pop Choc »](docs/V5.md), sur la base de la [V4](docs/V4.md) (interface, réglages). Réalisée par Claude Code Alexis seul, sur exception décidée par l'utilisateur : auto-vérification, sans revue indépendante.
 
 [Jouer au prototype publié](https://alexis97432.github.io/jeuiaflouze/) — instantané déployé ; le commit publié est dans `source-commit.txt`.
 

@@ -795,3 +795,140 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* V5 : exploits de la partie (Fièvre, Bouclier) sur la carte du résultat. */
+.feats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.feat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  border: 2.5px solid var(--edge);
+  color: var(--on-color);
+}
+.feat.fever {
+  background: linear-gradient(180deg, #ffd166, #ff7a3d);
+}
+.feat.shield {
+  background: linear-gradient(180deg, #a8f0dc, #48dcaa);
+}
+
+/* ---- V5 « Pop Choc » : accueil et résultat prolongent le jeu ---- */
+.hero {
+  position: relative;
+  isolation: isolate;
+}
+/* Rayons de BD derrière le logo : lents, discrets ; coupés en mode Fluide, fixes en mouvement réduit. */
+.hero::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 46%;
+  /* Jamais plus large que l'écran : aucun défilement horizontal à 320 px. */
+  width: min(340px, 100%);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, var(--accent) 0deg 9deg, transparent 9deg 22.5deg);
+  -webkit-mask: radial-gradient(circle, #000 0 30%, transparent 70%);
+  mask: radial-gradient(circle, #000 0 30%, transparent 70%);
+  opacity: 0.32;
+  animation: rays 40s linear infinite;
+  pointer-events: none;
+}
+@keyframes rays {
+  to {
+    transform: rotate(360deg);
+  }
+}
+:root[data-effects='light'] .hero::before {
+  display: none;
+}
+/* Logo : les trois blocs tombent l'un après l'autre et s'écrasent à l'atterrissage. */
+.logo.bounce span {
+  animation: drop-squash 700ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+.logo.bounce span:nth-child(3) { animation-delay: 0ms; }
+.logo.bounce span:nth-child(2) { animation-delay: 160ms; }
+.logo.bounce span:nth-child(1) { animation-delay: 320ms; }
+@keyframes drop-squash {
+  0% {
+    translate: 0 -46px;
+    scale: 1 1;
+    opacity: 0;
+  }
+  55% {
+    translate: 0 0;
+    scale: 1.08 0.72;
+    opacity: 1;
+  }
+  80% {
+    scale: 0.97 1.06;
+  }
+  100% {
+    translate: 0 0;
+    scale: 1 1;
+  }
+}
+/* Titre façon autocollant de BD : « Crash » penche et projette une ombre d'encre. */
+.brand-title .accent {
+  display: inline-block;
+  rotate: -5deg;
+  text-shadow: 0.05em 0.07em 0 var(--edge);
+}
+.brand-title > span:first-child {
+  text-shadow: 0.04em 0.06em 0 var(--line-soft);
+}
+/* Tampon du résultat : penché, encré, il « claque » à l'apparition. */
+.result-card {
+  position: relative;
+  overflow: visible;
+}
+.stamp {
+  position: absolute;
+  top: -14px;
+  right: 10px;
+  rotate: 9deg;
+  padding: 4px 12px;
+  border: 3px solid #1b1a3a;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #1b1a3a;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+  box-shadow: 3px 4px 0 #1b1a3a;
+  animation: stamp-in 380ms cubic-bezier(0.2, 1.6, 0.4, 1) 120ms both;
+}
+@keyframes stamp-in {
+  from {
+    scale: 1.6;
+    opacity: 0;
+  }
+}
+.big-score .num {
+  display: inline-block;
+  animation: score-pop 520ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
+  text-shadow: 0.04em 0.06em 0 var(--line-soft);
+}
+@keyframes score-pop {
+  0% {
+    scale: 0.4;
+    opacity: 0;
+  }
+  60% {
+    scale: 1.15;
+    opacity: 1;
+  }
+  100% {
+    scale: 1;
+  }
+}

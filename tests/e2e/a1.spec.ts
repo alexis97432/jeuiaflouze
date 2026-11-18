@@ -52,7 +52,7 @@ test('le lien partagé ouvre le même défi dans un autre navigateur', async ({ 
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
   await expect(page.getByTestId('share-status')).toHaveText('Lien du défi copié. Colle-le dans un message !');
   const [link] = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
-  expect(link).toMatch(/\?v=2&seed=\d+&target=\d+$/); // partie v2 (F7) : lien v2, cible en étages
+  expect(link).toMatch(/\?v=3&seed=\d+&target=\d+$/); // partie v3 (V5) : lien v3, cible en étages
   const run = (await metrics(page)).find((e) => e.name === 'run_end');
   expect(link).toContain(`target=${score}`);
   expect((await metrics(page)).map((e) => e.name).slice(-2)).toEqual(['share_attempt', 'share_success']);

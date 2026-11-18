@@ -6,10 +6,11 @@
  * `target` est une déclaration amicale, jamais un score vérifié.
  * Les autres paramètres (ex. utm_*) sont ignorés ; un paramètre du défi répété est refusé.
  */
-import { PLAY_RULES_VERSION, RULES_VERSION } from './game-contract';
+import { PLAY_RULES_VERSION, RULES_VERSION, RULES_VERSION_V2 } from './game-contract';
 
-export type ChallengeRules = typeof RULES_VERSION | typeof PLAY_RULES_VERSION;
-const ACCEPTED: readonly ChallengeRules[] = [RULES_VERSION, PLAY_RULES_VERSION];
+export type ChallengeRules = typeof RULES_VERSION | typeof RULES_VERSION_V2 | typeof PLAY_RULES_VERSION;
+/** Liens acceptés : v1 et v2 (déjà partagés, joués avec leurs règles) et v3 (V5). */
+const ACCEPTED: readonly ChallengeRules[] = [RULES_VERSION, RULES_VERSION_V2, PLAY_RULES_VERSION];
 
 export const MAX_SEED = 0xffffffff;
 export const MAX_TARGET = 10_000;

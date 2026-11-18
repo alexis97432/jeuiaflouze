@@ -11,6 +11,7 @@ export {
   type StepEvent,
 } from './simulation';
 export * from './v2';
+export * from './v3';
 export {
   type AnyRunResult,
   replayRun,

@@ -56,6 +56,8 @@ body::after {
 #app {
   position: relative;
   z-index: 1;
+  /* Un effet qui déborde un instant (tampon, confettis) ne crée jamais de défilement horizontal. */
+  overflow-x: clip;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;

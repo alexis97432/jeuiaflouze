@@ -54,7 +54,7 @@ export type AppDeps = {
 
 export const DEFAULT_CONFIG: AppConfig = {
   allowedOrigins: [],
-  rulesVersions: [1, 2],
+  rulesVersions: [1, 2, 3],
   demo: false,
   maxBodyBytes: 64 * 1024,
   ticketTtlMs: 2 * 60 * 60 * 1000,
