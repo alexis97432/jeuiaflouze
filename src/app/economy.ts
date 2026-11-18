@@ -12,9 +12,11 @@
 import { isDateKey } from '../platform/daily';
 import { migrateSeasonState, sanitizeSeason, type SeasonState } from './season';
 import { sanitizeLives } from './lives';
+import { DEFAULT_MUSIC, MUSIC_CATALOG } from './catalog';
 import {
   applyRun,
   INITIAL_PROGRESS,
+  ownsMusic,
   sanitizeProgress,
   type Objective,
   type ObjectiveId,
@@ -26,10 +28,11 @@ import {
 
 /**
  * 3 : inventaire (boutique) et passe de saison. 4 (V6) : passe de 30 niveaux, réclamations
- * renumérotées une fois (migrateSeasonState). Un onglet resté sur une version plus ancienne
+ * renumérotées une fois (migrateSeasonState). 5 (V7) : musique équipée (`music`) et musiques
+ * achetées dans l'inventaire (`musique-…`) ; rien à transformer, la musique offerte s'applique. Un onglet resté sur une version plus ancienne
  * voit une version future et cesse d'écrire (readProgressDoc) : il ne peut pas effacer ces champs.
  */
-export const PROGRESS_VERSION = 4;
+export const PROGRESS_VERSION = 5;
 /** Prime unique : 10 pièces par objectif déjà accompli avant E1. */
 export const BACKFILL_GRANT = 'v2-objectives-backfill';
 export const MAX_XP = 10_000_000;
@@ -58,6 +61,8 @@ export type ProgressDoc = ProgressState & {
   /** Vies de reprise gagnées en jeu (achetées en pièces), et reprises déjà payées (idempotence). */
   lives?: number;
   livesSpent?: string[];
+  /** V7 : musique équipée (absente : « Premier étage », offerte). */
+  music?: string;
 };
 
 const INITIAL_CALENDAR: CalendarState = { lastClaimDate: null, cycle: 0, index: 0 };
@@ -125,6 +130,8 @@ export function migrateProgress(raw: unknown): ProgressDoc {
     calendar: sanitizeCalendar(r.calendar),
     ...(season ? { season: legacySeason ? migrateSeasonState(season) : season } : {}),
     ...sanitizeLives(r),
+    // V7 (version 5) : musique équipée gardée si elle existe ; sinon la musique offerte s'applique.
+    ...(typeof r.music === 'string' && MUSIC_CATALOG.some((m) => m.id === r.music) ? { music: r.music } : {}),
     // Un document v2 a déjà reçu (ou n'avait pas à recevoir) la prime : on ne la rejoue jamais.
     grants: [...new Set([BACKFILL_GRANT, ...grants])].slice(0, MAX_GRANTS),
   };
@@ -261,4 +268,14 @@ export function claimCalendar(doc: ProgressDoc, today: string): ClaimResult {
       },
     },
   };
+}
+
+/** V7 : musique équipée et possédée ; sinon la musique offerte à tous. */
+export function equippedMusic(doc: ProgressDoc): string {
+  return doc.music && ownsMusic(doc, doc.music) ? doc.music : DEFAULT_MUSIC;
+}
+
+/** V7 : équipe une musique possédée ; refuse silencieusement le reste. */
+export function equipMusic(doc: ProgressDoc, id: string): ProgressDoc {
+  return ownsMusic(doc, id) && doc.music !== id ? { ...doc, music: id } : doc;
 }

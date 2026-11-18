@@ -39,7 +39,7 @@ describe('E1a — migration vers le document v2', () => {
     };
     const once = migrateProgress(v1);
     expect(once).toMatchObject({
-      version: 4,
+      version: 5,
       completed: ['floors-5', 'streak-2'],
       selected: { theme: 'confiserie', skin: 'bonbon' },
       evaluatedRuns: ['a', 'b'],
@@ -80,7 +80,7 @@ describe('E1a — migration vers le document v2', () => {
   });
 
   it('version future : XP, pièces et calendrier conservés, lecture seule (m3 FLK)', () => {
-    const v3 = { version: 5, completed: ['floors-5'], xp: 900, coins: 400, calendar: { lastClaimDate: '2026-11-16', cycle: 2, index: 3 }, nouveau: { x: 1 } };
+    const v3 = { version: 6, completed: ['floors-5'], xp: 900, coins: 400, calendar: { lastClaimDate: '2026-11-16', cycle: 2, index: 3 }, nouveau: { x: 1 } };
     const { doc, writable } = readProgressDoc(v3);
     expect(doc).toMatchObject({ xp: 900, coins: 400, completed: ['floors-5'], calendar: { lastClaimDate: '2026-11-16', cycle: 2, index: 3 } });
     expect(writable).toBe(false);
@@ -91,7 +91,7 @@ describe('E1a — migration vers le document v2', () => {
   });
 
   it.each([null, 'texte', 42, []])('sauvegarde illisible %j : document valide', (raw) => {
-    expect(migrateProgress(raw).version).toBe(4);
+    expect(migrateProgress(raw).version).toBe(5);
   });
 });
 

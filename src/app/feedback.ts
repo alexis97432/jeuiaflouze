@@ -50,6 +50,51 @@ const MELODIES: Record<UiSoundKind, { notes: number[]; step: number; length: num
 
 type AudioWindow = { AudioContext?: AudioCtor; webkitAudioContext?: AudioCtor };
 
+/** Partie de la centrale audio utile aux sons d'interface (V7). */
+type UiHub = { readonly context: AudioContext | null; uiInput(): AudioNode | null; unlock(): void };
+
+/**
+ * V7 : sons d'interface branchés sur la centrale audio de l'application (un seul contexte). Le
+ * volume des effets est appliqué par le bus d'interface ; `volume` sert seulement à couper à zéro.
+ */
+export function createHubUiSound(hub: UiHub): UiSound {
+  return {
+    play(kind, volume) {
+      if (volume <= 0) return;
+      hub.unlock();
+      const c = hub.context;
+      const out = hub.uiInput();
+      if (!c || !out || (c.state as string) !== 'running') return;
+      const m = MELODIES[kind];
+      const start = c.currentTime + 0.01;
+      try {
+        m.notes.forEach((freq, i) => {
+          const t = start + i * m.step;
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = m.wave;
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.exponentialRampToValueAtTime(0.16, t + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + m.length);
+          osc.connect(gain).connect(out);
+          osc.start(t);
+          osc.stop(t + m.length + 0.02);
+          osc.onended = () => {
+            osc.disconnect();
+            gain.disconnect();
+          };
+        });
+      } catch {
+        // Son d'interface facultatif.
+      }
+    },
+    close() {
+      // Le contexte appartient à la centrale audio : rien à fermer ici.
+    },
+  };
+}
+
 export function createUiSound(win: AudioWindow | null | undefined = globalThis.window as unknown as AudioWindow): UiSound {
   let ctx: AudioContext | null = null;
   let broken = false;

@@ -1,0 +1,67 @@
+/*
+ * V7 — musiques (disque aux couleurs de la rareté), sélection du jour, journal de diagnostic.
+ * La rareté reste écrite en toutes lettres à côté : la couleur n'est jamais la seule information.
+ */
+
+.music-art {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 120 / 84;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--r-commun-gem, #8a94a6) 30%, transparent), transparent 60%),
+    linear-gradient(135deg, var(--r-commun-bg, #eceef2), color-mix(in srgb, var(--r-commun-gem, #8a94a6) 35%, var(--r-commun-bg, #eceef2)));
+}
+.music-art[data-rarity='rare'] {
+  background:
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--r-rare-gem) 35%, transparent), transparent 60%),
+    linear-gradient(135deg, var(--r-rare-bg), color-mix(in srgb, var(--r-rare-gem) 40%, var(--r-rare-bg)));
+}
+.music-art[data-rarity='epique'] {
+  background:
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--r-epique-gem) 40%, transparent), transparent 60%),
+    linear-gradient(135deg, var(--r-epique-bg), color-mix(in srgb, var(--r-epique-gem) 45%, var(--r-epique-bg)));
+}
+.music-art[data-rarity='legendaire'] {
+  background:
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--r-legendaire-gem) 45%, transparent), transparent 60%),
+    linear-gradient(135deg, var(--r-legendaire-bg), color-mix(in srgb, var(--r-legendaire-gem) 50%, var(--r-legendaire-bg)));
+}
+.music-art.large { max-width: 280px; margin-inline: auto; }
+
+.music-disc {
+  display: grid;
+  place-items: center;
+  width: 56%;
+  max-width: 64px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  color: var(--ink, #20213d);
+  background:
+    radial-gradient(circle, var(--surface, #fff) 0 18%, #1f2033 19% 21%, #2c2e47 22% 100%);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25), inset 0 0 0 3px rgb(255 255 255 / 0.08);
+}
+.music-art.large .music-disc { max-width: 96px; }
+.music-disc .ic { width: 38%; height: 38%; color: #fff4db; }
+
+/* Écoute en cours : le disque tourne doucement (fixe en animations réduites). */
+.item.cos:has(button[data-listen][aria-pressed='true']) .music-disc {
+  animation: v7-spin 4s linear infinite;
+}
+@keyframes v7-spin {
+  to { transform: rotate(360deg); }
+}
+:root[data-motion='reduce'] .music-disc { animation: none !important; }
+
+.daily-head .hint { margin-block: 0.25rem; }
+
+.diag-report {
+  width: 100%;
+  font: 0.72rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  border-radius: 10px;
+  padding: 0.5rem;
+  border: 1px solid var(--line-soft, #ccc);
+  background: var(--surface, #fff);
+  color: inherit;
+}

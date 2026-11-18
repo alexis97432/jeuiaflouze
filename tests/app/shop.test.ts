@@ -13,6 +13,8 @@ describe('catalogue', () => {
   it('prix fixés (V5 inchangés, V6 par rareté), univers Récif, aucune apparence d’objectif à vendre', () => {
     expect(COIN_SHOP.map((i) => [i.id, i.kind, i.price])).toEqual([
       ['graphite', 'skin', 60], ['bois', 'skin', 60], ['nacre', 'skin', 120], ['circuit', 'skin', 280], ['holographique', 'skin', 240], ['recif', 'theme', 320],
+      // V7 : musiques en pièces du jeu (compositions originales).
+      ['gouter-lofi', 'music', 90], ['pixel-parade', 'music', 150], ['fanfare-de-poche', 'music', 150], ['funk-des-briques', 'music', 240], ['aurore-polaire', 'music', 420],
     ]);
     const objectiveSkins = ['marbre', 'bonbon', 'verre', 'strie', 'ceramique'];
     expect(COIN_SHOP.some((i) => objectiveSkins.includes(i.id))).toBe(false);

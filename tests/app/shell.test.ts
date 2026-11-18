@@ -229,7 +229,8 @@ describe('record et préférences', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     toggle.click();
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-    expect(toggle.textContent).toBe('Son');
+    // V7 : « Effets sonores », réglé indépendamment de la musique.
+    expect(toggle.textContent).toBe('Effets sonores');
     expect(store.readPrefs()).toEqual({ ...DEFAULT_PREFS, muted: true });
     button('Retour').click();
     expect(document.activeElement?.getAttribute('data-testid')).toBe('nav-settings');
@@ -599,7 +600,7 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
 
     const saved = storage.dump('poc:meta:v1:progress');
     expect(saved).toMatchObject({
-      version: 4,
+      version: 5,
       xp: 14,
       coins: 40,
       selected: { skin: 'marbre' },
@@ -626,12 +627,12 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     expect(text('coins')).toBe('20 pièces');
     button('Jouer').click();
     await end(3); // perfectCount 1 : 1 + 1 = 2 pièces, 3 + 2 = 5 XP
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 4, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 5, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
   });
 
   it('sauvegarde d’une version future : lue, jamais réécrite', async () => {
     const storage = memoryStorage();
-    const future = { version: 5, completed: [], xp: 900, coins: 400, champInconnu: true };
+    const future = { version: 6, completed: [], xp: 900, coins: 400, champInconnu: true };
     storage.setItem('poc:meta:v1:progress', JSON.stringify(future));
     const { text, button, end } = setup({ meta: createMetaStore(storage) });
     expect(text('coins')).toBe('400 pièces');
@@ -1449,7 +1450,7 @@ describe('V3-A6b : secours du partage d’image, annonces, sauvegarde et récomp
     const again = setup({ meta: createMetaStore(storage) });
     again.day.now = new Date('2026-12-01T10:00:00Z');
     const doc = storage.dump('poc:meta:v1:progress') as Record<string, unknown>;
-    expect(doc).toMatchObject({ version: 4, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
+    expect(doc).toMatchObject({ version: 5, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
     expect(again.text('coins')).toBe('60 pièces');
     expect(storage.dump('poc:meta:v1:player')).toEqual({ id: 'c'.repeat(32), pseudo: 'Alex' });
     again.shell.destroy();
@@ -1751,7 +1752,7 @@ describe('V6 : Stack or Crash, boutique, passe, raretés et aperçus', () => {
     button('Tout récupérer (7)').click();
     await flush();
     // 10 + 15 + 15 + 20 + 20 + 25 = 105 pièces, et Galaxie (niveau 9) révélée.
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 4, coins: 105, inventory: ['pixel', 'galaxie'] });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 5, coins: 105, inventory: ['pixel', 'galaxie'] });
     expect(text('reveal-name')).toBe('Galaxie');
     expect(root.querySelector('[data-testid="reveal"] .rarity')?.textContent).toBe('Légendaire');
     button('Équiper maintenant').click();

@@ -4,6 +4,7 @@
  * décoratifs (`aria-hidden`) : le nom accessible vient du texte du bouton.
  */
 import {
+  Activity,
   ArrowLeft,
   Award,
   Ban,
@@ -59,6 +60,10 @@ import {
   WandSparkles,
   X,
   Zap,
+  Music,
+  Headphones,
+  Square,
+  RefreshCw,
 } from 'lucide';
 
 type IconNode = readonly (readonly [string, Record<string, string | number | undefined>])[];
@@ -119,6 +124,11 @@ const ICONS = {
   magic: WandSparkles,
   close: X,
   zap: Zap,
+  music: Music,
+  listen: Headphones,
+  stop: Square,
+  refresh: RefreshCw,
+  activity: Activity,
 } as const satisfies Record<string, IconNode>;
 
 export type IconName = keyof typeof ICONS;
