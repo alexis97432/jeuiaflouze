@@ -34,12 +34,15 @@ import {
   mix,
   roundedRect,
   skyAt,
+  stageAt,
   tierIndex,
   TIER_FLOORS,
   type DecorItem,
   type Rgb,
   type Theme,
+  type TierIndex,
 } from './themes';
+import type { SceneEnv } from './scene';
 
 export { BLOCK_HEIGHT, reliefParts, SKIN_IDS, type ReliefParts, type SkinId } from './blocks';
 /** Bornes des effets : jamais plus d'objets que ça, quelle que soit la série. */
@@ -177,6 +180,8 @@ export class Renderer {
   private readonly words: Word[] = [];
   private readonly rings: Ring[] = [];
   private readonly cos = new CosmeticRng();
+  /** V6 : graine cosmétique des découvertes de la scène (jamais le PRNG de la partie). */
+  private readonly sceneSeed = Math.floor(this.cos.next() * 1_000_000_000);
   private wave: { t: number; top: number; amp: number; chain: boolean } | null = null;
   private readonly waveOffsets = new Float64Array(WAVE_DEPTH + 1);
   private feverMix = 0;
@@ -225,6 +230,8 @@ export class Renderer {
   private slowFrames = 0;
   private sampledFrames = 0;
   public autoLight = false;
+  /** Appelé quand la qualité adaptative se déclenche (le montage recalcule alors la résolution). */
+  public onAutoLight: (() => void) | null = null;
   /**
    * V4 : `light` (mode Fluide) = résolution interne plafonnée à 1,5, étincelles divisées par
    * trois, débris et décor réduits. Purement visuel.
@@ -313,7 +320,7 @@ export class Renderer {
 
   /** Ajuste la résolution interne à la taille CSS × devicePixelRatio. Renvoie true si changé. */
   resize(cssWidth: number, cssHeight: number, devicePixelRatio: number): boolean {
-    const dpr = Math.min(Math.max(devicePixelRatio || 1, 1), this.quality === 'light' ? 1.5 : 3);
+    const dpr = Math.min(Math.max(devicePixelRatio || 1, 1), this.quality === 'light' || this.autoLight ? 1.5 : 3);
     const w = Math.max(1, Math.round(cssWidth * dpr));
     const h = Math.max(1, Math.round(cssHeight * dpr));
     this.cssW = Math.max(1, cssWidth);
@@ -429,9 +436,9 @@ export class Renderer {
     }
     const tier = (TIER_FLOORS as readonly number[]).indexOf(event.floor);
     if (tier > 0) {
-      this.milestoneName = this.theme.tiers[tier as 1 | 2 | 3].name;
+      this.milestoneName = this.theme.tiers[tier as TierIndex].name;
       this.milestone = 1;
-      if (!this.duck && motion && this.cos.next() < 0.7) {
+      if (!this.duck && motion && this.cos.next() < 0.45) {
         // Absurdité : un canard géant traverse le ciel pour fêter le nouveau monde.
         this.duck = { t: 0, dir: this.cos.next() < 0.5 ? 1 : -1, y: 0.46 + this.cos.next() * 0.12 };
         this.gag('duck');
@@ -544,7 +551,10 @@ export class Renderer {
       this.sampledFrames++;
       if (dt > 0.034) this.slowFrames++;
       if (this.sampledFrames >= 180) {
-        if (this.slowFrames > 120) this.autoLight = true;
+        if (this.slowFrames > 120) {
+          this.autoLight = true;
+          this.onAutoLight?.();
+        }
         this.sampledFrames = 0;
         this.slowFrames = 0;
       }
@@ -599,6 +609,8 @@ export class Renderer {
     g.addColorStop(1, css(skyBottom));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, this.cssW, this.cssH);
+    const scene = this.sceneEnv(scale, groundY, t, motion, full);
+    this.safeScene(() => theme.scene.far(scene));
 
     // 2. Fièvre : rayons de BD derrière la tour (fixes et discrets si le mouvement est réduit).
     if (this.feverMix > 0.02 && full) {
@@ -609,6 +621,8 @@ export class Renderer {
     // 3. Décor en parallaxe (atténué pendant la Fièvre), puis absurdité du ciel (canard).
     ctx.save();
     if (this.feverMix > 0) ctx.globalAlpha = 1 - this.feverMix * 0.6;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.safeScene(() => theme.scene.back(scene));
     this.drawDecor(scale, groundY, t, motion, tierIndex(Math.max(0, len - 1)));
     ctx.restore();
     if (this.duck) {
@@ -626,14 +640,17 @@ export class Renderer {
       ctx.restore();
     }
 
-    // 4. Sol thématique sous l'étage 0.
+    // 4. Sol thématique sous l'étage 0, puis premier plan léger (derrière la tour).
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const groundTop = groundY + this.viewCamera * scale + shakeY;
     if (groundTop < this.cssH) {
       ctx.fillStyle = css(theme.ground.body);
       ctx.fillRect(0, groundTop, this.cssW, this.cssH - groundTop);
-      ctx.fillStyle = css(theme.ground.top);
-      ctx.fillRect(0, groundTop, this.cssW, Math.min(8, this.cssH - groundTop));
+      this.safeScene(() => theme.scene.ground(scene, groundTop));
+    }
+    if (full) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.safeScene(() => theme.scene.near(scene));
     }
 
     // 5. Monde : x en unités, y vers le haut depuis le sol.
@@ -981,6 +998,28 @@ export class Renderer {
     }
   }
 
+  /** Contexte de la scène d'univers pour l'image en cours (V6). */
+  private sceneEnv(scale: number, groundY: number, t: number, motion: boolean, full: boolean): SceneEnv {
+    return {
+      ctx: this.ctx, w: this.cssW, h: this.cssH, groundY, cam: this.viewCamera, scale,
+      height: this.height, stage: stageAt(this.height), t, motion, full, seed: this.sceneSeed, activeFrac: ACTIVE_FRAC,
+    };
+  }
+
+  /** Une scène décorative en échec ne doit jamais casser l'image : état du contexte restauré. */
+  private safeScene(paint: () => void): void {
+    const { ctx } = this;
+    ctx.save();
+    try {
+      paint();
+    } catch {
+      // Décor seulement : on continue sans lui.
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   /**
    * Décor en parallaxe. Chaque élément garde le palier qu'il avait en entrant à l'écran ;
    * au franchissement d'un palier, ceux qui sont au-dessus du bloc actif prennent le nouveau
@@ -1023,7 +1062,7 @@ export class Renderer {
           rec.tier = currentTier;
           rec.born = t;
         }
-        const painter = theme.tiers[rec.tier as 0 | 1 | 2 | 3].decor;
+        const painter = theme.tiers[rec.tier as TierIndex].decor;
         ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * sx, dpr * sy);
         ctx.save();
         ctx.globalAlpha = motion ? Math.min(1, Math.max(0, (t - rec.born) / 0.4)) : 1;

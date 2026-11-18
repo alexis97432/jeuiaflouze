@@ -8,7 +8,7 @@
  * - Légendaire : matière continue d'une brique à l'autre, avec profondeur interne, pose signée,
  *   célébration au parfait, aura du bloc mobile et cadre de la carte de résultat.
  */
-import type { Rgb } from './themes';
+import type { Rgb } from './color';
 
 export type Rarity = 'commun' | 'rare' | 'epique' | 'legendaire';
 export const RARITIES: readonly Rarity[] = ['commun', 'rare', 'epique', 'legendaire'];

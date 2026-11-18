@@ -15,7 +15,7 @@
  * les calques secondaires (paillettes, second plan, reflets mobiles) sont retirés.
  */
 import { BLOCK_HEIGHT, RADIUS } from './dims';
-import { css, darken, lighten, mix, roundedRect, type Rgb } from './themes';
+import { css, darken, lighten, mix, roundedRect, type Rgb } from './color';
 
 const H = BLOCK_HEIGHT;
 const TAU = Math.PI * 2;

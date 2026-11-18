@@ -106,6 +106,8 @@ const REWARD_LABELS: Record<AnySkinId | ThemeId | BadgeId, string> = {
   confiserie: 'Confiserie',
   orbital: 'Orbital',
   jardin: 'Jardin',
+  recif: 'Récif',
+  cite: 'Cité néon',
   'touriste-des-nuages': 'Touriste des nuages',
   precision: 'Précision',
 };
