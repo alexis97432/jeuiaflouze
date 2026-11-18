@@ -78,7 +78,8 @@ Outils : fuzzeur du rendu (parties simulées, tailles et densités extrêmes, bl
      - 320 × 568 sans débordement ;
      - toutes les ressources servies ;
      - aucune erreur console.
-4. **Relevé final :** cet état est publié à son tour (PR de suivi), pour que le commit servi soit la tête de `claude/youthful-mayer-n4f7oy`.
+4. **Relevé final :** cet état est publié à son tour (PR #57, `531875e`), pour que le commit servi soit la tête de `claude/youthful-mayer-n4f7oy`.
+5. **Page musique en français :** `docs/MUSIQUE.md` (crédits et choix techniques) avait été publiée en anglais en `9709ec7`, contrairement au reste de la documentation. Elle est traduite en français sans changer son contenu (PR de suivi), puis publiée et revérifiée en ligne.
 
 ## Reprise
 
