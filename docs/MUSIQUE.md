@@ -1,103 +1,103 @@
-#  Stack or Crash: music (V7)
+# Stack or Crash : musiques (V7)
 
-## Rights and credits
+## Droits et crédits
 
-Every track is an **original composition written for Stack or Crash**. The game contains **no external audio files**:
-- each track is a score described in code (`src/app/music/tracks.ts`);
-- the composer turns it into notes (`compose.ts`);
-- the game's synthesizer renders those notes in the player's browser (`synth.ts`).
+Chaque piste est une **composition originale écrite pour Stack or Crash**. Le jeu ne contient **aucun fichier audio externe** :
+- chaque piste est une partition décrite dans le code (`src/app/music/tracks.ts`) ;
+- le compositeur la transforme en notes (`compose.ts`) ;
+- le synthétiseur du jeu joue ces notes dans le navigateur du joueur (`synth.ts`).
 
-Licence: the repository's licence, with no third-party rights and no attribution owed. No library, sample or recording was integrated, so there is no external source to cite.
+Licence : celle du dépôt, sans droit de tiers ni attribution due. Aucune bibliothèque, aucun échantillon et aucun enregistrement n'ont été intégrés : il n'y a donc aucune source externe à citer.
 
-The in-game credits say so in Settings ("Musiques : compositions originales de Stack or Crash…"). This page serves as the credits in the repository.
+Les crédits du jeu l'indiquent dans Réglages (« Musiques : compositions originales de Stack or Crash… »). Cette page tient lieu de crédits dans le dépôt.
 
-## Musical direction
+## Direction musicale
 
-**Principles:**
-- light background music, never louder than the sound effects;
-- each universe has its own atmosphere;
-- extra styles can be collected.
+**Principes :**
+- une musique de fond légère, jamais plus forte que les effets sonores ;
+- chaque univers a son ambiance ;
+- d'autres styles se collectionnent.
 
-**Structure of a track:** four sections of 8 bars (16 for the waltz):
-- A, the theme;
-- B, the contrast;
-- C, the lift: the most energetic;
-- D, the breather.
+**Structure d'une piste :** quatre sections de 8 mesures (16 pour la valse) :
+- A, le thème ;
+- B, le contraste ;
+- C, l'envolée, la plus énergique ;
+- D, la respiration.
 
-**How sections are chained:**
-- **Order:** the player picks the next section according to the height of the tower: the higher the tower, the more often the energetic sections come back. It never repeats the same section twice in a row.
-- **Shared theme:** A and C share the same melodic motif, the recognisable theme of the track.
-- **Joins:** sections are scheduled to the sample on the audio clock, 3 s ahead. Each one carries its own reverb tail, which overlaps the start of the next: there is no hard cut.
+**Enchaînement des sections :**
+- **Ordre :** le lecteur choisit la section suivante selon la hauteur de la tour : plus la tour monte, plus les sections énergiques reviennent souvent. Il ne joue jamais deux fois de suite la même section.
+- **Thème commun :** A et C partagent le même motif mélodique, le thème reconnaissable de la piste.
+- **Raccords :** les sections sont programmées à l'échantillon près sur l'horloge audio, 3 s à l'avance. Chacune porte sa propre queue de réverbération, qui recouvre le début de la suivante : aucune coupure sèche.
 
-| Track | Rarity | Origin | Atmosphere |
+| Piste | Rareté | Origine | Ambiance |
 |---|---|---|---|
-| Sucre glace | Common | Confectionery universe | Sugary, bouncy pop, marimba |
-| Rosée du matin | Rare | Garden universe | Pastoral, flute and harp |
-| Apesanteur | Epic | Orbital universe | Space pads, distant bells |
-| Lagon | Epic | Reef universe | Electric piano and bubbles, nonchalant tempo |
-| Nocturne néon | Legendary | Neon City universe | Pulsing synthwave |
-| Mirage | Common | Desert universe | Lute and percussion, phrygian dominant mode |
-| Cimes | Rare | Mountain universe | Accordion, guitar |
-| Manège | Epic | Funfair universe | Waltz, organ and glockenspiel |
-| Hymne des nuées | Legendary | Kingdom of the Clouds universe | Strings, harp, horn |
-| Premier étage | Common | **Free for everyone** | Gentle pop |
-| Goûter lo-fi | Common | Shop, 90 coins | Muffled hip-hop, jazz chords |
-| Pixel parade | Rare | Shop, 150 coins | Fast chiptune |
-| Fanfare de poche | Rare | Shop, 150 coins | Brass and parade snare |
-| Funk des briques | Epic | Shop, 240 coins | Funk bass, clavinet |
-| Aurore polaire | Legendary | Shop, 420 coins | Luminous ambient |
+| Sucre glace | Commun | Univers Confiserie | Pop sucrée et bondissante, marimba |
+| Rosée du matin | Rare | Univers Jardin | Pastorale, flûte et harpe |
+| Apesanteur | Épique | Univers Orbital | Nappes spatiales, cloches lointaines |
+| Lagon | Épique | Univers Récif | Piano électrique et bulles, tempo nonchalant |
+| Nocturne néon | Légendaire | Univers Cité néon | Synthwave pulsée |
+| Mirage | Commun | Univers Désert | Luth et percussions, mode phrygien dominant |
+| Cimes | Rare | Univers Montagne | Accordéon, guitare |
+| Manège | Épique | Univers Fête foraine | Valse, orgue et glockenspiel |
+| Hymne des nuées | Légendaire | Univers Royaume des nuées | Cordes, harpe, cor |
+| Premier étage | Commun | **Offerte à tous** | Pop douce |
+| Goûter lo-fi | Commun | Boutique, 90 pièces | Hip-hop feutré, accords jazz |
+| Pixel parade | Rare | Boutique, 150 pièces | Chiptune rapide |
+| Fanfare de poche | Rare | Boutique, 150 pièces | Cuivres et caisse claire de défilé |
+| Funk des briques | Épique | Boutique, 240 pièces | Basse funk, clavinet |
+| Aurore polaire | Légendaire | Boutique, 420 pièces | Ambient lumineuse |
 
-A universe's music is owned together with the universe. The shop tracks are bought with in-game coins and stay owned when they leave the daily selection.
+La musique d'un univers est possédée avec l'univers. Les musiques de la boutique s'achètent avec les pièces du jeu et restent possédées quand elles quittent la sélection du jour.
 
-## Technical choices
+## Choix techniques
 
-**Rendering:**
-- **Rendered offline:** each section is rendered once, in an OfflineAudioContext, mono at 22,050 Hz (about 1.5 to 2.6 MB per section).
-- **During a game:** the player only plays buffers that are already rendered. Nothing is synthesised in real time, and the music does not depend on how smoothly the display runs.
-- **When rendering happens:** in the menus. During a game, no rendering is started as soon as one section of the track is ready, so nothing stutters.
-- **Memory:** at most 6 sections are kept. The buffers of a track you leave are freed.
+**Rendu :**
+- **Rendu hors ligne :** chaque section est rendue une seule fois, dans un `OfflineAudioContext`, en mono à 22 050 Hz (environ 1,5 à 2,6 Mo par section).
+- **Pendant une partie :** le lecteur ne joue que des tampons déjà rendus. Rien n'est synthétisé en temps réel, et la musique ne dépend pas de la fluidité de l'affichage.
+- **Moment du rendu :** dans les menus. Pendant une partie, aucun rendu n'est lancé dès qu'une section de la piste est prête : rien ne saccade.
+- **Mémoire :** 6 sections gardées au plus. Les tampons d'une piste quittée sont libérés.
 
-**Audio hub** (`src/platform/audio-hub.ts`):
-- a single AudioContext for music, effects and interface sounds;
-- created on the player's first gesture, resumed on every gesture if the system has paused it;
-- suspended in the background.
+**Centrale audio** (`src/platform/audio-hub.ts`) :
+- un seul `AudioContext` pour la musique, les effets et les sons de l'interface ;
+- créé au premier geste du joueur, relancé à chaque geste si le système l'a mis en pause ;
+- suspendu en arrière-plan.
 
-**Mix:**
-- music bus fed through a ducking bus, with volume sliders squared;
-- the music briefly dips under a perfect, a boost or a fall.
+**Mixage :**
+- bus musique passant par un bus d'atténuation, curseurs de volume au carré ;
+- la musique s'efface brièvement sous un parfait, un boost ou une chute.
 
-**Clean behaviour:**
-- one track audible at a time, with a short crossfade between two tracks;
-- a listen in the shop or collection stops the previous one and ends when you leave the screen, or after 20 s;
-- nothing keeps playing after the player is destroyed.
+**Comportement propre :**
+- une seule piste audible à la fois, avec un court fondu croisé entre deux pistes ;
+- une écoute en boutique ou en collection arrête la précédente et se termine en quittant l'écran, ou après 20 s ;
+- plus rien ne joue une fois le lecteur détruit.
 
-## Checks actually performed (technical, not by ear)
+## Contrôles réellement exécutés (techniques, sans écoute)
 
-**Measured in headless Chromium** (`OfflineAudioContext`), for the 15 tracks × 4 sections:
-- no invalid values;
-- peaks between −5 and −16 dBFS;
-- RMS between −19 and −22 dBFS, depending on the section's energy;
-- tail faded to below −46 dBFS at the end of the buffer.
+**Mesures dans Chromium sans affichage** (`OfflineAudioContext`), pour les 15 pistes × 4 sections :
+- aucune valeur invalide ;
+- crêtes entre −5 et −16 dBFS ;
+- RMS entre −19 et −22 dBFS, selon l'énergie de la section ;
+- queue éteinte sous −46 dBFS en fin de tampon.
 
-**Joins:** at the junction of two sections, the largest jump between two samples stays below the largest jump measured in the surrounding ±0.25 s. There is no discontinuity at the join.
+**Raccords :** à la jonction de deux sections, le plus grand saut entre deux échantillons reste inférieur au plus grand saut mesuré dans les ±0,25 s alentour. Aucune discontinuité au raccord.
 
-**Cost:**
-- **Main thread:** 20 to 40 ms per section (building the graph).
-- **Full rendering, off the display thread:** 0.2 to 2.2 s per section in this cloud container, which has no GPU. That is not a phone: the real duration on a modest device has not been measured.
+**Coût :**
+- **Fil principal :** 20 à 40 ms par section (construction du graphe).
+- **Rendu complet, hors du fil d'affichage :** 0,2 à 2,2 s par section dans ce conteneur cloud sans GPU. Ce n'est pas un téléphone : la durée réelle sur un appareil modeste n'a pas été mesurée.
 
-**Unit tests** (`tests/app/v7-logic.test.ts`):
-- deterministic composition, registers bounded;
-- a single track audible;
-- sources do not multiply;
-- listen replaced, then stopped;
-- no rendering during a game;
-- end of life.
+**Tests unitaires** (`tests/app/v7-logic.test.ts`) :
+- composition déterministe, registres bornés ;
+- une seule piste audible ;
+- pas de multiplication des sources ;
+- écoute remplacée, puis arrêtée ;
+- aucun rendu pendant une partie ;
+- fin de vie.
 
-**Browser tests** (`tests/e2e/v7.spec.ts`):
-- a single audio context across three games;
-- listen stopped when changing screen;
-- context suspended in the background, then resumed.
+**Tests en navigateur** (`tests/e2e/v7.spec.ts`) :
+- un seul contexte audio sur trois parties ;
+- écoute arrêtée en changeant d'écran ;
+- contexte suspendu en arrière-plan, puis repris.
 
-**Limit:** no track has been listened to by a person during this work, and nobody has judged the quality, the balance with the effects or listening comfort over many games.
+**Limite :** aucune piste n'a été écoutée par une personne pendant ce travail. Personne n'a jugé la qualité, l'équilibre avec les effets ni le confort d'écoute sur de nombreuses parties.
 
-WAV excerpts were produced in the session's scratchpad so a person can listen to them.
+Des extraits WAV ont été produits dans l'espace de travail temporaire de la session pour permettre une écoute humaine ; ils ne sont pas versionnés.
