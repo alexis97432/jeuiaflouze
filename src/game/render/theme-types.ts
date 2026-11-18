@@ -3,7 +3,8 @@ import type { Rgb } from './color';
 import type { Rarity } from './rarity';
 import type { Scene } from './scene';
 
-export type ThemeId = 'confiserie' | 'orbital' | 'jardin' | 'recif' | 'cite';
+/** V7 : quatre univers de plus (Désert, Montagne, Fête foraine, Royaume des nuées). */
+export type ThemeId = 'confiserie' | 'orbital' | 'jardin' | 'recif' | 'cite' | 'desert' | 'montagne' | 'foire' | 'nuees';
 
 /** Étages à partir desquels chaque palier commence (V6 : premiers changements dès 5 étages). */
 export const TIER_FLOORS = [0, 5, 10, 20, 35, 50] as const;

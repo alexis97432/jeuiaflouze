@@ -22,8 +22,10 @@ describe('V6 : catalogue et raretés', () => {
       expect(item.rarity, item.id).toBe(expected);
     }
     for (const r of RARITIES) expect(CATALOG.some((i) => i.kind === 'skin' && i.rarity === r), r).toBe(true);
-    expect(CATALOG.filter((i) => i.kind === 'skin')).toHaveLength(19);
-    expect(CATALOG.filter((i) => i.kind === 'theme')).toHaveLength(5);
+    // V7 : 23 matières (4 nouvelles) et 9 univers (4 nouveaux), une nouveauté par rareté.
+    expect(CATALOG.filter((i) => i.kind === 'skin')).toHaveLength(23);
+    expect(CATALOG.filter((i) => i.kind === 'theme')).toHaveLength(9);
+    for (const r of RARITIES) expect(CATALOG.some((i) => i.kind === 'theme' && i.rarity === r), r).toBe(true);
   });
 
   it('provenances cohérentes : boutique = catalogue en pièces, passe = récompenses du passe', () => {

@@ -30,9 +30,12 @@ export const SKIN_IDS_V3: readonly SkinIdV3[] = ['graphite', 'nacre', 'holograph
 /** V6 : cinq nouvelles matières (boutique et passe). */
 export type SkinIdV6 = 'bois' | 'circuit' | 'neon' | 'aurore' | 'abysse';
 export const SKIN_IDS_V6: readonly SkinIdV6[] = ['bois', 'circuit', 'neon', 'aurore', 'abysse'];
+/** V7 : une matière de plus par rareté (Papier, Mosaïque, Vitrail, Phénix). */
+export type SkinIdV7 = 'papier' | 'mosaique' | 'vitrail' | 'phenix';
+export const SKIN_IDS_V7: readonly SkinIdV7[] = ['papier', 'mosaique', 'vitrail', 'phenix'];
 /** Toute apparence que `drawBlock` sait dessiner. */
-export type DrawSkinId = SkinId | SkinIdV3 | SkinIdV6;
-export const ALL_SKIN_IDS: readonly DrawSkinId[] = [...SKIN_IDS, ...SKIN_IDS_V3, ...SKIN_IDS_V6];
+export type DrawSkinId = SkinId | SkinIdV3 | SkinIdV6 | SkinIdV7;
+export const ALL_SKIN_IDS: readonly DrawSkinId[] = [...SKIN_IDS, ...SKIN_IDS_V3, ...SKIN_IDS_V6, ...SKIN_IDS_V7];
 export function isDrawSkinId(v: unknown): v is DrawSkinId {
   return typeof v === 'string' && (ALL_SKIN_IDS as readonly string[]).includes(v);
 }
@@ -46,10 +49,11 @@ export const SKIN_RARITY: Record<DrawSkinId, Rarity> = {
   marbre: 'rare', ceramique: 'rare', verre: 'rare', nacre: 'rare', pixel: 'rare',
   circuit: 'epique', holographique: 'epique', lave: 'epique', or: 'epique', neon: 'epique',
   galaxie: 'legendaire', cristal: 'legendaire', aurore: 'legendaire', abysse: 'legendaire',
+  papier: 'commun', mosaique: 'rare', vitrail: 'epique', phenix: 'legendaire',
 };
 
 /** Matières sombres « vitrine » : le haut est un verre, pas une face claire. */
-const GLASSY = new Set<DrawSkinId>(['galaxie', 'aurore', 'abysse', 'neon']);
+const GLASSY = new Set<DrawSkinId>(['galaxie', 'aurore', 'abysse', 'neon', 'phenix']);
 
 /** Rectangles dessinés pour un bloc en relief, en unités locales (x relatif au bord gauche). */
 export interface ReliefParts {

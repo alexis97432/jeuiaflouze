@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StepEvent } from '../../src/game/core';
 import { BLOCK_HEIGHT, MAX_DECOR, MAX_SPARKS, Renderer, reliefParts, type ViewState } from '../../src/game/render/renderer';
-import { ALL_SKIN_IDS, edgeColors, isDrawSkinId, isSkinId, SKIN_IDS, SKIN_IDS_V3, SKIN_IDS_V6 } from '../../src/game/render/blocks';
+import { ALL_SKIN_IDS, edgeColors, isDrawSkinId, isSkinId, SKIN_IDS, SKIN_IDS_V3, SKIN_IDS_V6, SKIN_IDS_V7 } from '../../src/game/render/blocks';
 import { resolveAppearance } from '../../src/game/render/mount';
 import {
   contrast,
@@ -79,8 +79,8 @@ describe('lisibilité (contraste WCAG 2.x mesuré)', () => {
 });
 
 describe('univers', () => {
-  it('V6 : cinq univers distincts, six paliers nommés chacun, une rareté, au moins six couleurs de blocs', () => {
-    expect(THEME_IDS).toEqual(['confiserie', 'orbital', 'jardin', 'recif', 'cite']);
+  it('V7 : neuf univers distincts, six paliers nommés chacun, une rareté, au moins six couleurs de blocs', () => {
+    expect(THEME_IDS).toEqual(['confiserie', 'orbital', 'jardin', 'recif', 'cite', 'desert', 'montagne', 'foire', 'nuees']);
     const names = new Set<string>();
     for (const id of THEME_IDS) {
       const t = getTheme(id);
@@ -90,7 +90,7 @@ describe('univers', () => {
       t.tiers.forEach((tier) => names.add(tier.name));
       expect(t.blocks.length).toBeGreaterThanOrEqual(6);
     }
-    expect(names.size).toBe(30);
+    expect(names.size).toBe(54);
   });
 
   it('les ciels de départ sont nettement différents deux à deux', () => {
@@ -269,7 +269,7 @@ describe('V2 (F4) : apparences', () => {
 describe('apparences V3 (F8/F8b) : exposées sans élargir SkinId (V2)', () => {
   it('huit nouvelles matières, distinctes des V2, non exposées par isSkinId', () => {
     expect(SKIN_IDS_V3).toEqual(['graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave', 'or', 'cristal']);
-    expect(new Set(ALL_SKIN_IDS).size).toBe(SKIN_IDS.length + SKIN_IDS_V3.length + SKIN_IDS_V6.length);
+    expect(new Set(ALL_SKIN_IDS).size).toBe(SKIN_IDS.length + SKIN_IDS_V3.length + SKIN_IDS_V6.length + SKIN_IDS_V7.length);
     for (const id of SKIN_IDS_V3) {
       expect(isSkinId(id)).toBe(false);
       expect(isDrawSkinId(id)).toBe(true);
@@ -282,7 +282,7 @@ describe('apparences V3 (F8/F8b) : exposées sans élargir SkinId (V2)', () => {
 describe('F8b : exposition publique des apparences V3', () => {
   it('API publique : ALL_SKIN_IDS, isAnySkinId, resolveAnyAppearance ; resolveAppearance reste V2', async () => {
     const game = await import('../../src/game');
-    expect(game.ALL_SKIN_IDS).toEqual([...game.SKIN_IDS, ...game.SKIN_IDS_V3, ...game.SKIN_IDS_V6]);
+    expect(game.ALL_SKIN_IDS).toEqual([...game.SKIN_IDS, ...game.SKIN_IDS_V3, ...game.SKIN_IDS_V6, ...game.SKIN_IDS_V7]);
     for (const id of game.SKIN_IDS_V3) {
       expect(game.isAnySkinId(id)).toBe(true);
       expect(game.isSkinId(id)).toBe(false);

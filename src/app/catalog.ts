@@ -71,6 +71,11 @@ export const SKIN_CATALOG: readonly CatalogItem[] = [
   skin('cristal', 'Cristal', 'Facettes, lumière qui traverse et arêtes de prisme.', premium(19)),
   skin('aurore', 'Aurore', 'Rideaux d’aurore qui ondulent dans une nuit étoilée.', free(30)),
   skin('abysse', 'Abysse', 'L’océan profond, ses reflets et un poisson qui passe.', premium(30)),
+  // V7 : une matière de plus par rareté, vendues en pièces dans la sélection du jour.
+  skin('papier', 'Papier', 'Papier fait main : fibres, pli et bord déchiré.', shop(70)),
+  skin('mosaique', 'Mosaïque', 'Tesselles émaillées posées à la main ; le reflet glisse.', shop(140)),
+  skin('vitrail', 'Vitrail', 'Verres de couleur sertis de plomb, traversés par la lumière.', shop(260)),
+  skin('phenix', 'Phénix', 'Un plumage de feu traverse toute la tour, braises qui montent.', shop(520)),
 ];
 
 export const THEME_CATALOG: readonly CatalogItem[] = [
@@ -79,6 +84,11 @@ export const THEME_CATALOG: readonly CatalogItem[] = [
   theme('orbital', 'Orbital', 'Du pas de tir à la nébuleuse, en passant par l’orbite.', mission('floors-12')),
   theme('recif', 'Récif', 'Du fond marin à la surface, puis l’aurore sur la mer.', shop(320)),
   theme('cite', 'Cité néon', 'De la rue sous la pluie jusqu’à l’anneau orbital.', premium(24)),
+  // V7 : un univers de plus par rareté, vendus en pièces dans la sélection du jour.
+  theme('desert', 'Désert', 'Du campement dans les dunes à la Voie lactée, caravane et mirage.', shop(140)),
+  theme('montagne', 'Montagne', 'Des chalets du col aux sommets roses du soir, téléphérique et aigle.', shop(220)),
+  theme('foire', 'Fête foraine', 'Grande roue, manège et montagnes russes, jusqu’aux feux d’artifice.', shop(320)),
+  theme('nuees', 'Royaume des nuées', 'Îles suspendues et cascades, baleine céleste et citadelle dorée.', shop(560)),
 ];
 
 /**
@@ -87,6 +97,7 @@ export const THEME_CATALOG: readonly CatalogItem[] = [
  */
 const UNIVERSE_TRACK: Partial<Record<ThemeId, string>> = {
   confiserie: 'sucre-glace', jardin: 'rosee', orbital: 'apesanteur', recif: 'lagon', cite: 'nocturne-neon',
+  desert: 'mirage', montagne: 'cimes', foire: 'manege', nuees: 'nuees',
 };
 const MUSIC_SOURCE: Record<string, Source> = {
   'premier-etage': { kind: 'default' },

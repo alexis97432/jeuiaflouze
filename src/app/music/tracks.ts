@@ -168,7 +168,7 @@ export const TRACKS: readonly TrackDef[] = [
     ],
   },
   {
-    id: 'nuees', name: 'Royaume des nuées', rarity: 'legendaire', mood: 'cordes, harpe et cor au-dessus des nuages',
+    id: 'nuees', name: 'Hymne des nuées', rarity: 'legendaire', mood: 'cordes, harpe et cor au-dessus des nuages',
     bpm: 76, meter: 4, bars: 8, swing: 0, key: 51, scale: 'major',
     voices: { pad: 'strings', bass: 'bass', arp: 'harp', melody: 'brass', counter: 'glass' },
     drums: 'soft', bass: 'whole', arp: 'harp', comp: 'none',

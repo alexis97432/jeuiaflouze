@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { dailySelection, DAY_MS, rotationDay } from '../../src/app/rotation';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { RunResult } from '../../src/app/game-contract';
 import type { StartGame, StartOptions } from '../../src/app/game-loader';
@@ -514,7 +515,7 @@ describe('accueil V2 et collection', () => {
   it('collection : verrous explicites, choix persistant, onglet actif et focus rendu', async () => {
     const { button, root, text, end, place, meta } = setup();
     button('Collection').click();
-    expect(text('collection-count')).toBe('2 / 21 obtenus');
+    expect(text('collection-count')).toBe('2 / 29 obtenus');
     expect(root.querySelector('[data-testid="nav-collection"]')?.getAttribute('aria-current')).toBe('page');
     // Condition courte à l'écran, « À obtenir » lu par les lecteurs d'écran.
     expect(text('card-skin-marbre')).toContain('À obtenir : Pose 5 étages en une partie');
@@ -527,7 +528,7 @@ describe('accueil V2 et collection', () => {
     place([false, false, false, false, false]);
     await end(5);
     button('Voir la collection').click();
-    expect(text('collection-count')).toBe('3 / 21 obtenus');
+    expect(text('collection-count')).toBe('3 / 29 obtenus');
     const choose = root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!;
     expect(choose.getAttribute('aria-label')).toBe('Équiper Matière Marbré');
     choose.click();
@@ -1525,7 +1526,10 @@ describe('apparences V3 branchées (F8b, revue FLK A5 m1/m2, A6 m5)', () => {
     const storage = memoryStorage();
     storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 100, grants: ['v2-objectives-backfill'], season: { id: 's1', stars: 70, claimed: [] } }));
     const a = setup({ meta: createMetaStore(storage) });
-    a.day.now = new Date('2026-12-01T10:00:00Z');
+    // V7 : la boutique ne propose que la sélection du jour ; on se place un jour où Graphite y est.
+    let day = rotationDay(Date.parse('2026-12-01T10:00:00Z'));
+    while (!dailySelection(day).some((o) => o.id === 'graphite')) day++;
+    a.day.now = new Date(day * DAY_MS + 10 * 3_600_000);
     a.button('Boutique').click();
     expect(a.text('shop-graphite')).toContain('Acheter · 60');
     expect(a.root.querySelector('[data-testid="shop-empty"]')).toBeNull();
