@@ -10,7 +10,7 @@
  * Rien ici n'a de valeur commerciale : progression locale, modifiable par l'utilisateur.
  */
 import { isDateKey } from '../platform/daily';
-import { sanitizeSeason, type SeasonState } from './season';
+import { migrateSeasonState, sanitizeSeason, type SeasonState } from './season';
 import { sanitizeLives } from './lives';
 import {
   applyRun,
@@ -25,10 +25,11 @@ import {
 // --- Document v2 et migration (E1a) -------------------------------------------------------
 
 /**
- * 3 : inventaire (boutique) et passe de saison. Un onglet resté sur une version plus ancienne
+ * 3 : inventaire (boutique) et passe de saison. 4 (V6) : passe de 30 niveaux, réclamations
+ * renumérotées une fois (migrateSeasonState). Un onglet resté sur une version plus ancienne
  * voit une version future et cesse d'écrire (readProgressDoc) : il ne peut pas effacer ces champs.
  */
-export const PROGRESS_VERSION = 3;
+export const PROGRESS_VERSION = 4;
 /** Prime unique : 10 pièces par objectif déjà accompli avant E1. */
 export const BACKFILL_GRANT = 'v2-objectives-backfill';
 export const MAX_XP = 10_000_000;
@@ -107,6 +108,9 @@ export function migrateProgress(raw: unknown): ProgressDoc {
     };
   }
 
+  // V6 : un document d'avant la version 4 a ses réclamations de passe numérotées sur 10 paliers.
+  const season = sanitizeSeason(r.season);
+  const legacySeason = (r.version as number) < 4;
   const grants = Array.isArray(r.grants)
     ? [...new Set(r.grants.filter((g): g is string => typeof g === 'string' && g.length > 0 && g.length <= 64))]
     : [];
@@ -119,7 +123,7 @@ export function migrateProgress(raw: unknown): ProgressDoc {
       ? [...new Set(r.inventory.filter((i): i is string => typeof i === 'string' && /^[a-z0-9-]{1,32}$/.test(i)))]
       : [],
     calendar: sanitizeCalendar(r.calendar),
-    ...(sanitizeSeason(r.season) ? { season: sanitizeSeason(r.season)! } : {}),
+    ...(season ? { season: legacySeason ? migrateSeasonState(season) : season } : {}),
     ...sanitizeLives(r),
     // Un document v2 a déjà reçu (ou n'avait pas à recevoir) la prime : on ne la rejoue jamais.
     grants: [...new Set([BACKFILL_GRANT, ...grants])].slice(0, MAX_GRANTS),

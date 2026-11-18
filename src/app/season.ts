@@ -1,16 +1,23 @@
 /**
- * Passe de saison (V3-A5). Une première saison finie, à dates fixes (UTC).
+ * Passe de saison (V3-A5 ; V6 : 30 niveaux). Une saison finie, à dates fixes (UTC).
  * - Étoiles de saison = étoiles gagnées en partie pendant la saison (même calcul que l'XP,
  *   ajoutées dans la même écriture que les gains de la partie : jamais deux fois).
- * - Piste gratuite : vraiment réclamable, une fois par palier.
- * - Piste premium : visible en aperçu, **Indisponible** tant qu'aucun droit vérifié par le
- *   serveur n'existe (paiement + comptes : docs/SERVICES.md). Jamais déverrouillée localement.
- * - Une apparence obtenue reste à vie (inventaire), même après la fin de la saison.
- * - Une récompense dont le moteur ne sait pas encore dessiner l'apparence attend (« Bientôt »).
+ * - Piste gratuite : vraiment récupérable, une fois par niveau.
+ * - Piste premium : visible et détaillée, **pas achetable** tant qu'aucun paiement réel ni droit
+ *   vérifié par un serveur n'existe (docs/SERVICES.md). Jamais déverrouillée localement.
+ * - Un cosmétique obtenu reste à vie (inventaire), même après la fin de la saison.
+ *
+ * V6 — pourquoi 30 niveaux : la saison dure 15 semaines. Le niveau 1 arrive dès la première
+ * bonne partie (20 étoiles) ; les écarts grandissent doucement (20 → 250 étoiles) pour finir à
+ * 3 000 étoiles, soit environ deux parties par jour. Les 10 anciens paliers gardent leurs seuils
+ * et leurs récompenses (devenus les niveaux 1, 3, 5… 19) : la migration renumérote seulement.
  */
 import { MAX_COINS, type ProgressDoc } from './economy';
 
-export type SeasonReward = { kind: 'coins'; amount: number } | { kind: 'skin'; id: string; name: string };
+export type SeasonReward =
+  | { kind: 'coins'; amount: number }
+  | { kind: 'skin'; id: string; name: string }
+  | { kind: 'theme'; id: string; name: string };
 export type SeasonTier = { tier: number; stars: number; free: SeasonReward; premium: SeasonReward };
 export type Season = { id: string; name: string; start: string; end: string; tiers: readonly SeasonTier[] };
 export type SeasonState = { id: string; stars: number; claimed: string[] };
@@ -18,26 +25,46 @@ export type Track = 'free' | 'premium';
 
 const c = (amount: number): SeasonReward => ({ kind: 'coins', amount });
 const skin = (id: string, name: string): SeasonReward => ({ kind: 'skin', id, name });
+const theme = (id: string, name: string): SeasonReward => ({ kind: 'theme', id, name });
 
-/** Saison 1 : du 17 novembre 2026 au 28 février 2027 inclus (UTC). Contenu convenu avec FLK (#27). */
+const STARS = [20, 40, 60, 90, 120, 160, 200, 250, 300, 360, 420, 490, 560, 640, 720, 810, 900, 1000, 1100, 1220, 1350, 1490, 1640, 1800, 1970, 2150, 2340, 2540, 2750, 3000] as const;
+const FREE: readonly SeasonReward[] = [
+  c(10), c(10), skin('pixel', 'Pixel'), c(15), c(15), c(20), c(20), c(25), skin('galaxie', 'Galaxie'), c(25),
+  c(25), c(30), c(30), c(30), skin('lave', 'Lave'), c(35), c(40), c(40), c(50), c(45),
+  c(45), c(50), c(50), c(55), c(60), c(60), c(65), c(70), c(80), skin('aurore', 'Aurore'),
+];
+const PREMIUM: readonly SeasonReward[] = [
+  c(20), c(20), c(20), skin('neon', 'Néon'), c(25), c(25), c(25), c(30), skin('or', 'Or'), c(30),
+  c(30), c(35), c(30), c(35), c(40), c(40), c(40), c(45), skin('cristal', 'Cristal'), c(45),
+  c(50), c(50), c(55), theme('cite', 'Cité néon'), c(60), c(60), c(65), c(70), c(80), skin('abysse', 'Abysse'),
+];
+
+/** Saison 1 : du 17 novembre 2026 au 28 février 2027 inclus (UTC). */
 export const SEASON_1: Season = {
   id: 's1',
   name: 'Saison 1',
   start: '2026-11-17',
   end: '2027-02-28',
-  tiers: [
-    { tier: 1, stars: 20, free: c(10), premium: c(20) },
-    { tier: 2, stars: 60, free: skin('pixel', 'Pixel'), premium: c(20) },
-    { tier: 3, stars: 120, free: c(15), premium: c(25) },
-    { tier: 4, stars: 200, free: c(20), premium: c(25) },
-    { tier: 5, stars: 300, free: skin('galaxie', 'Galaxie'), premium: skin('or', 'Or') },
-    { tier: 6, stars: 420, free: c(25), premium: c(30) },
-    { tier: 7, stars: 560, free: c(30), premium: c(30) },
-    { tier: 8, stars: 720, free: skin('lave', 'Lave'), premium: c(40) },
-    { tier: 9, stars: 900, free: c(40), premium: c(40) },
-    { tier: 10, stars: 1100, free: c(50), premium: skin('cristal', 'Cristal') },
-  ],
+  tiers: STARS.map((stars, i) => ({ tier: i + 1, stars, free: FREE[i]!, premium: PREMIUM[i]! })),
 };
+
+/**
+ * Migration V5 → V6 (une seule fois, document de version < 4) : l'ancien palier N (1 à 10)
+ * devient le niveau `LEGACY_TIER_MAP[N - 1]`, aux mêmes seuil et récompense. Une réclamation
+ * déjà faite le reste ; aucune récompense n'est rendue deux fois.
+ */
+export const LEGACY_TIER_MAP = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19] as const;
+
+export function migrateSeasonState(state: SeasonState): SeasonState {
+  if (state.id !== SEASON_1.id) return state;
+  const claimed = state.claimed.flatMap((key) => {
+    const m = /^(free|premium):(\d{1,3})$/.exec(key);
+    if (!m) return [];
+    const next = LEGACY_TIER_MAP[Number(m[2]) - 1];
+    return next ? [`${m[1]}:${next}`] : [];
+  });
+  return { ...state, claimed: [...new Set(claimed)] };
+}
 
 export const MAX_SEASON_STARS = 1_000_000;
 
@@ -58,6 +85,16 @@ export function addSeasonStars(doc: ProgressDoc, season: Season, day: string, st
   return { ...doc, season: { ...s, stars: Math.min(MAX_SEASON_STARS, s.stars + stars) } };
 }
 
+/** Niveau de passe atteint (0 à 30) et progression vers le suivant. */
+export function seasonLevel(doc: ProgressDoc, season: Season): { level: number; max: number; into: number; span: number; next: SeasonTier | null } {
+  const stars = seasonState(doc, season).stars;
+  const reached = season.tiers.filter((t) => stars >= t.stars);
+  const level = reached.length;
+  const next = season.tiers[level] ?? null;
+  const prev = reached.at(-1)?.stars ?? 0;
+  return { level, max: season.tiers.length, into: stars - prev, span: next ? next.stars - prev : 1, next };
+}
+
 export type TierStatus = 'claimed' | 'claimable' | 'locked' | 'soon' | 'premium-unavailable' | 'ended';
 
 export function tierStatus(
@@ -66,15 +103,14 @@ export function tierStatus(
   tier: SeasonTier,
   track: Track,
   day: string,
-  canDraw: (skinId: string) => boolean,
+  canDraw: (reward: SeasonReward) => boolean,
 ): TierStatus {
   const s = seasonState(doc, season);
   if (s.claimed.includes(`${track}:${tier.tier}`)) return 'claimed';
   if (track === 'premium') return 'premium-unavailable';
   if (seasonPhase(season, day) !== 'active') return 'ended';
   if (s.stars < tier.stars) return 'locked';
-  const reward = tier.free;
-  if (reward.kind === 'skin' && !canDraw(reward.id)) return 'soon';
+  if (tier.free.kind !== 'coins' && !canDraw(tier.free)) return 'soon';
   return 'claimable';
 }
 
@@ -82,14 +118,14 @@ export type SeasonClaim =
   | { ok: true; doc: ProgressDoc; reward: SeasonReward }
   | { ok: false; doc: ProgressDoc; reason: Exclude<TierStatus, 'claimable'> | 'unknown-tier' };
 
-/** Réclamation pure : à appeler sur le document relu sous verrou (une seule fois par palier). */
+/** Réclamation pure : à appeler sur le document relu sous verrou (une seule fois par niveau). */
 export function claimSeasonTier(
   doc: ProgressDoc,
   season: Season,
   tierNumber: number,
   track: Track,
   day: string,
-  canDraw: (skinId: string) => boolean,
+  canDraw: (reward: SeasonReward) => boolean,
 ): SeasonClaim {
   const tier = season.tiers.find((t) => t.tier === tierNumber);
   if (!tier) return { ok: false, doc, reason: 'unknown-tier' };
@@ -107,7 +143,26 @@ export function claimSeasonTier(
   return { ok: true, doc: next, reward };
 }
 
-/** Prochain palier non encore atteint (pour la jauge), ou null si tout est atteint. */
+/** Récupère tous les niveaux gratuits disponibles en une écriture (bouton « Tout récupérer »). */
+export function claimAllFree(
+  doc: ProgressDoc,
+  season: Season,
+  day: string,
+  canDraw: (reward: SeasonReward) => boolean,
+): { doc: ProgressDoc; rewards: SeasonReward[] } {
+  let current = doc;
+  const rewards: SeasonReward[] = [];
+  for (const t of season.tiers) {
+    const r = claimSeasonTier(current, season, t.tier, 'free', day, canDraw);
+    if (r.ok) {
+      current = r.doc;
+      rewards.push(r.reward);
+    }
+  }
+  return { doc: current, rewards };
+}
+
+/** Prochain niveau non encore atteint (pour la jauge), ou null si tout est atteint. */
 export function nextTier(doc: ProgressDoc, season: Season): SeasonTier | null {
   const stars = seasonState(doc, season).stars;
   return season.tiers.find((t) => t.stars > stars) ?? null;

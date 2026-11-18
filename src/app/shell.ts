@@ -14,13 +14,15 @@ import {
 } from './challenge-url';
 import { PLAY_RULES_VERSION, type GameEvent, type GameHandle } from './game-contract';
 import type { ShellPrefs, StartGame } from './game-loader';
-import { previewOrSwatch, renderCollection, type PreviewFn } from './collection-view';
+import { cosmeticCard, previewOrSwatch, rarityChip, renderCollection, stateLine, type CollectionFilter, type PreviewFn } from './collection-view';
+import { byRarity, catalogItem, type CatalogItem } from './catalog';
+import { createPreviewAnimator } from './preview-animator';
 import { BONUS_HINTS, BONUS_NAMES, continuesOf, continueTicksOf, feversOf, heightOf, pointsOf, savesOf, type AnyRunResult } from './run-result';
 import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
 import { buyLife, LIFE_PRICE, livesOf, MAX_LIVES, returnLife, useLife } from './lives';
-import { claimSeasonTier, nextTier, SEASON_1, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type Track } from './season';
+import { claimAllFree, claimSeasonTier, SEASON_1, seasonLevel, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type SeasonTier, type TierStatus, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
-import { dayInWords, isAnySkinId, renderAppearancePreview, type AnyAppearance } from '../game';
+import { dayInWords, GAME_NAME, isAnySkinId, isThemeId, RARITIES, RARITY_INFO, rarityRank, renderAppearancePreview, type AnyAppearance } from '../game';
 import {
   applyRunEconomy,
   CALENDAR_REWARDS,
@@ -34,15 +36,8 @@ import {
 import { el, floors } from './dom';
 import {
   activeObjectives,
-  BADGE_IDS,
-  earnedBadges,
   rewardLabel,
   selectAppearance,
-  SKIN_IDS,
-  OBTAINABLE_V3_SKINS,
-  THEME_IDS,
-  unlockedSkins,
-  unlockedThemes,
   type Objective,
   type ObjectiveId,
 } from './progression';
@@ -80,7 +75,10 @@ import {
   type ServiceError,
 } from '../platform/services/leaderboard';
 
-export type Screen = 'home' | 'game' | 'result' | 'collection' | 'rewards' | 'settings' | 'shop' | 'leaderboard' | 'season';
+export type Screen = 'home' | 'game' | 'result' | 'collection' | 'settings' | 'shop' | 'leaderboard' | 'season';
+/** Écrans de menu reliés par la barre d'onglets (V6). */
+type TabScreen = 'home' | 'shop' | 'collection' | 'season' | 'leaderboard';
+const TAB_SCREENS: readonly Screen[] = ['home', 'shop', 'collection', 'season', 'leaderboard'];
 
 /**
  * Délai pendant lequel les boutons du résultat ignorent les activations : un joueur qui tape
@@ -278,6 +276,7 @@ export function createShell(options: ShellOptions): Shell {
     store.writePrefs(prefs);
     applyPrefs(doc, prefs);
     run?.handle?.setAudio?.(!prefs.muted, prefs.volume);
+    animator.refresh();
   };
   /** Ce que le moteur reçoit : `reducedMotion` absent = le moteur suit l'appareil en direct. */
   const gamePrefs = (): ShellPrefs => ({
@@ -294,6 +293,12 @@ export function createShell(options: ShellOptions): Shell {
       if (!prefs.muted) uiSound.play(kind, prefs.volume);
     },
   };
+
+  // --- V6 : aperçus vivants (boucle partagée, arrêtée en animations réduites et mode Fluide) ---
+  // Même règle que l'interface (applyPrefs pose data-motion : choix du joueur ou de l'appareil).
+  const motionReduced = () => doc.documentElement.dataset.motion === 'reduce';
+  const animator = createPreviewAnimator(doc.defaultView as (Window & typeof globalThis) | null, () => prefs.effects === 'full' && !motionReduced());
+  const animate = (canvas: HTMLCanvasElement, draw: (time: number | undefined) => void) => animator.watch(canvas, draw);
 
   // --- Classement (V3-A3) : identité pseudonyme et tickets préchargés -------------------------
   const leaderboard = options.leaderboard ?? unavailableLeaderboard;
@@ -413,7 +418,28 @@ export function createShell(options: ShellOptions): Shell {
     clearTimeout(guardTimer);
     delete view.dataset.inputReady;
     view.classList.toggle('entering', changed);
-    view.replaceChildren(...children.filter((c): c is HTMLElement => c !== null));
+    // Les aperçus de l'écran précédent sont oubliés : rien ne continue de tourner.
+    animator.clear();
+    const tab = (TAB_SCREENS as readonly string[]).includes(next) ? (next as TabScreen) : null;
+    if (tab) lastTab = tab;
+    const content = children.filter((c): c is HTMLElement => c !== null);
+    if (tab) {
+      // V6 : chaque écran de menu a la même barre du haut et la même barre d'onglets.
+      const main = el(doc, 'div', { class: 'screen-body' });
+      main.append(...content);
+      view.replaceChildren(topBar(), main, tabBar(tab));
+    } else {
+      view.replaceChildren(...content);
+    }
+    view.dataset.tabs = tab ? 'true' : 'false';
+    // Nouvel écran : on repart du haut (pas la position de défilement de l'écran précédent).
+    if (changed) {
+      try {
+        doc.defaultView?.scrollTo?.(0, 0);
+      } catch {
+        // jsdom ou contexte sans défilement : sans conséquence.
+      }
+    }
     view.dataset.screen = next;
     root.dataset.screen = next; // mise en page pleine page pendant la partie
     if (next === 'home') popOwnHistory();
@@ -467,31 +493,30 @@ export function createShell(options: ShellOptions): Shell {
     return badge;
   };
 
-  /** Pastilles : niveau, pièces, vies (barre du haut et en-têtes des écrans de progression). */
-  const statusChips = () => {
-    const bar = el(doc, 'div', { class: 'topbar chips' });
-    bar.append(
-      levelBadge(),
-      countPill('coin', progress.coins, 'pièce', 'coin', 'coins'),
-      countPill('heart', livesOf(progress), 'vie', 'heart', 'lives'),
-    );
-    return bar;
-  };
-
-  const screenHeader = (titleText: string, onBack: () => void) => {
-    const back = iconOnlyButton(doc, { icon: 'back', label: 'Retour', onClick: onBack, testId: 'back' });
+  /** En-tête d'écran : titre ; bouton Retour seulement hors des onglets (Réglages). */
+  const screenHeader = (titleText: string, onBack?: () => void) => {
     const h = el(doc, 'h1', { tabindex: '-1', class: 'screen-title' }, titleText);
     const header = el(doc, 'div', { class: 'screen-header' });
-    header.append(back, h);
+    if (onBack) header.append(iconOnlyButton(doc, { icon: 'back', label: 'Retour', onClick: onBack, testId: 'back' }), h);
+    else header.append(h);
     return { header, title: h };
   };
-  /** Retour vers l'accueil, focus rendu au bouton qui avait ouvert l'écran. */
-  const backHome = (testId: string) => () => {
-    renderHome();
+  /** Dernier onglet ouvert : Réglages y ramène. */
+  let lastTab: TabScreen = 'home';
+  const openTab = (tab: TabScreen) => {
+    if (tab === 'shop') renderShop();
+    else if (tab === 'collection') renderCollectionScreen();
+    else if (tab === 'season') renderSeason();
+    else if (tab === 'leaderboard') renderLeaderboard();
+    else renderHome();
+  };
+  /** Retour vers le dernier onglet, focus rendu au bouton qui avait ouvert l'écran. */
+  const backToTab = (testId: string) => () => {
+    openTab(lastTab);
     view.querySelector<HTMLElement>(`[data-testid="${testId}"]`)?.focus();
   };
 
-  /** Bande des 7 jours du cadeau : jours déjà pris, jour du jour, jours à venir. */
+  /** Bande des 7 jours du cadeau : jours déjà récupérés, jour du jour, jours à venir. */
   const calendarStrip = (canClaim: boolean) => {
     const index = progress.calendar.index;
     // Après le 7e jour, l'index repart à 0 : si le cadeau du jour est déjà pris, tout est coché.
@@ -500,26 +525,24 @@ export function createShell(options: ShellOptions): Shell {
     CALENDAR_REWARDS.forEach((amount, i) => {
       const done = i < doneCount;
       const today = canClaim && i === index;
-      const li = el(doc, 'li', { class: `cal-day${done ? ' done' : ''}${today ? ' today' : ''}`, 'aria-label': `Jour ${i + 1} : ${amount} pièces${done ? ', pris' : today ? ', aujourd’hui' : ''}` });
+      const li = el(doc, 'li', { class: `cal-day${done ? ' done' : ''}${today ? ' today' : ''}`, 'aria-label': `Jour ${i + 1} : ${amount} pièces${done ? ', récupéré' : today ? ', aujourd’hui' : ''}` });
       li.append(el(doc, 'span', {}, `J${i + 1}`), icon(doc, done ? 'check' : 'coin'), el(doc, 'span', {}, `+${amount}`));
       strip.append(li);
     });
     return strip;
   };
 
-  /** Écran Récompenses : cadeau du jour, passe, niveau, missions, collection (progression locale). */
-  const renderRewards = (focusTestId?: string) => {
-    const { header, title } = screenHeader('Récompenses', backHome('nav-rewards'));
+  /** Écran Passe, section Missions : cadeau du jour, niveau, missions (progression locale). */
+  const missionsParts = (): HTMLElement[] => {
     const day = utcDateKey(today());
-
     const gift = el(doc, 'section', { class: 'card', 'aria-labelledby': 'gift-title' });
     const status = calendarStatus(progress, day);
     gift.append(cardTitle(doc, 'gift', 'Cadeau du jour', 'gift-title'), calendarStrip(status.canClaim));
     gift.append(el(doc, 'p', { 'data-testid': 'calendar', tabindex: '-1', class: 'hint' },
-      status.canClaim ? `+${status.reward} pièces (jour ${status.dayInCycle} sur 7)` : 'Déjà pris aujourd’hui. Reviens demain !'));
+      status.canClaim ? `+${status.reward} pièces (jour ${status.dayInCycle} sur 7)` : 'Déjà récupéré aujourd’hui. Reviens demain !'));
     if (status.canClaim) {
       gift.append(uiButton(doc, {
-        label: `Prendre +${status.reward}`,
+        label: `Récupérer +${status.reward}`,
         icon: 'gift',
         variant: 'primary',
         block: true,
@@ -535,9 +558,9 @@ export function createShell(options: ShellOptions): Shell {
             fx.haptic('reward');
             showToast(doc, root, `+${result.reward} pièces !`);
           } else {
-            announce('Cadeau du jour déjà pris.');
+            announce('Cadeau du jour déjà récupéré.');
           }
-          if (screen === 'rewards') renderRewards('calendar');
+          if (screen === 'season') renderSeason('calendar');
         }),
       }));
     }
@@ -569,52 +592,34 @@ export function createShell(options: ShellOptions): Shell {
     const note = el(doc, 'p', { class: 'hint small center' }, writable
       ? 'Ta progression est gardée sur cet appareil.'
       : 'Une version plus récente du jeu est ouverte ailleurs : cette partie de jeu n’est pas sauvegardée ici.');
-    show('rewards', [header, statusChips(), gift, seasonPanel(), level, goalsPanel, collectionButton(), note], title);
-    if (focusTestId) view.querySelector<HTMLElement>(`[data-testid="${focusTestId}"]`)?.focus();
+    return [gift, level, goalsPanel, note];
   };
 
-  // --- Passe de saison (V3-A5) ---------------------------------------------------------------
+  // --- Passe de saison (V3-A5 ; V6 : 30 niveaux, deux pistes) ----------------------------------
   const season = options.season ?? SEASON_1;
-  const canDraw = (id: string) => isAnySkinId(id);
+  const canDraw = (r: SeasonReward) => (r.kind === 'skin' ? isAnySkinId(r.id) : r.kind === 'theme' ? isThemeId(r.id) : true);
   const formatSeasonDay = (key: string) =>
     new Date(`${key}T12:00:00Z`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' });
-  const seasonClaimable = () => {
+  const claimableTiers = () => {
     const day = utcDateKey(today());
-    return season.tiers.some((t) => tierStatus(progress, season, t, 'free', day, canDraw) === 'claimable');
+    return season.tiers.filter((t) => tierStatus(progress, season, t, 'free', day, canDraw) === 'claimable');
   };
-  const rewardText = (r: SeasonReward) => (r.kind === 'coins' ? `+${r.amount} pièces` : `Apparence ${r.name}`);
+  const seasonClaimable = () => claimableTiers().length > 0;
+  const rewardText = (r: SeasonReward) => (r.kind === 'coins' ? `+${r.amount} pièces` : `${r.kind === 'skin' ? 'Matière' : 'Univers'} ${r.name}`);
+  const rewardItem = (r: SeasonReward) => (r.kind === 'coins' ? undefined : catalogItem(r.kind, r.id));
+  let seasonTab: 'pass' | 'missions' = 'pass';
 
-  const seasonPanel = () => {
-    const day = utcDateKey(today());
-    const phase = seasonPhase(season, day);
-    const panel = el(doc, 'section', { class: 'card', 'aria-labelledby': 'season-title' });
-    panel.append(cardTitle(doc, 'medal', `Passe · ${season.name}`, 'season-title'));
-    const stars = seasonState(progress, season).stars;
-    const next = nextTier(progress, season);
-    if (phase === 'upcoming') {
-      panel.append(el(doc, 'p', { 'data-testid': 'season-summary' }, `Commence le ${formatSeasonDay(season.start)}.`));
-    } else if (phase === 'ended') {
-      panel.append(el(doc, 'p', { 'data-testid': 'season-summary' }, 'Saison finie. Tes apparences restent à toi.'));
-    } else if (next) {
-      const prev = season.tiers.filter((t) => t.stars <= stars).at(-1)?.stars ?? 0;
-      panel.append(
-        progressBar(doc, (stars - prev) / (next.stars - prev), `Vers le palier ${next.tier}`, 'gold'),
-        el(doc, 'p', { class: 'hint', 'data-testid': 'season-summary' },
-          `Palier ${next.tier} dans ${next.stars - stars} étoile${next.stars - stars > 1 ? 's' : ''} · jusqu’au ${formatSeasonDay(season.end)}`),
-      );
-    } else {
-      panel.append(el(doc, 'p', { 'data-testid': 'season-summary' }, 'Tous les paliers sont atteints. Bravo !'));
+  /** Visuel d'une récompense : aperçu vivant d'un cosmétique, ou pièce et montant. */
+  const rewardVisual = (r: SeasonReward, size: { width: number; height: number }) => {
+    if (r.kind === 'coins') {
+      const v = el(doc, 'div', { class: 'swatch coin-art', 'aria-hidden': 'true' });
+      v.append(icon(doc, 'coin'), el(doc, 'span', {}, `+${r.amount}`));
+      return v;
     }
-    const ready = seasonClaimable();
-    panel.append(uiButton(doc, {
-      label: ready ? 'Voir le passe · cadeau à prendre' : 'Voir le passe',
-      icon: 'medal',
-      variant: ready ? 'accent' : 'ghost',
-      block: true,
-      testId: 'open-season',
-      onClick: () => renderSeason(),
-    }));
-    return panel;
+    const appearance = (r.kind === 'skin'
+      ? { theme: progress.selected.theme, skin: r.id }
+      : { theme: r.id, skin: progress.selected.skin }) as AnyAppearance;
+    return previewOrSwatch(doc, r.id, appearance, renderAppearancePreview, { animate, climb: r.kind === 'theme', material: r.kind === 'skin', size });
   };
 
   const claimTier = (tier: number, track: Track) => withProgressLock(() => {
@@ -622,70 +627,170 @@ export function createShell(options: ShellOptions): Shell {
       const c = claimSeasonTier(current, season, tier, track, utcDateKey(today()), canDraw);
       return { doc: c.doc, result: c };
     });
-    const text = r.ok ? `Pris : ${rewardText(r.reward)}.` : r.reason === 'claimed' ? 'Déjà pris.' : 'Pas encore disponible.';
+    const text = r.ok ? `Récupéré : ${rewardText(r.reward)}.` : r.reason === 'claimed' ? 'Déjà récupéré.' : 'Pas encore disponible.';
     announce(text);
     if (r.ok) {
       fx.sound('reward');
       fx.haptic('reward');
     }
     if (screen === 'season') renderSeason(`tier-${tier}`, text);
+    const item = r.ok ? rewardItem(r.reward) : undefined;
+    if (item) revealItem(item);
   });
 
-  /** Écran du passe : piste de paliers, gratuite réclamable, premium en aperçu (indisponible). */
+  const claimAll = () => withProgressLock(() => {
+    const got = updateDoc((current) => {
+      const c = claimAllFree(current, season, utcDateKey(today()), canDraw);
+      return { doc: c.doc, result: c.rewards };
+    });
+    const coins = got.reduce((sum, r) => sum + (r.kind === 'coins' ? r.amount : 0), 0);
+    const items = got.map(rewardItem).filter((i): i is CatalogItem => !!i);
+    const text = got.length === 0
+      ? 'Rien à récupérer pour l’instant.'
+      : `Récupéré : ${[coins > 0 ? `+${coins} pièces` : '', ...items.map((i) => i.name)].filter(Boolean).join(', ')}.`;
+    announce(text);
+    if (got.length > 0) {
+      fx.sound('reward');
+      fx.haptic('reward');
+    }
+    if (screen === 'season') renderSeason('season-level', text);
+    const best = [...items].sort((a, b) => rarityRank(b.rarity) - rarityRank(a.rarity))[0];
+    if (best) revealItem(best);
+  });
+
+  /** Une cellule de piste : visuel, récompense, rareté, état écrit et pictogramme. */
+  const tierCell = (t: SeasonTier, track: Track, stars: number, day: string) => {
+    const reward = track === 'free' ? t.free : t.premium;
+    const st = tierStatus(progress, season, t, track, day, canDraw);
+    const cell = el(doc, 'div', { class: `tier-cell ${track} ${st}`, 'data-testid': `tier-${t.tier}-${track}` });
+    cell.append(rewardVisual(reward, { width: 96, height: 48 }), el(doc, 'p', { class: 'tier-reward' }, rewardText(reward)));
+    const item = rewardItem(reward);
+    if (item) cell.append(rarityChip(doc, item.rarity));
+    const remaining = t.stars - stars;
+    if (st === 'claimable') {
+      cell.append(uiButton(doc, { label: 'Récupérer', variant: 'primary', size: 'sm', testId: `claim-tier-${t.tier}`, ariaLabel: `Récupérer le niveau ${t.tier} : ${rewardText(reward)}`, onClick: () => claimTier(t.tier, track) }));
+    } else {
+      const line: Record<Exclude<TierStatus, 'claimable'>, [IconName, string]> = {
+        claimed: ['check', 'Récupéré'],
+        locked: ['lock', `Verrouillé · ${remaining} ★`],
+        soon: ['clock', 'Bientôt'],
+        'premium-unavailable': ['lock', 'Premium'],
+        ended: ['clock', 'Saison finie'],
+      };
+      const [ic, label] = line[st];
+      cell.append(stateLine(doc, ic, label, `tier-state ${st}`));
+    }
+    return cell;
+  };
+
+  /** Écran du passe : niveau, prochaines récompenses, offre premium, piste ; ou les missions. */
   const renderSeason = (focusTestId?: string, notice?: string) => {
-    const { header, title } = screenHeader(`Passe · ${season.name}`, () => renderRewards('open-season'));
-    const day = utcDateKey(today());
-    const stars = seasonState(progress, season).stars;
+    const { header, title } = screenHeader(`Passe · ${season.name}`);
     const parts: HTMLElement[] = [header];
+    parts.push(segmented(doc, {
+      label: 'Section du passe',
+      testId: 'season-tabs',
+      value: seasonTab,
+      options: [
+        { value: 'pass', label: 'Saison' },
+        { value: 'missions', label: 'Missions et cadeau' },
+      ],
+      onChange: (v) => {
+        seasonTab = v;
+        renderSeason('season-tabs');
+      },
+    }));
     if (notice) parts.push(el(doc, 'p', { class: 'notice ok', role: 'status', 'data-testid': 'season-notice' }, notice));
-    const intro = el(doc, 'section', { class: 'card' });
-    const starsLine = el(doc, 'p', { class: 'card-title', 'data-testid': 'season-stars' });
-    starsLine.append(icon(doc, 'star'), el(doc, 'span', {}, `${stars} étoile${stars > 1 ? 's' : ''} de saison`));
-    intro.append(
-      starsLine,
-      el(doc, 'p', { class: 'hint small' }, `Du ${formatSeasonDay(season.start)} au ${formatSeasonDay(season.end)}. Les étoiles se gagnent en jouant.`),
-      el(doc, 'p', { class: 'hint small', 'data-testid': 'premium-note' }, 'Piste Premium : indisponible pour l’instant. Rien n’est en vente.'),
+    if (seasonTab === 'missions') {
+      parts.push(...missionsParts());
+      show('season', parts, title);
+      if (focusTestId) view.querySelector<HTMLElement>(`[data-testid="${focusTestId}"]`)?.focus();
+      return;
+    }
+    const day = utcDateKey(today());
+    const phase = seasonPhase(season, day);
+    const stars = seasonState(progress, season).stars;
+    const lv = seasonLevel(progress, season);
+
+    const hero = el(doc, 'section', { class: 'card pass-hero', 'aria-labelledby': 'season-level' });
+    const levelTitle = el(doc, 'h2', { class: 'pass-level', id: 'season-level', 'data-testid': 'season-level', tabindex: '-1' });
+    levelTitle.append(el(doc, 'span', { class: 'pass-level-word' }, 'Niveau'), el(doc, 'span', { class: 'pass-level-num' }, String(lv.level)), el(doc, 'span', { class: 'pass-level-max' }, `/ ${lv.max}`));
+    const starsLine = el(doc, 'p', { class: 'hint', 'data-testid': 'season-stars' });
+    starsLine.append(icon(doc, 'star'), el(doc, 'span', {}, ` ${stars} étoile${stars > 1 ? 's' : ''} de saison`));
+    hero.append(levelTitle, starsLine);
+    let summary: string;
+    if (phase === 'upcoming') summary = `Commence le ${formatSeasonDay(season.start)}.`;
+    else if (phase === 'ended') summary = 'Saison finie. Tes cosmétiques restent à toi.';
+    else if (lv.next) summary = `${lv.span - lv.into} étoile${lv.span - lv.into > 1 ? 's' : ''} avant le niveau ${lv.level + 1} · jusqu’au ${formatSeasonDay(season.end)}`;
+    else summary = 'Niveau maximal atteint. Bravo !';
+    if (lv.next && phase === 'active') hero.append(progressBar(doc, lv.into / lv.span, `Vers le niveau ${lv.level + 1}`, 'gold'));
+    hero.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'season-summary' }, summary));
+    hero.append(el(doc, 'p', { class: 'hint small' }, 'Les étoiles se gagnent en jouant : étages posés et parfaits.'));
+    const ready = claimableTiers().length;
+    if (ready > 0) {
+      hero.append(uiButton(doc, {
+        label: ready > 1 ? `Tout récupérer (${ready})` : 'Récupérer (1)',
+        icon: 'gift',
+        variant: 'primary',
+        block: true,
+        testId: 'claim-all',
+        onClick: () => claimAll(),
+      }));
+    }
+    parts.push(hero);
+
+    // Prochaines récompenses cosmétiques (gratuites et premium).
+    const upcoming = season.tiers
+      .filter((t) => t.stars > stars)
+      .flatMap((t) => (['free', 'premium'] as const).map((track) => ({ t, track, reward: track === 'free' ? t.free : t.premium })))
+      .filter((x) => x.reward.kind !== 'coins')
+      .slice(0, 3);
+    if (upcoming.length > 0) {
+      const next = el(doc, 'section', { class: 'card', 'aria-labelledby': 'next-title', 'data-testid': 'season-next' });
+      const list = el(doc, 'ul', { class: 'next-rewards' });
+      for (const { t, track, reward } of upcoming) {
+        const item = rewardItem(reward);
+        const li = el(doc, 'li', { class: `next-reward ${track}` });
+        li.append(rewardVisual(reward, { width: 120, height: 56 }), el(doc, 'p', { class: 'item-name' }, item?.name ?? rewardText(reward)));
+        if (item) li.append(rarityChip(doc, item.rarity));
+        li.append(el(doc, 'p', { class: 'item-meta' }, `Niveau ${t.tier} · ${track === 'free' ? 'Gratuit' : 'Premium'}`));
+        list.append(li);
+      }
+      next.append(cardTitle(doc, 'sparkles', 'Prochaines récompenses', 'next-title'), list);
+      parts.push(next);
+    }
+
+    // Offre premium : préparée et détaillée, jamais présentée comme achetable.
+    const exclusives = season.tiers.map((t) => t.premium).map(rewardItem).filter((i): i is CatalogItem => !!i);
+    const offer = el(doc, 'section', { class: 'card premium-offer', 'aria-labelledby': 'premium-title', 'data-testid': 'premium-offer' });
+    const offerList = el(doc, 'ul', { class: 'premium-items' });
+    for (const item of byRarity(exclusives).reverse()) {
+      const li = el(doc, 'li', {});
+      li.append(el(doc, 'span', { class: 'item-name' }, item.name), rarityChip(doc, item.rarity));
+      offerList.append(li);
+    }
+    const money = el(doc, 'p', { class: 'money-note', 'data-testid': 'premium-note' });
+    money.append(icon(doc, 'money'), el(doc, 'span', {}, 'Argent réel. Le paiement n’est pas encore ouvert : rien n’est en vente pour l’instant.'));
+    const soon = uiButton(doc, { label: 'Bientôt disponible', variant: 'ghost', block: true, testId: 'premium-soon', onClick: () => undefined });
+    soon.disabled = true;
+    offer.append(
+      cardTitle(doc, 'crown', 'Passe premium', 'premium-title'),
+      el(doc, 'p', { class: 'hint small' }, `${exclusives.length} cosmétiques exclusifs, dont ${exclusives.filter((i) => i.rarity === 'legendaire').length} légendaires, et des pièces à chaque niveau.`),
+      offerList,
+      money,
+      soon,
     );
-    parts.push(intro);
+    parts.push(offer);
+
     const head = el(doc, 'div', { class: 'track-head', 'aria-hidden': 'true' });
-    head.append(el(doc, 'span', {}, 'Palier'), el(doc, 'span', {}, 'Gratuit'), el(doc, 'span', {}, 'Premium'));
+    head.append(el(doc, 'span', {}, 'Niveau'), el(doc, 'span', {}, 'Gratuit'), el(doc, 'span', {}, 'Premium'));
     parts.push(head);
-    const list = el(doc, 'ol', { class: 'tiers', 'aria-label': 'Paliers' });
+    const list = el(doc, 'ol', { class: 'tiers', 'aria-label': 'Niveaux du passe' });
     for (const t of season.tiers) {
       const li = el(doc, 'li', { class: `tier${stars >= t.stars ? ' reached' : ''}`, 'data-testid': `tier-${t.tier}`, tabindex: '-1' });
-      const node = el(doc, 'p', { class: 'tier-node', 'aria-label': `Palier ${t.tier}, ${t.stars} étoiles` });
+      const node = el(doc, 'p', { class: 'tier-node', 'aria-label': `Niveau ${t.tier}, ${t.stars} étoiles` });
       node.append(el(doc, 'span', {}, String(t.tier)), el(doc, 'small', {}, `${t.stars}★`));
-      li.append(node);
-      for (const track of ['free', 'premium'] as const) {
-        const reward = track === 'free' ? t.free : t.premium;
-        const st = tierStatus(progress, season, t, track, day, canDraw);
-        const cell = el(doc, 'div', { class: `tier-cell ${track} ${st}`, 'data-testid': `tier-${t.tier}-${track}` });
-        if (reward.kind === 'skin') {
-          // Pas encore dessinée par le moteur : pastille « ? », jamais l'aperçu d'une autre apparence.
-          cell.append(isAnySkinId(reward.id)
-            ? previewOrSwatch(doc, reward.id, { theme: progress.selected.theme, skin: reward.id }, renderAppearancePreview)
-            : el(doc, 'div', { class: 'swatch soon', 'aria-hidden': 'true' }, '?'));
-        }
-        cell.append(el(doc, 'p', { class: 'tier-reward' }, rewardText(reward)));
-        const remaining = t.stars - stars;
-        const label: Record<typeof st, string> = {
-          claimed: 'Pris',
-          claimable: '',
-          locked: `${remaining} étoile${remaining > 1 ? 's' : ''}`,
-          soon: 'Bientôt',
-          'premium-unavailable': 'Indisponible',
-          ended: 'Saison finie',
-        };
-        if (st === 'claimable') {
-          cell.append(uiButton(doc, { label: 'Prendre', variant: 'primary', size: 'sm', testId: `claim-tier-${t.tier}`, onClick: () => claimTier(t.tier, track) }));
-        } else {
-          const state = el(doc, 'p', { class: 'tier-state' });
-          const stIcon: IconName = st === 'claimed' ? 'check' : st === 'locked' || st === 'premium-unavailable' ? 'lock' : 'clock';
-          state.append(icon(doc, stIcon), el(doc, 'span', {}, ` ${label[st]}`));
-          cell.append(state);
-        }
-        li.append(cell);
-      }
+      li.append(node, tierCell(t, 'free', stars, day), tierCell(t, 'premium', stars, day));
       list.append(li);
     }
     parts.push(list);
@@ -701,7 +806,7 @@ export function createShell(options: ShellOptions): Shell {
   };
 
   const renderSettings = () => {
-    const { header, title } = screenHeader('Réglages', backHome('nav-settings'));
+    const { header, title } = screenHeader('Réglages', backToTab('nav-settings'));
 
     const theme = settingsCard('auto', 'Couleurs', 'set-theme',
       segmented(doc, {
@@ -812,90 +917,172 @@ export function createShell(options: ShellOptions): Shell {
     openDialog({ title: 'Comment jouer', body: [list], actions: [ok], testId: 'howto' });
   };
 
-  const shopConfig = options.shop ?? { catalog: COIN_SHOP, isAvailable: (id: string) => isAnySkinId(id) };
+  const shopConfig = options.shop ?? { catalog: COIN_SHOP, isAvailable: (id: string) => isAnySkinId(id) || isThemeId(id) };
   const shopPreview = shopConfig.preview ?? renderAppearancePreview;
 
   type ShopNotice = { text: string; testId: string };
+  /** Achat confirmé en cours (bouton « Achat… » désactivé, aucun second débit possible). */
+  let pendingPurchase: string | null = null;
 
-  /** Ligne de prix (pièce + montant). */
-  const priceTag = (amount: number) => {
-    const p = el(doc, 'p', { class: 'item-meta price' });
-    p.append(icon(doc, 'coin'), el(doc, 'span', {}, `${amount} pièces`));
-    return p;
+  /** Apparence montrée par l'aperçu d'un objet (l'autre moitié reste celle du joueur). */
+  const appearanceOf = (kind: 'skin' | 'theme', id: string): AnyAppearance => (kind === 'skin'
+    ? { theme: progress.selected.theme, skin: id }
+    : { theme: id, skin: progress.selected.skin }) as AnyAppearance;
+
+  /** Bouton d'achat : le prix est dans le bouton ; états solde insuffisant et achat en cours. */
+  const buyButton = (name: string, price: number, testId: string, onBuy: () => void, pending: boolean) => {
+    if (pending) {
+      const b = uiButton(doc, { label: 'Achat…', variant: 'primary', size: 'sm', block: true, testId, onClick: () => undefined });
+      b.disabled = true;
+      b.setAttribute('aria-busy', 'true');
+      return b;
+    }
+    if (progress.coins < price) {
+      const missing = price - progress.coins;
+      const b = uiButton(doc, { label: `Il manque ${missing}`, variant: 'ghost', size: 'sm', block: true, testId, ariaLabel: `Solde insuffisant : il manque ${missing} pièces du jeu pour ${name}`, onClick: () => undefined });
+      b.append(icon(doc, 'coin'));
+      b.disabled = true;
+      b.classList.add('short');
+      return b;
+    }
+    const b = uiButton(doc, { label: `Acheter · ${price}`, variant: 'primary', size: 'sm', block: true, testId, ariaLabel: `Acheter ${name} pour ${price} pièces du jeu`, onClick: onBuy });
+    b.append(icon(doc, 'coin'));
+    return b;
   };
 
-  /** Fenêtre de confirmation d'achat : rien n'est débité avant « Oui, acheter ». */
-  const confirmPurchase = (titleText: string, question: string, onYes: () => void, yesTestId: string, noTestId: string, art?: HTMLElement) => {
-    const yes = uiButton(doc, { label: 'Oui, acheter', icon: 'coin', variant: 'primary', block: true, testId: yesTestId, onClick: () => { closeSheet(); onYes(); } });
-    const no = uiButton(doc, { label: 'Non', variant: 'ghost', block: true, testId: noTestId, onClick: () => closeSheet() });
+  /** Fenêtre de confirmation d'achat : rien n'est débité avant la confirmation. */
+  const confirmPurchase = (opts: { title: string; name: string; price: number; art?: HTMLElement; extra?: HTMLElement[]; onYes: () => void; yesTestId: string; noTestId: string }) => {
+    const yes = uiButton(doc, { label: `Acheter · ${opts.price}`, variant: 'primary', block: true, testId: opts.yesTestId, ariaLabel: `Confirmer l’achat de ${opts.name} pour ${opts.price} pièces du jeu`, onClick: () => { closeSheet(); opts.onYes(); } });
+    yes.append(icon(doc, 'coin'));
+    const no = uiButton(doc, { label: 'Annuler', variant: 'ghost', block: true, testId: opts.noTestId, onClick: () => closeSheet() });
     const body: HTMLElement[] = [];
-    if (art) {
+    if (opts.art) {
       const box = el(doc, 'div', { class: 'art item-visual' });
-      box.append(art);
+      box.append(opts.art);
       body.push(box);
     }
-    body.push(el(doc, 'p', { 'data-testid': 'confirm-text' }, question));
-    openDialog({ title: titleText, body, actions: [yes, no], testId: 'confirm', initialFocus: yes });
+    body.push(...(opts.extra ?? []));
+    const left = progress.coins - opts.price;
+    body.push(el(doc, 'p', { 'data-testid': 'confirm-text' }, `Prix : ${opts.price} pièces du jeu. Il t’en restera ${left}.`));
+    openDialog({ title: opts.title, body, actions: [yes, no], testId: 'confirm', initialFocus: yes });
   };
 
-  /** Boutique en pièces : aperçu, prix, confirmation en fenêtre, achat atomique sous verrou. */
+  /** Fenêtre « C'est à toi ! » : l'objet obtenu, animé, avec Équiper tout de suite ou plus tard. */
+  const revealItem = (item: CatalogItem) => {
+    const art = el(doc, 'div', { class: 'art item-visual reveal-art' });
+    art.append(previewOrSwatch(doc, item.id, appearanceOf(item.kind, item.id), renderAppearancePreview, { animate, climb: item.kind === 'theme', material: item.kind === 'skin', size: { width: 280, height: 140 } }));
+    const equipped = item.kind === 'skin' ? progress.selected.skin === item.id : progress.selected.theme === item.id;
+    const equip = uiButton(doc, {
+      label: 'Équiper maintenant',
+      icon: 'check',
+      variant: 'primary',
+      block: true,
+      testId: 'reveal-equip',
+      onClick: () => {
+        closeSheet();
+        equipItem(item);
+      },
+    });
+    const later = uiButton(doc, { label: 'Plus tard', variant: 'ghost', block: true, testId: 'reveal-later', onClick: () => closeSheet() });
+    openDialog({
+      title: item.kind === 'skin' ? 'Nouvelle matière !' : 'Nouvel univers !',
+      body: [
+        art,
+        el(doc, 'p', { class: 'reveal-name', 'data-testid': 'reveal-name' }, item.name),
+        rarityChip(doc, item.rarity),
+        el(doc, 'p', { class: 'hint' }, item.blurb),
+        el(doc, 'p', { class: 'hint small' }, RARITY_INFO[item.rarity].promise),
+      ],
+      actions: equipped ? [later] : [equip, later],
+      testId: 'reveal',
+      initialFocus: equipped ? later : equip,
+    });
+    if (prefs.effects === 'full') confetti(doc, root);
+  };
+
+  /** Équipe un cosmétique possédé ; confirmation visible et lue, focus gardé sur la carte. */
+  const equipItem = (item: CatalogItem) => withProgressLock(() => {
+    const changed = updateDoc((current) => {
+      const next = item.kind === 'skin' ? selectAppearance(current, { skin: item.id as AnyAppearance['skin'] }) : selectAppearance(current, { theme: item.id as AnyAppearance['theme'] });
+      const same = next.selected.theme === current.selected.theme && next.selected.skin === current.selected.skin;
+      return { doc: same ? current : next, result: !same };
+    });
+    if (!changed) return;
+    fx.haptic('tap');
+    const text = `${item.name} est équipé${item.kind === 'theme' ? '' : 'e'} pour ta prochaine partie.`;
+    announce(text);
+    showToast(doc, root, `${item.name} équipé${item.kind === 'theme' ? '' : 'e'} !`);
+    const focus = `${screen === 'shop' ? 'shop' : 'card'}-${screen === 'shop' ? item.id : `${item.kind}-${item.id}`}`;
+    if (screen === 'shop') renderShop({ focus });
+    else if (screen === 'collection') renderCollectionScreen(focus);
+    else if (screen === 'season') renderSeason();
+    else if (screen === 'home') renderHome();
+  });
+
+  /** Boutique en pièces du jeu : matières, univers et vies ; prix dans les boutons. */
   const renderShop = (state: { notice?: ShopNotice; focus?: string } = {}) => {
-    const { header, title } = screenHeader('Boutique', backHome('nav-shop'));
+    const { header, title } = screenHeader('Boutique');
     const items = sellableItems(shopConfig.catalog, shopConfig.isAvailable);
-    const parts: HTMLElement[] = [header, statusChips()];
+    const parts: HTMLElement[] = [header];
+
+    const wallet = el(doc, 'section', { class: 'card wallet', 'data-testid': 'wallet' });
+    const amount = el(doc, 'p', { class: 'wallet-amount' });
+    amount.append(icon(doc, 'coin'), el(doc, 'span', {}, `${progress.coins}`), el(doc, 'span', { class: 'wallet-unit' }, ` pièce${progress.coins > 1 ? 's' : ''} du jeu`));
+    wallet.append(amount, el(doc, 'p', { class: 'hint small' }, 'Les pièces se gagnent en jouant. Elles ne s’achètent pas avec de l’argent réel et n’ont aucune valeur en euros.'));
+    parts.push(wallet);
 
     if (state.notice) {
       parts.push(el(doc, 'p', { class: `notice ${state.notice.testId.endsWith('success') || state.notice.testId === 'shop-worn' ? 'ok' : 'warn'}`, role: 'status', 'data-testid': state.notice.testId, tabindex: '-1' }, state.notice.text));
     }
 
-    const skinsCard = el(doc, 'section', { class: 'card', 'aria-labelledby': 'shop-skins-title' });
-    skinsCard.append(cardTitle(doc, 'palette', 'Apparences', 'shop-skins-title'));
-    if (items.length === 0) {
-      skinsCard.append(el(doc, 'p', { 'data-testid': 'shop-empty' }, 'Rien à vendre pour l’instant. Reviens bientôt !'));
-    } else {
+    const section = (kind: 'skin' | 'theme', iconName: IconName, label: string) => {
+      const box = el(doc, 'section', { class: 'card', 'aria-labelledby': `shop-${kind}-title`, 'data-testid': `shop-section-${kind}` });
+      box.append(cardTitle(doc, iconName, label, `shop-${kind}-title`));
       const list = el(doc, 'ul', { class: 'items' });
-      for (const item of items) {
-        const st = itemState(progress, item);
-        const chosen = st === 'owned' && progress.selected.skin === item.id;
-        const li = el(doc, 'li', { 'data-testid': `shop-${item.id}`, tabindex: '-1' });
-        const card = el(doc, 'div', { class: `item ${st}${chosen ? ' selected' : ''}` });
-        const visual = el(doc, 'div', { class: 'item-visual' });
-        const preview = () => previewOrSwatch(doc, item.id, { theme: progress.selected.theme, skin: isAnySkinId(item.id) ? item.id : progress.selected.skin }, shopPreview);
-        visual.append(preview());
-        card.append(visual, el(doc, 'p', { class: 'item-name' }, item.name));
-        if (chosen) {
-          const badge = el(doc, 'span', { class: 'badge', 'aria-hidden': 'true' });
-          badge.append(icon(doc, 'check'));
-          card.append(badge, el(doc, 'p', { class: 'item-meta' }, 'Choisi'));
-        } else if (st === 'owned') {
-          card.append(uiButton(doc, { label: 'Mettre', variant: 'secondary', size: 'sm', block: true, onClick: () => wear(item) }));
+      const ofKind = items.filter((i) => i.kind === kind);
+      const ordered = byRarity(ofKind.map((i) => catalogItem(i.kind, i.id)).filter((c): c is CatalogItem => !!c));
+      for (const item of ordered) {
+        const shopItem = ofKind.find((i) => i.id === item.id)!;
+        const st = itemState(progress, shopItem);
+        const equipped = st === 'owned' && (kind === 'skin' ? progress.selected.skin === item.id : progress.selected.theme === item.id);
+        const visual = previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin' });
+        const tail: HTMLElement[] = [];
+        if (equipped) tail.push(stateLine(doc, 'check', 'Équipé', 'equipped'));
+        else if (st === 'owned') {
+          tail.push(stateLine(doc, 'check', 'Possédé', 'owned'), uiButton(doc, { label: 'Équiper', variant: 'secondary', size: 'sm', block: true, testId: `equip-${item.id}`, ariaLabel: `Équiper ${item.name}`, onClick: () => equipItem(item) }));
         } else {
-          card.append(priceTag(item.price));
-          if (st === 'affordable') {
-            card.append(uiButton(doc, {
-              label: 'Acheter',
-              variant: 'primary',
-              size: 'sm',
-              block: true,
-              ariaLabel: `Acheter ${item.name} pour ${item.price} pièces`,
-              onClick: () => confirmPurchase(`Acheter ${item.name} ?`, `Acheter ${item.name} pour ${item.price} pièces ?`, () => buy(item), 'confirm-buy', 'cancel-buy', preview()),
-            }));
-          } else {
-            card.append(el(doc, 'p', { class: 'item-meta lock' }, `Il te manque ${item.price - progress.coins} pièces.`));
-          }
+          tail.push(buyButton(item.name, shopItem.price, `buy-${item.id}`, () => confirmPurchase({
+            title: `Acheter ${item.name} ?`,
+            name: item.name,
+            price: shopItem.price,
+            art: previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin', size: { width: 280, height: 140 } }),
+            extra: [rarityChip(doc, item.rarity), el(doc, 'p', { class: 'hint' }, item.blurb)],
+            onYes: () => startPurchase(shopItem, item),
+            yesTestId: 'confirm-buy',
+            noTestId: 'cancel-buy',
+          }), pendingPurchase === item.id));
         }
-        li.append(card);
-        list.append(li);
+        list.append(cosmeticCard(doc, item, visual, equipped ? 'equipped' : st === 'owned' ? 'owned' : 'locked', tail, `shop-${item.id}`));
       }
-      skinsCard.append(list);
+      if (ordered.length === 0) list.append(el(doc, 'li', { class: 'empty hint', 'data-testid': 'shop-empty' }, 'Rien à vendre pour l’instant. Reviens bientôt !'));
+      box.append(list);
+      return box;
+    };
+    if (items.length === 0) {
+      const empty = el(doc, 'section', { class: 'card' });
+      empty.append(el(doc, 'p', { 'data-testid': 'shop-empty' }, 'Rien à vendre pour l’instant. Reviens bientôt !'));
+      parts.push(empty);
+    } else {
+      parts.push(section('skin', 'palette', 'Matières'));
+      if (items.some((i) => i.kind === 'theme')) parts.push(section('theme', 'orbit', 'Univers'));
     }
-    parts.push(skinsCard, livesShopSection());
-    parts.push(el(doc, 'p', { class: 'hint small center' }, 'Les pièces se gagnent en jouant. Elles ne s’achètent pas.'));
+    parts.push(livesShopSection());
+    parts.push(el(doc, 'p', { class: 'hint small center' }, 'Aucun tirage au hasard : tu vois exactement ce que tu achètes. Les cosmétiques ne changent jamais le score.'));
     show('shop', parts, title);
     if (state.focus) view.querySelector<HTMLElement>(`[data-testid="${state.focus}"]`)?.focus();
   };
 
-  /** Vies de reprise en pièces : stock, prix, confirmation, maximum. */
+  /** Vies de reprise en pièces : stock, prix dans le bouton, confirmation, maximum. */
   const livesShopSection = () => {
     const box = el(doc, 'section', { class: 'card', 'aria-labelledby': 'lives-title', 'data-testid': 'shop-lives' });
     const n = livesOf(progress);
@@ -907,20 +1094,10 @@ export function createShell(options: ShellOptions): Shell {
     if (n >= MAX_LIVES) {
       box.append(el(doc, 'p', { class: 'tag ok' }, 'Maximum atteint.'));
     } else {
-      box.append(priceTag(LIFE_PRICE));
-      if (progress.coins >= LIFE_PRICE) {
-        box.append(uiButton(doc, {
-          label: 'Acheter 1 vie',
-          icon: 'heart',
-          variant: 'primary',
-          block: true,
-          testId: 'buy-life',
-          ariaLabel: `Acheter 1 vie pour ${LIFE_PRICE} pièces`,
-          onClick: () => confirmPurchase('Acheter une vie ?', `Acheter 1 vie pour ${LIFE_PRICE} pièces ?`, () => buyLifeNow(), 'confirm-life', 'cancel-life'),
-        }));
-      } else {
-        box.append(el(doc, 'p', { class: 'item-meta lock' }, `Il te manque ${LIFE_PRICE - progress.coins} pièces.`));
-      }
+      const b = buyButton('1 vie', LIFE_PRICE, 'buy-life', () => confirmPurchase({
+        title: 'Acheter une vie ?', name: '1 vie', price: LIFE_PRICE, onYes: () => buyLifeNow(), yesTestId: 'confirm-life', noTestId: 'cancel-life',
+      }), pendingPurchase === 'life');
+      box.append(b);
     }
     return box;
   };
@@ -931,82 +1108,89 @@ export function createShell(options: ShellOptions): Shell {
     if (prefs.effects === 'full') confetti(doc, root);
   };
 
-  const buyLifeNow = () => withProgressLock(() => {
-    const r = updateDoc((current) => {
-      const b = buyLife(current);
-      return { doc: b.doc, result: b };
+  const buyLifeNow = () => {
+    pendingPurchase = 'life';
+    if (screen === 'shop') renderShop();
+    withProgressLock(() => {
+      const r = updateDoc((current) => {
+        const b = buyLife(current);
+        return { doc: b.doc, result: b };
+      });
+      pendingPurchase = null;
+      const notice: ShopNotice = r.ok
+        ? { text: `C’est à toi ! Tu as maintenant ${livesText()}.`, testId: 'life-success' }
+        : r.reason === 'full'
+          ? { text: `Tu as déjà le maximum de ${MAX_LIVES} vies.`, testId: 'life-full' }
+          : { text: `Il te manque ${r.missing ?? 0} pièces pour une vie.`, testId: 'shop-insufficient' };
+      announce(notice.text);
+      if (r.ok) celebrate();
+      else fx.sound('error');
+      if (screen === 'shop') renderShop({ notice, focus: notice.testId });
     });
-    const notice: ShopNotice = r.ok
-      ? { text: `C’est à toi ! Tu as maintenant ${livesText()}.`, testId: 'life-success' }
-      : r.reason === 'full'
-        ? { text: `Tu as déjà le maximum de ${MAX_LIVES} vies.`, testId: 'life-full' }
-        : { text: `Il te manque ${r.missing ?? 0} pièces pour une vie.`, testId: 'shop-insufficient' };
-    announce(notice.text);
-    if (r.ok) celebrate();
-    else fx.sound('error');
-    if (screen === 'shop') renderShop({ notice, focus: notice.testId });
-  });
-
-  const buy = (item: ShopItem) => withProgressLock(() => {
-    const result = updateDoc((current) => {
-      const r = purchaseWithCoins(current, item.id, shopConfig.catalog);
-      return { doc: r.doc, result: r };
-    });
-    const notice: ShopNotice = result.ok
-      ? { text: `C’est à toi ! ${item.name} est dans ta collection.`, testId: 'shop-success' }
-      : result.reason === 'owned'
-        ? { text: `Tu as déjà ${item.name}.`, testId: 'shop-owned' }
-        : result.reason === 'insufficient'
-          ? { text: `Il te manque ${result.missing ?? 0} pièces pour ${item.name}.`, testId: 'shop-insufficient' }
-          : { text: 'Cet objet n’est plus en vente.', testId: 'shop-unknown' };
-    announce(notice.text);
-    if (result.ok) celebrate('reward');
-    else fx.sound('error');
-    if (screen === 'shop') renderShop({ notice, focus: notice.testId });
-  });
-
-  const wear = (item: ShopItem) => withProgressLock(() => {
-    updateDoc((current) => {
-      if (!isAnySkinId(item.id)) return { doc: current, result: null };
-      const updated = selectAppearance(current, { skin: item.id });
-      return { doc: updated, result: null };
-    });
-    fx.haptic('tap');
-    if (screen === 'shop') renderShop({ notice: { text: `${item.name} est mis pour ta prochaine partie.`, testId: 'shop-worn' }, focus: 'shop-worn' });
-  });
-
-  const collectionCount = () => {
-    const skins = unlockedSkins(progress).filter((id) => (SKIN_IDS as readonly string[]).includes(id) || (OBTAINABLE_V3_SKINS as readonly string[]).includes(id));
-    const owned = unlockedThemes(progress).length + skins.length + earnedBadges(progress).length;
-    const total = THEME_IDS.length + SKIN_IDS.length + OBTAINABLE_V3_SKINS.length + BADGE_IDS.length;
-    return { owned, total };
   };
 
-  const collectionButton = () => {
-    const { owned, total } = collectionCount();
-    return uiButton(doc, { label: `Ma collection ${owned}/${total}`, icon: 'palette', variant: 'secondary', block: true, testId: 'open-collection', onClick: () => renderCollectionScreen() });
+  /** Achat confirmé : bouton « Achat… » puis transaction unique sous le verrou de progression. */
+  const startPurchase = (shopItem: ShopItem, item: CatalogItem) => {
+    if (pendingPurchase !== null) return;
+    pendingPurchase = shopItem.id;
+    if (screen === 'shop') renderShop();
+    withProgressLock(() => {
+      const result = updateDoc((current) => {
+        const r = purchaseWithCoins(current, shopItem.id, shopConfig.catalog);
+        return { doc: r.doc, result: r };
+      });
+      pendingPurchase = null;
+      const notice: ShopNotice = result.ok
+        ? { text: `C’est à toi ! ${item.name} est dans ta collection.`, testId: 'shop-success' }
+        : result.reason === 'owned'
+          ? { text: `Tu as déjà ${item.name}.`, testId: 'shop-owned' }
+          : result.reason === 'insufficient'
+            ? { text: `Il te manque ${result.missing ?? 0} pièces pour ${item.name}.`, testId: 'shop-insufficient' }
+            : { text: 'Cet objet n’est plus en vente.', testId: 'shop-unknown' };
+      announce(notice.text);
+      if (result.ok) {
+        fx.sound('reward');
+        fx.haptic('reward');
+      } else fx.sound('error');
+      if (screen === 'shop') renderShop({ notice, focus: notice.testId });
+      if (result.ok) revealItem(item);
+    });
   };
 
-  /** D'où la collection a été ouverte (dock de l'accueil ou écran Récompenses) : le retour y ramène. */
-  let collectionFrom: 'home' | 'rewards' = 'rewards';
+  /** Explication des raretés, en mots simples (jamais la couleur seule). */
+  const openRarityHelp = () => {
+    const list = el(doc, 'ul', { class: 'rarity-help' });
+    for (const r of RARITIES) {
+      const li = el(doc, 'li', {});
+      li.append(rarityChip(doc, r), el(doc, 'span', {}, RARITY_INFO[r].promise));
+      list.append(li);
+    }
+    const ok = uiButton(doc, { label: 'Compris', variant: 'primary', block: true, testId: 'rarity-ok', onClick: () => closeSheet() });
+    openDialog({
+      title: 'Les raretés',
+      body: [
+        list,
+        el(doc, 'p', { class: 'hint small' }, 'La rareté décrit la réalisation de l’objet. Elle ne change jamais le score, les collisions ni le classement. Aucun objet ne se gagne au hasard.'),
+      ],
+      actions: [ok],
+      testId: 'rarity-sheet',
+    });
+  };
+
+  let collectionFilter: CollectionFilter = 'all';
   const renderCollectionScreen = (focusCard?: string) => {
     const { nodes, focus } = renderCollection(doc, progress, {
-      onSelect: (next) => withProgressLock(() => {
-        const changed = updateDoc((current) => {
-          const updated = selectAppearance(current, next);
-          const same = updated.selected.theme === current.selected.theme && updated.selected.skin === current.selected.skin;
-          return { doc: same ? current : updated, result: !same };
-        });
-        if (!changed || screen !== 'collection') return;
-        // Le focus reste sur la carte choisie, pas sur le titre.
-        renderCollectionScreen(next.theme ? `card-theme-${next.theme}` : `card-skin-${next.skin}`);
-        announce('Sélection enregistrée.');
-      }),
-      onBack: () => {
-        if (collectionFrom === 'rewards') renderRewards('open-collection');
-        else backHome('nav-collection')();
+      onSelect: (next) => {
+        const item = next.skin ? catalogItem('skin', next.skin) : next.theme ? catalogItem('theme', next.theme) : undefined;
+        if (item) equipItem(item);
       },
-    }, focusCard);
+      onFilter: (f) => {
+        collectionFilter = f;
+        renderCollectionScreen();
+        view.querySelector<HTMLElement>('[data-testid="collection-filter"] [aria-checked="true"], [data-testid="collection-filter"] button')?.focus();
+      },
+      onRarityHelp: () => openRarityHelp(),
+    }, { filter: collectionFilter, ...(focusCard ? { focusCard } : {}), ...(options.shop?.preview ? { preview: options.shop.preview } : {}), animate });
     show('collection', nodes, focus);
   };
 
@@ -1028,8 +1212,8 @@ export function createShell(options: ShellOptions): Shell {
     startRun(null);
   };
 
-  /** Barre du haut de l'accueil : niveau, pièces, vies, aide et réglages. */
-  const homeTopbar = () => {
+  /** Barre du haut des écrans de menu : niveau, pièces, vies, aide et réglages. */
+  const topBar = () => {
     const bar = el(doc, 'div', { class: 'topbar' });
     bar.append(
       levelBadge(),
@@ -1045,36 +1229,62 @@ export function createShell(options: ShellOptions): Shell {
     return bar;
   };
 
-  /** Dock du bas : quatre entrées, la pastille signale un cadeau à prendre. */
-  const homeDock = () => {
+  /**
+   * Barre d'onglets (V6) : un écran par fonction, toujours au même endroit. L'onglet actif est
+   * marqué (aria-current, forme et couleur) ; une pastille signale une récompense à récupérer.
+   */
+  const tabBar = (active: TabScreen) => {
     const day = utcDateKey(today());
     const giftReady = calendarStatus(progress, day).canClaim || seasonClaimable();
-    const dock = el(doc, 'nav', { class: 'dock', 'aria-label': 'Menu' });
-    dock.append(
-      dockButton(doc, { icon: 'shop', label: 'Boutique', testId: 'nav-shop', onClick: () => renderShop() }),
-      dockButton(doc, { icon: 'palette', label: 'Collection', testId: 'nav-collection', onClick: () => { collectionFrom = 'home'; renderCollectionScreen(); } }),
-      dockButton(doc, {
-        icon: 'gift',
-        label: 'Récompenses',
-        testId: 'nav-rewards',
-        dot: giftReady,
-        ...(giftReady ? { ariaLabel: 'Récompenses, un cadeau t’attend' } : {}),
-        onClick: () => { collectionFrom = 'rewards'; renderRewards(); },
-      }),
-      dockButton(doc, { icon: 'trophy', label: 'Classement', testId: 'nav-leaderboard', onClick: () => renderLeaderboard() }),
+    const nav = el(doc, 'nav', { class: 'dock tabbar', 'aria-label': 'Menu principal' });
+    const tab = (id: TabScreen, iconName: IconName, label: string, testId: string, open: () => void, dot = false) => {
+      const b = dockButton(doc, { icon: iconName, label, testId, onClick: open, dot, ...(dot ? { ariaLabel: `${label}, une récompense t’attend` } : {}) });
+      b.classList.add('tab');
+      if (id === active) {
+        b.classList.add('active');
+        b.setAttribute('aria-current', 'page');
+      }
+      return b;
+    };
+    nav.append(
+      tab('home', 'play', 'Jouer', 'nav-home', () => renderHome()),
+      tab('shop', 'shop', 'Boutique', 'nav-shop', () => renderShop()),
+      tab('collection', 'palette', 'Collection', 'nav-collection', () => renderCollectionScreen()),
+      tab('season', 'medal', 'Passe', 'nav-season', () => renderSeason(), giftReady),
+      tab('leaderboard', 'trophy', 'Classement', 'nav-leaderboard', () => renderLeaderboard()),
     );
-    return dock;
+    return nav;
   };
 
   const brandHero = (withTagline = true) => {
-    const title = el(doc, 'h1', { tabindex: '-1', class: 'brand-title', 'aria-label': 'Pile ou Crash' });
-    title.append(el(doc, 'span', {}, 'Pile'), ' ', el(doc, 'span', { class: 'small-word' }, 'ou'), ' ', el(doc, 'span', { class: 'accent' }, 'Crash'));
+    const title = el(doc, 'h1', { tabindex: '-1', class: 'brand-title', 'aria-label': GAME_NAME, lang: 'en' });
+    title.append(el(doc, 'span', {}, 'Stack'), ' ', el(doc, 'span', { class: 'small-word' }, 'or'), ' ', el(doc, 'span', { class: 'accent' }, 'Crash'));
     const logo = el(doc, 'div', { class: 'logo bounce', 'aria-hidden': 'true' });
     for (let i = 0; i < 3; i++) logo.append(el(doc, 'span', {}));
     const hero = el(doc, 'header', { class: 'hero' });
     hero.append(logo, title);
     if (withTagline) hero.append(el(doc, 'p', { class: 'tagline' }, 'Touche pour poser le bloc !'));
     return hero;
+  };
+
+  /** « Ton look » : l'apparence équipée, vivante, et l'accès direct à la collection. */
+  const lookCard = () => {
+    const skinItem = catalogItem('skin', progress.selected.skin);
+    const themeItem = catalogItem('theme', progress.selected.theme);
+    if (!skinItem || !themeItem) return null;
+    const card = el(doc, 'section', { class: 'card look-card', 'aria-labelledby': 'look-title', 'data-testid': 'look' });
+    const art = el(doc, 'div', { class: 'item-visual look-art' });
+    art.append(previewOrSwatch(doc, 'look', { theme: progress.selected.theme, skin: progress.selected.skin } as AnyAppearance, renderAppearancePreview, { animate, size: { width: 132, height: 64 } }));
+    const text = el(doc, 'div', { class: 'look-text' });
+    const line = (label: string, item: CatalogItem) => {
+      const p = el(doc, 'p', { class: 'look-line' });
+      p.append(el(doc, 'span', { class: 'look-label' }, `${label} `), el(doc, 'strong', {}, item.name), ' ', rarityChip(doc, item.rarity));
+      return p;
+    };
+    text.append(el(doc, 'h2', { class: 'card-title', id: 'look-title' }, 'Ton look'), line('Matière', skinItem), line('Univers', themeItem));
+    const change = uiButton(doc, { label: 'Changer', icon: 'palette', variant: 'ghost', size: 'sm', testId: 'look-change', onClick: () => renderCollectionScreen() });
+    card.append(art, text, change);
+    return card;
   };
 
   /** Prochaine mission (grands écrans seulement, en CSS) : un but clair pour la partie suivante. */
@@ -1091,13 +1301,12 @@ export function createShell(options: ShellOptions): Shell {
   };
 
   const renderHome = () => {
-    collectionFrom = 'rewards';
     if (invalidReason) {
       const box = el(doc, 'section', { class: 'card' });
       const alert = el(doc, 'p', { role: 'alert', class: 'notice danger', 'data-testid': 'invalid-link' }, INVALID_MESSAGES[invalidReason]);
       const play = uiButton(doc, { label: 'Nouvelle partie', icon: 'play', variant: 'primary', size: 'xl', block: true, onClick: playFree });
       box.append(alert);
-      show('home', [homeTopbar(), brandHero(false), box, play, recordLine(), el(doc, 'span', { class: 'home-spacer' }), homeDock()], play);
+      show('home', [brandHero(false), box, play, recordLine()], play);
       return;
     }
     if (challenge) {
@@ -1109,7 +1318,7 @@ export function createShell(options: ShellOptions): Shell {
       );
       const accept = uiButton(doc, { label: 'Relever le défi', icon: 'play', variant: 'primary', size: 'xl', block: true, onClick: () => startRun(null) });
       const free = uiButton(doc, { label: 'Partie libre', variant: 'ghost', block: true, onClick: playFree });
-      show('home', [homeTopbar(), brandHero(false), card, accept, free, recordLine(), el(doc, 'span', { class: 'home-spacer' }), homeDock()], accept);
+      show('home', [brandHero(false), card, accept, free, recordLine()], accept);
       return;
     }
 
@@ -1127,7 +1336,7 @@ export function createShell(options: ShellOptions): Shell {
     dailyCard.append(daily, dailyHint);
     const actions = el(doc, 'div', { class: 'home-actions' });
     actions.append(play, dailyCard, recordLine());
-    show('home', [homeTopbar(), brandHero(), actions, homeMission(), el(doc, 'span', { class: 'home-spacer' }), homeDock()], play);
+    show('home', [brandHero(), actions, lookCard(), homeMission()], play);
     prefetchTickets();
   };
 
@@ -1177,7 +1386,7 @@ export function createShell(options: ShellOptions): Shell {
   let boardRequest = 0;
   /** Écran Classement : Monde, Semaine, Aujourd'hui ; chargement, erreurs, démo, pagination. */
   const renderLeaderboard = (kind: BoardKind = 'global', editingPseudo = false) => {
-    const { header, title } = screenHeader('Classement', backHome('nav-leaderboard'));
+    const { header, title } = screenHeader('Classement');
     const parts: HTMLElement[] = [header];
     if (!leaderboard.available) {
       const card = el(doc, 'section', { class: 'card empty-art' });
@@ -1879,7 +2088,7 @@ export function createShell(options: ShellOptions): Shell {
       try {
         // Lien seul, sans image jointe ni attente : voir src/platform/share.ts.
         shareOutcome = await options.share({
-          title: 'Pile ou Crash',
+          title: GAME_NAME,
           text: `J’ai empilé ${floors(height)}${revived ? ' (avec une reprise)' : ''}. Tu fais mieux sur la même partie ?`,
           url: challengeLink,
         });
@@ -2055,6 +2264,7 @@ export function createShell(options: ShellOptions): Shell {
       closeSheet();
       stopRun();
       unwatchPrefs();
+      animator.destroy();
       uiSound.close();
       doc.removeEventListener('visibilitychange', onVisibility);
       doc.removeEventListener('pointerdown', onPointer, true);

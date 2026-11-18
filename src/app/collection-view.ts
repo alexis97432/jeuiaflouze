@@ -1,24 +1,21 @@
 /**
- * Écran Collection (coordination/V2.md § Collection) : univers, apparences et badges.
- * Chaque carte verrouillée dit exactement comment l'obtenir ; seules les cartes débloquées
- * se sélectionnent. Les aperçus d'univers et d'apparence sont dessinés par le moteur
- * (`renderAppearancePreview`, F4) avec le même dessin que le jeu ; repli CSS (`swatch-<id>`)
- * si Canvas 2D est indisponible. Les badges gardent leur pictogramme CSS. Anciennement :
- * ils seront alignés sur le rendu FLK (F3/F4) au branchement A4.
+ * Écran Collection (V2 ; V6 : raretés, filtres, aperçus vivants). Matières, univers et badges.
+ *
+ * Chaque carte dit clairement son état sans dépendre de la couleur : « Équipé » (coche),
+ * « Équiper » (bouton), ou comment l'obtenir (cadenas + provenance). La rareté est écrite en
+ * toutes lettres. Les aperçus sont dessinés par le moteur avec le même code que le jeu ; repli
+ * CSS (`swatch-<id>`) si Canvas 2D est indisponible.
  */
-import { renderAppearancePreview } from '../game';
+import { RARITY_INFO, renderAppearancePreview, type Rarity } from '../game';
+import { byRarity, LOCAL_SKINS, LOCAL_THEMES, SKIN_CATALOG, sourceLabel, THEME_CATALOG, type CatalogItem } from './catalog';
 import { el } from './dom';
-import { iconOnlyButton, progressBar, uiButton } from './ui/components';
+import { progressBar, segmented, uiButton } from './ui/components';
 import { icon, type IconName } from './ui/icons';
 import {
   BADGE_IDS,
   earnedBadges,
   objectiveFor,
   rewardLabel,
-  SKIN_IDS,
-  OBTAINABLE_V3_SKINS,
-  V3_SKIN_SOURCE,
-  THEME_IDS,
   unlockedSkins,
   unlockedThemes,
   type Appearance,
@@ -31,7 +28,7 @@ import {
  * Condition de déblocage courte, au tutoiement, pour les cartes de la collection (V4) : tient sur
  * deux lignes dans une carte de 120 px. La liste complète des missions garde les phrases longues.
  */
-const SHORT_GOALS: Record<ObjectiveId, string> = {
+export const SHORT_GOALS: Record<ObjectiveId, string> = {
   'floors-5': 'Pose 5 étages en une partie',
   'streak-2': 'Fais 2 parfaits d’affilée',
   'floors-12': 'Pose 12 étages en une partie',
@@ -47,17 +44,21 @@ const SHORT_GOALS: Record<ObjectiveId, string> = {
 export type PreviewFn = (
   canvas: HTMLCanvasElement,
   appearance: Appearance,
-  options: { width: number; height: number },
+  options: { width: number; height: number; time?: number; climb?: boolean; focus?: 'scene' | 'material' },
 ) => boolean;
 
-const PREVIEW_SIZE = { width: 160, height: 72 } as const;
+/** Inscrit un aperçu à l'animateur (boucle partagée) ; absent : image fixe. */
+export type AnimateFn = (canvas: HTMLCanvasElement, draw: (time: number | undefined) => void) => void;
+
+export const PREVIEW_SIZE = { width: 160, height: 72 } as const;
+
+export type CollectionFilter = 'all' | 'owned' | 'missing';
 
 export type CollectionCallbacks = {
   onSelect(next: Partial<Appearance>): void;
-  onBack(): void;
+  onFilter(filter: CollectionFilter): void;
+  onRarityHelp(): void;
 };
-
-const NAMES = (reward: Reward) => rewardLabel(reward).replace(/^(Apparence|Univers|Badge) /, '');
 
 function cssSwatch(doc: Document, id: string): HTMLElement {
   const swatch = el(doc, 'div', { class: `swatch swatch-${id}`, 'aria-hidden': 'true' });
@@ -65,51 +66,74 @@ function cssSwatch(doc: Document, id: string): HTMLElement {
   return swatch;
 }
 
-export function previewOrSwatch(doc: Document, id: string, appearance: Appearance | null, preview: PreviewFn): HTMLElement {
+/**
+ * Aperçu dessiné par le moteur (animé si `animate` est fourni et permis), ou pastille CSS si
+ * Canvas 2D est indisponible. `climb` : l'aperçu d'univers monte à travers ses paliers.
+ */
+export function previewOrSwatch(
+  doc: Document, id: string, appearance: Appearance | null, preview: PreviewFn,
+  opts: { animate?: AnimateFn; climb?: boolean; material?: boolean; size?: { width: number; height: number } } = {},
+): HTMLElement {
   if (!appearance) return cssSwatch(doc, id);
+  const size = opts.size ?? PREVIEW_SIZE;
   const canvas = el(doc, 'canvas', { class: 'swatch preview', 'aria-hidden': 'true', 'data-preview': id });
+  const base = { ...size, ...(opts.material ? { focus: 'material' as const } : {}) };
   let drawn = false;
   try {
-    drawn = preview(canvas, appearance, PREVIEW_SIZE);
+    drawn = preview(canvas, appearance, base);
   } catch {
-    drawn = false; // un aperçu en échec ne doit jamais casser la collection
+    drawn = false; // un aperçu en échec ne doit jamais casser l'écran
   }
-  return drawn ? canvas : cssSwatch(doc, id);
+  if (!drawn) return cssSwatch(doc, id);
+  opts.animate?.(canvas, (time) => {
+    preview(canvas, appearance, { ...base, ...(time === undefined ? {} : { time }), ...(opts.climb ? { climb: true } : {}) });
+  });
+  return canvas;
 }
 
-function card(
+/** Pastille de rareté : nom écrit + pierre ; la couleur n'est jamais la seule information. */
+export function rarityChip(doc: Document, rarity: Rarity): HTMLElement {
+  const chip = el(doc, 'span', { class: 'rarity', 'data-rarity': rarity });
+  chip.append(icon(doc, 'gem'), el(doc, 'span', {}, RARITY_INFO[rarity].name));
+  return chip;
+}
+
+/** Carte d'objet cosmétique : aperçu, nom, rareté, puis l'état ou l'action. */
+export function cosmeticCard(
   doc: Document,
-  reward: Reward,
-  state: 'selected' | 'available' | 'locked' | 'earned',
-  visual: HTMLElement | SVGElement,
-  onChoose?: () => void,
+  item: CatalogItem,
+  visual: HTMLElement,
+  state: 'equipped' | 'owned' | 'locked' | 'premium',
+  tail: HTMLElement[],
+  testId = `card-${item.kind}-${item.id}`,
 ): HTMLElement {
-  const item = el(doc, 'li', {
-    'data-testid': `card-${reward.kind}-${reward.id}`,
-    tabindex: '-1', // cible du focus après un choix (revue A3b FLK, m2)
-  });
-  const box = el(doc, 'div', { class: `item ${state}` });
+  const li = el(doc, 'li', { 'data-testid': testId, tabindex: '-1' });
+  const box = el(doc, 'div', { class: `item cos ${state}`, 'data-rarity': item.rarity });
   const visualBox = el(doc, 'div', { class: 'item-visual' });
   visualBox.append(visual);
-  box.append(visualBox, el(doc, 'p', { class: 'item-name' }, NAMES(reward)));
-  if (state === 'selected') {
+  if (state === 'equipped') {
     const badge = el(doc, 'span', { class: 'badge', 'aria-hidden': 'true' });
     badge.append(icon(doc, 'check'));
-    box.append(badge, el(doc, 'p', { class: 'item-meta' }, 'Sélectionné'));
-  } else if (state === 'available' && onChoose) {
-    box.append(uiButton(doc, { label: 'Choisir', variant: 'secondary', size: 'sm', block: true, ariaLabel: `Choisir ${rewardLabel(reward)}`, onClick: onChoose }));
-  } else if (state === 'earned') {
-    box.append(el(doc, 'p', { class: 'item-meta' }, 'Obtenu'));
-  } else {
-    const goal = objectiveFor(reward);
-    const source = reward.kind === 'skin' ? V3_SKIN_SOURCE[reward.id] : undefined;
-    const lock = el(doc, 'p', { class: 'item-meta lock' });
-    // « À débloquer » est lu par les lecteurs d'écran ; à l'écran, le cadenas suffit.
-    lock.append(icon(doc, 'lock'), el(doc, 'span', { class: 'sr-only' }, 'À débloquer : '), el(doc, 'span', {}, goal ? SHORT_GOALS[goal.id] : source ?? 'Verrouillé'));
-    box.append(lock);
+    visualBox.append(badge);
   }
-  item.append(box);
-  return item;
+  box.append(visualBox, el(doc, 'p', { class: 'item-name' }, item.name), rarityChip(doc, item.rarity), ...tail);
+  li.append(box);
+  return li;
+}
+
+/** Ligne d'état avec pictogramme (jamais la couleur seule). */
+export function stateLine(doc: Document, iconName: IconName, text: string, kind: string, srPrefix?: string): HTMLElement {
+  const p = el(doc, 'p', { class: `item-meta ${kind}` });
+  p.append(icon(doc, iconName));
+  if (srPrefix) p.append(el(doc, 'span', { class: 'sr-only' }, srPrefix));
+  p.append(el(doc, 'span', {}, text));
+  return p;
+}
+
+/** Comment obtenir un objet verrouillé, en une ligne courte. */
+export function howToGet(item: CatalogItem): string {
+  if (item.source.kind === 'mission') return SHORT_GOALS[item.source.objective];
+  return sourceLabel(item.source);
 }
 
 /** Pictogramme d'un badge (pas d'aperçu de jeu pour un badge). */
@@ -119,71 +143,116 @@ function badgeArt(doc: Document, id: string): HTMLElement {
   return art;
 }
 
+/** Nombre d'objets obtenus sur le total obtenable ici (premium à part). */
+export function collectionCount(progress: ProgressState): { owned: number; total: number } {
+  const skins = unlockedSkins(progress).filter((id) => (LOCAL_SKINS as readonly string[]).includes(id)).length;
+  const themes = unlockedThemes(progress).filter((id) => (LOCAL_THEMES as readonly string[]).includes(id)).length;
+  const badges = earnedBadges(progress).length;
+  return { owned: skins + themes + badges, total: LOCAL_SKINS.length + LOCAL_THEMES.length + BADGE_IDS.length };
+}
+
 export function renderCollection(
   doc: Document,
   progress: ProgressState,
   callbacks: CollectionCallbacks,
-  focusCard?: string,
-  preview: PreviewFn = renderAppearancePreview,
+  options: { filter?: CollectionFilter; focusCard?: string; preview?: PreviewFn; animate?: AnimateFn } = {},
 ): { nodes: HTMLElement[]; focus: HTMLElement } {
-  const back = iconOnlyButton(doc, { icon: 'back', label: 'Retour', onClick: callbacks.onBack, testId: 'collection-back' });
+  const preview = options.preview ?? renderAppearancePreview;
+  const filter = options.filter ?? 'all';
   const title = el(doc, 'h1', { tabindex: '-1', class: 'screen-title' }, 'Collection');
+  const header = el(doc, 'div', { class: 'screen-header' });
+  const help = uiButton(doc, { label: 'Raretés', icon: 'gem', variant: 'ghost', size: 'sm', testId: 'rarity-help', onClick: callbacks.onRarityHelp });
+  header.append(el(doc, 'span', {}), title, help);
+
   const themes = unlockedThemes(progress);
   const skins = unlockedSkins(progress);
   const badges = earnedBadges(progress);
-  // Total limité aux objets obtenables dans cette version (revue FLK A2 m1) : V2, boutique et
-  // piste gratuite du passe ; le premium indisponible n'est pas compté.
-  const total = THEME_IDS.length + SKIN_IDS.length + OBTAINABLE_V3_SKINS.length + BADGE_IDS.length;
-  const owned = themes.length + skins.filter((id) => (SKIN_IDS as readonly string[]).includes(id) || (OBTAINABLE_V3_SKINS as readonly string[]).includes(id)).length + badges.length;
+  const { owned, total } = collectionCount(progress);
   const count = el(doc, 'section', { class: 'card' });
   count.append(
     el(doc, 'p', { class: 'card-title', 'data-testid': 'collection-count' }, `${owned} / ${total} obtenus`),
     progressBar(doc, owned / total, 'Collection complétée'),
+    segmented(doc, {
+      label: 'Afficher',
+      testId: 'collection-filter',
+      value: filter,
+      options: [
+        { value: 'all', label: 'Tout' },
+        { value: 'owned', label: 'Obtenus' },
+        { value: 'missing', label: 'À obtenir' },
+      ],
+      onChange: (v) => callbacks.onFilter(v),
+    }),
   );
 
-  const section = (iconName: IconName, label: string, cards: HTMLElement[]) => {
-    const s = el(doc, 'section', { class: 'collection-section', 'aria-label': label });
-    const list = el(doc, 'ul', { class: 'items' });
-    list.append(...cards);
+  const keep = (isOwned: boolean) => filter === 'all' || (filter === 'owned' ? isOwned : !isOwned);
+  const cardFor = (item: CatalogItem): HTMLElement | null => {
+    const isOwned = item.kind === 'skin' ? (skins as readonly string[]).includes(item.id) : (themes as readonly string[]).includes(item.id);
+    if (!keep(isOwned)) return null;
+    const equipped = item.kind === 'skin' ? progress.selected.skin === item.id : progress.selected.theme === item.id;
+    const premium = item.source.kind === 'pass' && item.source.track === 'premium';
+    const appearance: Appearance = item.kind === 'skin'
+      ? { theme: progress.selected.theme, skin: item.id as Appearance['skin'] }
+      : { theme: item.id as Appearance['theme'], skin: progress.selected.skin };
+    const visual = previewOrSwatch(doc, item.id, appearance, preview, { ...(options.animate ? { animate: options.animate } : {}), climb: item.kind === 'theme', material: item.kind === 'skin' });
+    const label = `${item.kind === 'skin' ? 'Matière' : 'Univers'} ${item.name}`;
+    if (equipped) return cosmeticCard(doc, item, visual, 'equipped', [stateLine(doc, 'check', 'Équipé', 'equipped')]);
+    if (isOwned) {
+      const choose = uiButton(doc, {
+        label: 'Équiper', variant: 'secondary', size: 'sm', block: true, ariaLabel: `Équiper ${label}`,
+        onClick: () => callbacks.onSelect(item.kind === 'skin' ? { skin: item.id as Appearance['skin'] } : { theme: item.id as Appearance['theme'] }),
+      });
+      return cosmeticCard(doc, item, visual, 'owned', [choose]);
+    }
+    return cosmeticCard(doc, item, visual, premium ? 'premium' : 'locked', [stateLine(doc, 'lock', howToGet(item), 'lock', 'À obtenir : ')]);
+  };
+
+  const section = (iconName: IconName, label: string, cards: (HTMLElement | null)[], testId: string) => {
+    const list = cards.filter((c): c is HTMLElement => c !== null);
+    const s = el(doc, 'section', { class: 'collection-section', 'aria-label': label, 'data-testid': testId });
     const h = el(doc, 'h2', {});
-    h.append(icon(doc, iconName), el(doc, 'span', {}, label));
-    s.append(h, list);
+    h.append(icon(doc, iconName), el(doc, 'span', {}, label), el(doc, 'span', { class: 'count' }, `${list.length}`));
+    const ul = el(doc, 'ul', { class: 'items' });
+    ul.append(...list);
+    if (list.length === 0) ul.append(el(doc, 'li', { class: 'empty hint' }, filter === 'owned' ? 'Rien ici pour l’instant.' : 'Tout est obtenu. Bravo !'));
+    s.append(h, ul);
     return s;
   };
 
-  const themeCards = THEME_IDS.map((id) =>
-    card(
-      doc,
-      { kind: 'theme', id },
-      progress.selected.theme === id ? 'selected' : themes.includes(id) ? 'available' : 'locked',
-      previewOrSwatch(doc, id, { theme: id, skin: progress.selected.skin }, preview),
-      () => callbacks.onSelect({ theme: id }),
-    ),
-  );
-  const skinCards = [...SKIN_IDS, ...OBTAINABLE_V3_SKINS].map((id) =>
-    card(
-      doc,
-      { kind: 'skin', id },
-      progress.selected.skin === id ? 'selected' : skins.includes(id) ? 'available' : 'locked',
-      previewOrSwatch(doc, id, { theme: progress.selected.theme, skin: id }, preview),
-      () => callbacks.onSelect({ skin: id }),
-    ),
-  );
-  const badgeCards = BADGE_IDS.map((id) =>
-    card(doc, { kind: 'badge', id }, badges.includes(id) ? 'earned' : 'locked', badgeArt(doc, id)),
-  );
+  const skinCards = byRarity(SKIN_CATALOG).map(cardFor);
+  const themeCards = byRarity(THEME_CATALOG).map(cardFor);
+  const badgeCards = BADGE_IDS.map((id) => {
+    const reward: Reward = { kind: 'badge', id };
+    const isOwned = badges.includes(id);
+    if (!keep(isOwned)) return null;
+    const li = el(doc, 'li', { 'data-testid': `card-badge-${id}`, tabindex: '-1' });
+    const box = el(doc, 'div', { class: `item ${isOwned ? 'earned' : 'locked'}` });
+    const visualBox = el(doc, 'div', { class: 'item-visual' });
+    visualBox.append(badgeArt(doc, id));
+    const goal = objectiveFor(reward);
+    box.append(
+      visualBox,
+      el(doc, 'p', { class: 'item-name' }, rewardLabel(reward).replace(/^Badge /, '')),
+      isOwned ? stateLine(doc, 'check', 'Obtenu', 'equipped') : stateLine(doc, 'lock', goal ? SHORT_GOALS[goal.id] : 'Verrouillé', 'lock', 'À obtenir : '),
+    );
+    li.append(box);
+    return li;
+  });
 
   const note = el(
     doc,
     'p',
     { class: 'hint small center', 'data-testid': 'collection-note' },
-    'L’univers et l’apparence choisis s’appliquent à ta prochaine partie. Ils changent le look, pas les règles.',
+    'L’univers et la matière équipés s’appliquent à ta prochaine partie. Ils changent le look, jamais les règles ni le score.',
   );
-  const header = el(doc, 'div', { class: 'screen-header' });
-  header.append(back, title);
-  const chosen = focusCard ? [...themeCards, ...skinCards].find((c) => c.dataset.testid === focusCard) : undefined;
-  return {
-    nodes: [header, count, section('orbit', 'Univers', themeCards), section('palette', 'Apparences', skinCards), section('award', 'Badges', badgeCards), note],
-    focus: chosen ?? title,
-  };
+  const nodes = [
+    header,
+    count,
+    section('palette', 'Matières', skinCards, 'section-skins'),
+    section('orbit', 'Univers', themeCards, 'section-themes'),
+    section('award', 'Badges', badgeCards, 'section-badges'),
+    note,
+  ];
+  const chosen = options.focusCard ? nodes.flatMap((n) => [...n.querySelectorAll<HTMLElement>(`[data-testid="${options.focusCard}"]`)])[0] : undefined;
+  return { nodes, focus: chosen ?? title };
 }

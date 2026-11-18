@@ -1,5 +1,6 @@
-/* Pile ou Crash — feuille de style V4 (voir docs/V4.md). */
+/* Stack or Crash (anciennement Pile ou Crash) — feuille de style V4–V6 (voir docs/V4.md, docs/V6-DIRECTION.md). */
 @import './styles/tokens.css';
 @import './styles/base.css';
 @import './styles/components.css';
 @import './styles/screens.css';
+@import './styles/v6.css';

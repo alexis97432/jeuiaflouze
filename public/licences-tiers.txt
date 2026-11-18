@@ -1,4 +1,4 @@
-Pile ou Crash — licences des éléments tiers livrés avec le jeu
+Stack or Crash (anciennement Pile ou Crash) — licences des éléments tiers livrés avec le jeu
 ==============================================================
 
 1. Police Fredoka (paquet @fontsource-variable/fredoka 5.3.0), SIL Open Font License 1.1

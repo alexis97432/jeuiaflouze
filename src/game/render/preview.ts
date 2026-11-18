@@ -9,7 +9,7 @@ import { BLOCK_HEIGHT, drawBlock, type DrawSkinId } from './blocks';
 import { STATIC_ENV, type MaterialEnv } from './materials';
 import { resolveAnyAppearance, type AnyAppearance, type Appearance } from './mount';
 import type { SceneEnv } from './scene';
-import { css, getTheme, mix, skyAt, stageAt, TIER_FLOORS, type DecorItem, type TierIndex } from './themes';
+import { css, getTheme, mix, skyAt, stageAt, TIER_FLOORS, type DecorItem, type Rgb, type TierIndex } from './themes';
 
 export type PreviewOptions = {
   /** Taille CSS du dessin ; défaut = taille affichée du canvas (getBoundingClientRect). */
@@ -23,6 +23,11 @@ export type PreviewOptions = {
   time?: number;
   /** V6 : l'aperçu monte lentement à travers les paliers de l'univers (cartes d'univers). */
   climb?: boolean;
+  /**
+   * V6 : cadrage « matière » (cartes de matières) : deux grandes briques sur le ciel et le sol de
+   * l'univers, sans silhouettes, pour bien voir la matière et ses animations.
+   */
+  focus?: 'scene' | 'material';
 };
 
 const ITEMS: [number, number, DecorItem][] = [
@@ -99,6 +104,7 @@ export function drawAppearancePreview(
     }
     ctx.restore();
   };
+  if (options.focus === 'material') return drawMaterialFocus(ctx, { theme, skin, w, h, dpr, t, animated, sky });
   paint(() => theme.scene.far(scene));
   paint(() => theme.scene.back(scene));
 
@@ -127,6 +133,32 @@ export function drawAppearancePreview(
     const behind = mix(sky.top, sky.bottom, Math.min(1, Math.max(0, (groundY + y * s) / h)));
     const env: MaterialEnv = { ...STATIC_ENV, t, motion: animated, wx: offsets[i]!, wy: y, ox: offsets[i]!, cam: 0, floor: floor0 + i };
     drawBlock(ctx, offsets[i]!, y, bw, theme.blocks[(floor0 + i) % theme.blocks.length]!, { skin, sky: behind, alpha: 1, variant: floor0 + i, env });
+  });
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return true;
+}
+
+/** Cadrage « matière » : deux grandes briques décalées, la matière remplit l'aperçu. */
+function drawMaterialFocus(
+  ctx: CanvasRenderingContext2D,
+  o: { theme: ReturnType<typeof getTheme>; skin: DrawSkinId; w: number; h: number; dpr: number; t: number; animated: boolean; sky: { top: Rgb; bottom: Rgb } },
+): boolean {
+  const { theme, skin, w, h, dpr, t, animated, sky } = o;
+  // Deux briques de 30 unités et un liseré de sol : la hauteur tient en 72 unités.
+  const s = h / 72;
+  const units = w / s;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = css(theme.ground.body);
+  ctx.fillRect(0, h - 6 * s, w, 6 * s);
+  ctx.fillStyle = css(theme.ground.top);
+  ctx.fillRect(0, h - 6 * s, w, 2 * s);
+  ctx.setTransform(dpr * s, 0, 0, dpr * s, 0, dpr * (h - 6 * s));
+  const rows: [number, number][] = [[units * 0.06, units * 0.86], [units * 0.16, units * 0.74]];
+  rows.forEach(([x, bw], i) => {
+    const y = -(i + 1) * BLOCK_HEIGHT;
+    const env: MaterialEnv = { ...STATIC_ENV, t, motion: animated, wx: x, wy: y, ox: x, cam: 0, floor: i + 1 };
+    const behind = mix(sky.top, sky.bottom, i === 0 ? 0.85 : 0.6);
+    drawBlock(ctx, x, y, bw, theme.blocks[(i + 1) % theme.blocks.length]!, { skin, sky: behind, alpha: 1, variant: i + 1, env });
   });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   return true;
