@@ -316,7 +316,7 @@ describe('partage', () => {
     await end(1);
     button('Défier un ami').click();
     await flush();
-    expect(text('share-status')).toBe('Partage annulé.');
+    expect(text('share-status')).toBe('Partage annulé. Tu peux aussi copier le lien.');
     expect(names(sink)).not.toContain('share_success');
   });
 
@@ -328,6 +328,51 @@ describe('partage', () => {
     await flush();
     expect(text('share-status')).toBe('Lien du défi copié. Colle-le dans un message !');
     expect(names(sink).at(-1)).toBe('share_success');
+  });
+
+  it('partage appelé dans le geste : aucune attente avant (image lente ignorée)', async () => {
+    const never = new Promise<File | null>(() => {});
+    const { share, button, end } = setup({ resultImage: () => never });
+    button('Jouer').click();
+    await end(5);
+    button('Défier un ami').click();
+    // Synchrone : aucun microtask n'a encore tourné.
+    expect(share).toHaveBeenCalledTimes(1);
+    expect(share).toHaveBeenCalledWith({
+      title: 'Pile ou Crash',
+      text: 'J’ai empilé 5 étages. Tu fais mieux sur la même partie ?',
+      url: 'https://jeu.test/?v=1&seed=100&target=5',
+    });
+  });
+
+  it('« Copier le lien » : copie le lien du défi et l’annonce', async () => {
+    const copy = vi.fn(async () => true);
+    const { button, text, end, sink, share } = setup({ copy });
+    button('Jouer').click();
+    await end(7);
+    button('Copier le lien').click();
+    await flush();
+    expect(copy).toHaveBeenCalledWith('https://jeu.test/?v=1&seed=100&target=7');
+    expect(share).not.toHaveBeenCalled();
+    expect(text('share-status')).toBe('Lien du défi copié. Colle-le dans un message !');
+    expect(names(sink).slice(-2)).toEqual(['share_attempt', 'share_success']);
+  });
+
+  it('« Copier le lien » impossible : lien affiché et sélectionné', async () => {
+    for (const copy of [async () => false, async (): Promise<boolean> => { throw new Error('x'); }]) {
+      document.body.innerHTML = '<main id="app"></main>';
+      shell?.destroy();
+      const { button, root, end, sink, text } = setup({ copy });
+      button('Jouer').click();
+      await end(2);
+      button('Copier le lien').click();
+      await flush();
+      const input = root.querySelector<HTMLInputElement>('[data-testid="challenge-link"]')!;
+      expect(input.value).toBe('https://jeu.test/?v=1&seed=100&target=2');
+      expect(document.activeElement).toBe(input);
+      expect(text('share-status')).toBe('Copie automatique impossible. Copie le lien ci-dessous.');
+      expect(names(sink)).not.toContain('share_success');
+    }
   });
 
   it('indisponible ou en erreur : lien affiché et sélectionné pour copie manuelle', async () => {
@@ -1274,7 +1319,7 @@ describe('reprise, bonus et résultats v2 (V3-A6)', () => {
 });
 
 describe('carte de résultat (V3-A6, F9 injectée)', () => {
-  it('image partagée avec le lien et enregistrable ; sans F9 : aucun bouton d’image', async () => {
+  it('défi partagé sans image (le lien n’est jamais perdu) ; image enregistrable ; sans F9 : aucun bouton d’image', async () => {
     const file = new File(['png'], 'pile-ou-crash.png', { type: 'image/png' });
     const resultImage = vi.fn(async () => file);
     const saveFile = vi.fn(() => true);
@@ -1283,7 +1328,7 @@ describe('carte de résultat (V3-A6, F9 injectée)', () => {
     await end(4);
     button('Défier un ami').click();
     await flush();
-    expect(share).toHaveBeenCalledWith(expect.objectContaining({ files: [file] }));
+    expect(share).toHaveBeenCalledWith(expect.not.objectContaining({ files: expect.anything() }));
     button('Enregistrer l’image').click();
     await flush();
     expect(saveFile).toHaveBeenCalledWith(file);
@@ -1339,7 +1384,7 @@ describe('V3-A6b : secours du partage d’image, annonces, sauvegarde et récomp
     await end(4);
     button('Défier un ami').click();
     await flush();
-    expect(text('share-status')).toBe('Partage annulé.');
+    expect(text('share-status')).toBe('Partage annulé. Tu peux aussi copier le lien.');
     expect(sink.events.map((e) => e.name)).not.toContain('share_success');
   });
 

@@ -49,7 +49,7 @@ import {
 import { createRunTracker, type RunTracker } from './run-tracker';
 import { dailySeed, nextDailyChange, utcDateKey } from '../platform/daily';
 import type { Mode, Tracker } from '../platform/metrics';
-import { downloadFile, type ShareData, type ShareOutcome } from '../platform/share';
+import { copyText, downloadFile, type ShareData, type ShareOutcome } from '../platform/share';
 import { sanitizePrefs, type LocalStore, type MetaStore, type Prefs } from '../platform/storage';
 import { applyPrefs, watchSystemPrefs } from './prefs';
 import { browserHaptics, createUiSound, HAPTIC_PATTERNS, type HapticKind, type Haptics, type UiSound, type UiSoundKind } from './feedback';
@@ -102,6 +102,8 @@ export type ShellOptions = {
   /** Remplace l'URL affichée sans recharger (history.replaceState). */
   replaceUrl: (url: string) => void;
   share: (data: ShareData) => Promise<ShareOutcome>;
+  /** Copie du lien de défi (« Copier le lien ») ; défaut : presse-papiers puis repli execCommand. */
+  copy?: (text: string) => Promise<boolean>;
   newSeed: () => number;
   newRunId: () => string;
   doc?: Document;
@@ -1810,7 +1812,11 @@ export function createShell(options: ShellOptions): Shell {
       action();
     };
     const retry = uiButton(doc, { label: 'Rejouer', icon: 'replay', variant: 'primary', size: 'xl', block: true, testId: 'retry', onClick: guarded(() => startRun(current)) });
+    // Lien calculé dès l'écran affiché : le clic appelle le partage sans rien attendre avant
+    // (activation utilisateur conservée sur téléphone). Mêmes règles et même partie, score en étages.
+    const challengeLink = buildChallengeUrl(options.url, current.seed, height, result.rulesVersion);
     const shareButton = uiButton(doc, { label: 'Défier un ami', icon: 'share', variant: 'secondary', block: true, testId: 'share', onClick: guarded(() => void doShare()) });
+    const copyButton = uiButton(doc, { label: 'Copier le lien', icon: 'copy', variant: 'ghost', block: true, testId: 'copy-link', onClick: guarded(() => void doCopy()) });
     const home = uiButton(doc, { label: 'Accueil', icon: 'home', variant: 'ghost', block: true, testId: 'result-home', onClick: guarded(renderHome) });
 
     let imagePromise: Promise<File | null> | null = null;
@@ -1850,18 +1856,32 @@ export function createShell(options: ShellOptions): Shell {
         });
       }),
     });
+    /** Lien affiché et sélectionné, à copier à la main (ni partage ni presse-papiers). */
+    const showLink = () => {
+      const label = el(doc, 'label', { for: 'challenge-link', class: 'card-title' }, 'Lien du défi');
+      const input = el(doc, 'input', {
+        id: 'challenge-link',
+        type: 'text',
+        readonly: '',
+        class: 'text-input',
+        'data-testid': 'challenge-link',
+      });
+      input.value = challengeLink;
+      fallback.replaceChildren(label, input, el(doc, 'p', { class: 'hint small center' }, 'Appuie longtemps sur le lien pour le copier.'));
+      fallback.hidden = false;
+      input.focus();
+      input.select();
+    };
     const doShare = async () => {
-      const url = buildChallengeUrl(options.url, current.seed, height, result.rulesVersion);
       shareButton.disabled = true;
       tracker.track('share_attempt', { mode: current.mode, runId: current.runId });
       let shareOutcome: ShareOutcome;
       try {
-        const image = await resultImage();
+        // Lien seul, sans image jointe ni attente : voir src/platform/share.ts.
         shareOutcome = await options.share({
           title: 'Pile ou Crash',
           text: `J’ai empilé ${floors(height)}${revived ? ' (avec une reprise)' : ''}. Tu fais mieux sur la même partie ?`,
-          url,
-          ...(image ? { files: [image] } : {}),
+          url: challengeLink,
         });
       } catch {
         shareOutcome = 'unavailable';
@@ -1874,23 +1894,29 @@ export function createShell(options: ShellOptions): Shell {
       fallback.hidden = true;
       if (shareOutcome === 'shared') status.textContent = 'Défi envoyé.';
       else if (shareOutcome === 'copied') status.textContent = 'Lien du défi copié. Colle-le dans un message !';
-      else if (shareOutcome === 'cancelled') status.textContent = 'Partage annulé.';
+      else if (shareOutcome === 'cancelled') status.textContent = 'Partage annulé. Tu peux aussi copier le lien.';
       else {
-        // Ni partage ni presse-papiers : on affiche le lien à copier à la main.
         status.textContent = 'Copie automatique impossible. Copie le lien ci-dessous.';
-        const label = el(doc, 'label', { for: 'challenge-link', class: 'card-title' }, 'Lien du défi');
-        const input = el(doc, 'input', {
-          id: 'challenge-link',
-          type: 'text',
-          readonly: '',
-          class: 'text-input',
-          'data-testid': 'challenge-link',
-        });
-        input.value = url;
-        fallback.replaceChildren(label, input);
-        fallback.hidden = false;
-        input.focus();
-        input.select();
+        showLink();
+      }
+    };
+    const doCopy = async () => {
+      tracker.track('share_attempt', { mode: current.mode, runId: current.runId });
+      let copied: boolean;
+      try {
+        copied = await (options.copy ?? ((text: string) => copyText(text)))(challengeLink);
+      } catch {
+        copied = false;
+      }
+      if (destroyed || screen !== 'result') return;
+      if (copied) {
+        tracker.track('share_success', { mode: current.mode, runId: current.runId });
+        fallback.hidden = true;
+        status.textContent = 'Lien du défi copié. Colle-le dans un message !';
+        fx.haptic('tap');
+      } else {
+        status.textContent = 'Copie automatique impossible. Copie le lien ci-dessous.';
+        showLink();
       }
     };
 
@@ -1899,7 +1925,7 @@ export function createShell(options: ShellOptions): Shell {
     const actions = el(doc, 'div', { class: 'result-actions' });
     const row = el(doc, 'div', { class: 'row' });
     row.append(shareButton, home);
-    actions.append(retry, row);
+    actions.append(retry, row, copyButton);
     const more = el(doc, 'div', { class: 'result-more' });
     if (options.resultImage) more.append(saveImage);
     const rewardShortcut = outcome.completedNow.length > 0;

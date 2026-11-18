@@ -1,9 +1,12 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { lastScore, metrics, noHorizontalOverflow, tapUntilResult, trackErrors } from './helpers';
 
 // Vrai moteur : le score n'est pas prévisible, mais le premier étage ne peut pas être raté
 // (src/game/core/README.md), donc toute partie vaut au moins 1 et bat un défi annoncé à 0.
 const CHALLENGE = '/?v=1&seed=4242&target=0';
+
+/** Hauteur affichée au résultat, en étages (la cible du lien), pas les points. */
+const floorsShown = async (page: Page) => Number.parseInt((await page.getByTestId('score').textContent()) ?? '', 10);
 
 let errors: string[] = [];
 test.beforeEach(({ page, isMobile }) => {
@@ -67,6 +70,71 @@ test('le lien partagé ouvre le même défi dans un autre navigateur', async ({ 
   await other.close();
 });
 
+test('partage natif sur téléphone : appelé pendant le geste, lien seul, ouvre le bon défi chez l’ami', async ({ page, browser }) => {
+  await page.addInitScript(() => {
+    // Comme Chrome Android et Safari : refusé hors activation utilisateur.
+    const calls: { active: boolean; data: Record<string, unknown> }[] = [];
+    Object.defineProperty(window, '__shares', { value: calls });
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: async (data: Record<string, unknown>) => {
+        calls.push({ active: navigator.userActivation.isActive, data });
+        if (!navigator.userActivation.isActive) throw new DOMException('geste requis', 'NotAllowedError');
+      },
+    });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
+  await tapUntilResult(page);
+  const score = await floorsShown(page);
+  await page.getByRole('button', { name: 'Défier un ami' }).tap();
+  await expect(page.getByTestId('share-status')).toHaveText('Défi envoyé.');
+  const calls = await page.evaluate(() => (window as unknown as { __shares: { active: boolean; data: Record<string, unknown> }[] }).__shares);
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.active).toBe(true);
+  expect(Object.keys(calls[0]!.data).sort()).toEqual(['text', 'title', 'url']); // aucune image : le lien n'est pas perdu
+  const link = String(calls[0]!.data.url);
+  expect(link).toMatch(new RegExp(`/\\?v=3&seed=\\d+&target=${score}$`));
+  const seed = new URL(link).searchParams.get('seed');
+
+  // L'ami ouvre le lien : bon score à battre, même partie, mêmes règles (son lien de retour le prouve).
+  const other = await browser.newContext({ hasTouch: true, isMobile: true });
+  await other.addInitScript(() => {
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
+    const copied: string[] = [];
+    Object.defineProperty(window, '__copied', { value: copied });
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t: string) => void copied.push(t) } });
+  });
+  const friend = await other.newPage();
+  await friend.goto(link);
+  await expect(friend.getByTestId('challenge-invite')).toContainText(`Dépasse ${score} étage`);
+  await friend.getByRole('button', { name: 'Relever le défi' }).tap();
+  await expect(friend.getByTestId('target')).toBeVisible();
+  await tapUntilResult(friend);
+  const friendScore = await floorsShown(friend);
+  await friend.getByRole('button', { name: 'Copier le lien' }).tap();
+  await expect(friend.getByTestId('share-status')).toHaveText('Lien du défi copié. Colle-le dans un message !');
+  const [back] = await friend.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
+  expect(back).toMatch(new RegExp(`/\\?v=3&seed=${seed}&target=${friendScore}$`));
+  await other.close();
+});
+
+test('« Copier le lien » sans presse-papiers : lien affiché, sélectionné, sans débordement', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+  });
+  await page.goto('/?v=2&seed=4242&target=0');
+  await page.getByRole('button', { name: 'Relever le défi' }).tap();
+  await tapUntilResult(page);
+  await page.getByRole('button', { name: 'Copier le lien' }).tap();
+  const input = page.getByTestId('challenge-link');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue(new RegExp(`/\\?v=2&seed=4242&target=${await floorsShown(page)}$`)); // ancien défi : règles v2 gardées
+  await noHorizontalOverflow(page);
+});
+
 test('partage annulé : pas de succès compté', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'share', {
@@ -80,7 +148,7 @@ test('partage annulé : pas de succès compté', async ({ page }) => {
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
-  await expect(page.getByTestId('share-status')).toHaveText('Partage annulé.');
+  await expect(page.getByTestId('share-status')).toHaveText('Partage annulé. Tu peux aussi copier le lien.');
   const names = (await metrics(page)).map((e) => e.name);
   expect(names).toContain('share_attempt');
   expect(names).not.toContain('share_success');
@@ -90,6 +158,7 @@ test('ni partage ni presse-papiers : lien affiché pour copie manuelle', async (
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false }); // aucun repli de copie
   });
   await page.goto(CHALLENGE);
   await page.getByRole('button', { name: 'Relever le défi' }).tap();
@@ -199,6 +268,7 @@ test('Défi du jour : seed de la date UTC, record du jour, missions affichées',
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false }); // aucun repli de copie
   });
   await page.getByRole('button', { name: 'Défier un ami' }).tap();
   await expect(page.getByTestId('challenge-link')).toHaveValue(new RegExp(`seed=${dailySeed(day)}&target=${height}$`));
