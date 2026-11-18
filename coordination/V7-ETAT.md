@@ -31,7 +31,7 @@ Point de reprise si la session s'interrompt. Mis à jour à chaque étape.
 | V7-2 | Musique procédurale originale, réglages audio | fait : 15 pistes, lecteur, centrale audio, réglages ; pistes des 4 nouveaux univers écrites, branchées en V7-4 |
 | V7-3 | Boutique tournante, musiques en boutique, migration | fait : sélection du jour, musiques achetables, sauvegarde v5, tests `tests/app/v7-*.test.ts` |
 | V7-4 | Nouvelles matières et nouveaux univers | fait : Papier, Mosaïque, Vitrail, Phénix ; Désert, Montagne, Fête foraine, Royaume des nuées (`461fb16`) |
-| V7-5 | Vérifications, publication, bilan | vérifications faites (voir `docs/V7.md`) ; PR, fusion, Pages et vérification en ligne en cours |
+| V7-5 | Vérifications, publication, bilan | fait : PR #56 fusionnée (`9709ec7`), publiée et vérifiée en ligne (35 contrôles) |
 
 ## Crashs : constats (V7-1)
 
@@ -49,12 +49,39 @@ Outils : fuzzeur du rendu (parties simulées, tailles et densités extrêmes, bl
    - libération en fin de partie et en arrière-plan.
 4. **Rien d'anormal** sur ces points : écouteurs, boucles d'animation et tas JS stables d'une partie à l'autre. Un contexte audio était créé par partie puis fermé ; la centrale audio unique de la V7 le remplace.
 
-## Prochaines étapes
+## Publication V7 (auto-vérification)
 
-1. PR vers `claude/youthful-mayer-n4f7oy`, CI verte, fusion (exception V7).
-2. `pages.yml` avec `ref` = le SHA fusionné, puis vérification de `source-commit.txt` et du site servi.
+1. **Avant publication :** CI de la PR [#56](https://github.com/alexis97432/jeuiaflouze/pull/56) verte sur `94dcecd` (run 44407423534). PR fusionnée par son auteur (exception V7) en `9709ec7`.
+2. **Pages :** `pages.yml` lancé avec `ref` = `9709ec7183498ec6407ab0ab3e4ec755afe2df34`. Le site sert ce commit (vérifié à 22 h 28 UTC le 18 novembre).
+3. **Site en ligne :** 35 contrôles passent, dans Chromium avec un profil Pixel 7, depuis ce conteneur.
+   - **Nom et ressources :**
+     - `source-commit.txt` ;
+     - manifeste, icône, titres.
+   - **Boutique du jour :**
+     - 3 matières, 1 univers, 2 musiques ;
+     - heure locale du renouvellement ;
+     - prix dans les boutons.
+   - **Musique :**
+     - écoute lancée, puis arrêtée en quittant l'écran ;
+     - un seul contexte audio pour la musique, l'interface et la partie.
+   - **Collection :**
+     - 32 aperçus et 15 musiques ;
+     - Phénix et Royaume des nuées légendaires.
+   - **Passe :** 30 niveaux, premium non achetable.
+   - **Réglages :** audio séparé et diagnostic.
+   - **Partie :**
+     - partie réelle jusqu'au résultat ;
+     - lien de défi `?v=3`, ancien lien `?v=2` accepté ;
+     - partie avec Royaume des nuées et Phénix sans erreur.
+   - **Migration** d'une sauvegarde V5 vers la v5 du document, sans double récompense.
+   - **Divers :**
+     - 320 × 568 sans débordement ;
+     - toutes les ressources servies ;
+     - aucune erreur console.
+4. **Relevé final :** cet état est publié à son tour (PR de suivi), pour que le commit servi soit la tête de `claude/youthful-mayer-n4f7oy`.
 
 ## Reprise
 
-- Repartir de la tête de la branche V7 si elle existe sur `origin`, sinon de `claude/youthful-mayer-n4f7oy`.
-- Lire ce fichier, puis `docs/V7-DIRECTION.md` quand il existera.
+- **V7 terminée : publiée et vérifiée en ligne.** Aucune action en attente.
+- **Publications :** `9709ec7`, puis ce relevé final. Son SHA se lit dans `source-commit.txt`.
+- **Scripts de vérification** (scratchpad de session, à recréer si perdus) : fuzzeur du rendu, parties enchaînées instrumentées, contrôles en ligne `live-v7.cjs`.
