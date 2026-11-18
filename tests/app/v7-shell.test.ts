@@ -134,7 +134,7 @@ describe('V7 — boutique : sélection du jour', () => {
     const ids = (d: number) => dailySelection(d).map((o) => `shop-${o.id}`).sort();
     const shown = () => [...root.querySelectorAll('[data-testid^="shop-"]')].map((e) => e.getAttribute('data-testid')!).filter((id) => ids(day).includes(id) || ids(day + 1).includes(id)).sort();
     expect(shown()).toEqual(ids(day));
-    expect(byTestId('shop-renewal')!.textContent).toMatch(/Nouvelle sélection dans 12 h 00, à \d\d:\d\d \(heure de ton appareil, minuit UTC\)/);
+    expect(byTestId('shop-renewal')!.textContent).toMatch(/^Nouvelle sélection dans 12 h 00, à \d\d:\d\d \(heure de ton appareil\)\.$/);
     expect(byTestId('shop-section-music')).not.toBeNull();
   });
 

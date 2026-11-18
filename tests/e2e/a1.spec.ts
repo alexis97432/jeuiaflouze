@@ -353,7 +353,7 @@ test('E1 : XP, pièces et récompense de connexion conservées après rechargeme
   await expect(page.getByTestId('xp')).toHaveText(before.xp!);
   await expect(page.getByTestId('calendar')).toContainText('Déjà récupéré');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
-  expect(saved).toMatchObject({ version: 4, grants: ['v2-objectives-backfill'] });
+  expect(saved).toMatchObject({ version: 5, grants: ['v2-objectives-backfill'] });
 });
 
 test('E1 : deux onglets du même navigateur ne perdent ni gains ni réclamation', async ({ page, context }) => {
@@ -417,7 +417,7 @@ test('A4 : aperçus de collection dessinés par le moteur, apparence appliquée 
   await page.goto('/');
   await page.getByTestId('nav-collection').tap();
   const previews = page.locator('canvas.swatch.preview');
-  await expect(previews).toHaveCount(24); // 19 matières et 5 univers, tous dessinés par le moteur
+  await expect(previews).toHaveCount(32); // V7 : 23 matières et 9 univers, tous dessinés par le moteur
   const colorsPerPreview = await previews.evaluateAll((canvases) =>
     (canvases as HTMLCanvasElement[]).map((c) => {
       const { data } = c.getContext('2d')!.getImageData(0, 0, c.width, c.height);
@@ -460,7 +460,7 @@ test('boutique : pièces du jeu distinctes de l’argent réel, prix dans les bo
   await expect(firstBuy).toHaveText(/^Il manque \d+$/);
   await expect(firstBuy).toBeDisabled();
   await expect(page.getByTestId('shop-section-theme').locator('.rarity').first()).toHaveText(/^(Commun|Rare|Épique|Légendaire)$/);
-  await expect(page.getByTestId('shop-renewal')).toContainText('minuit UTC');
+  await expect(page.getByTestId('shop-renewal')).toContainText('heure de ton appareil');
   await noHorizontalOverflow(page);
 });
 
@@ -509,7 +509,7 @@ test('sauvegarde V2 publiée : migrée en v3 sans perte (XP, pièces, objectifs,
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
-  expect(saved).toMatchObject({ version: 4, completed: expect.arrayContaining(['floors-5']) });
+  expect(saved).toMatchObject({ version: 5, completed: expect.arrayContaining(['floors-5']) });
   expect(saved.xp).toBeGreaterThanOrEqual(140);
   expect(saved.coins).toBeGreaterThanOrEqual(37);
 });

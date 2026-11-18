@@ -303,10 +303,12 @@ test.describe('V2 (F3) : univers', () => {
 
 test.describe('V2 (F4) : apparences', () => {
   for (const skin of ['gomme', 'marbre', 'bonbon', 'verre', 'strie', 'ceramique',
-    'graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave', 'or', 'cristal']) {
+    'graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave', 'or', 'cristal',
+    // V6 et V7 : toutes les matières, nouveaux univers compris.
+    'bois', 'circuit', 'neon', 'aurore', 'abysse', 'papier', 'mosaique', 'vitrail', 'phenix']) {
     test(`${skin} : aucune matière ne déborde du bloc (trois univers, pixels réels)`, async ({ page }) => {
       await page.goto(URL);
-      for (const theme of ['confiserie', 'orbital', 'jardin']) {
+      for (const theme of ['confiserie', 'orbital', 'jardin', 'desert', 'nuees']) {
         const r = await page.evaluate(([t, s]) => (window as any).__flk.reliefExtent(t, s), [theme, skin]);
         expect(r.lo, `${theme}/${skin}`).toBeGreaterThanOrEqual(89);
         expect(r.hi, `${theme}/${skin}`).toBeLessThanOrEqual(240);
@@ -315,19 +317,19 @@ test.describe('V2 (F4) : apparences', () => {
     });
   }
 
-  test('V6 : 30 aperçus (5 univers × 6 apparences V2), tous différents ; false sans Canvas 2D', async ({ page }) => {
+  test('V7 : 54 aperçus (9 univers × 6 apparences V2), tous différents ; false sans Canvas 2D', async ({ page }) => {
     await page.goto(URL);
     const prints = await page.evaluate(() => (window as any).__flk.previewBoard());
-    expect(Object.keys(prints)).toHaveLength(30);
-    expect(new Set(Object.values(prints)).size).toBe(30);
+    expect(Object.keys(prints)).toHaveLength(54);
+    expect(new Set(Object.values(prints)).size).toBe(54);
     expect(await page.evaluate(() => (window as any).__flk.previewWithoutContext())).toBe(false);
   });
 
-  test('V6 : 95 aperçus (5 univers × 19 matières), tous différents', async ({ page }) => {
+  test('V7 : 207 aperçus (9 univers × 23 matières), tous différents', async ({ page }) => {
     await page.goto(URL);
     const prints = await page.evaluate(() => (window as any).__flk.previewBoard({ w: 120, h: 84 }, true));
-    expect(Object.keys(prints)).toHaveLength(95);
-    expect(new Set(Object.values(prints)).size).toBe(95);
+    expect(Object.keys(prints)).toHaveLength(207);
+    expect(new Set(Object.values(prints)).size).toBe(207);
   });
 
   test('appearance transmise au montage : le jeu applique univers et apparence', async ({ page }) => {

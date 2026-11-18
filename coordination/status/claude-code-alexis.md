@@ -1,5 +1,27 @@
 # Claude Code Alexis
 
+## V7 — stabilité, musique, boutique du jour (18 novembre 2026)
+
+- **Cadre :** exception de l'utilisateur ; Alexis seul, sans FLK ni Codex, fusion et publication par Alexis. Ce sont des **auto-vérifications**.
+- **Branche :** `agent/claude-code-alexis/v7-stabilite-musique-boutique`. Le suivi est dans `coordination/V7-ETAT.md`.
+- **Livré :**
+  - crash reproduit et corrigé (onde des légendaires) ;
+  - couches du rendu protégées ;
+  - caches bornés ;
+  - journal de diagnostic local ;
+  - 15 musiques originales procédurales ;
+  - réglages audio séparés ;
+  - sélection du jour à minuit UTC ;
+  - musiques en boutique ;
+  - 4 matières et 4 univers (un par rareté) ;
+  - sauvegarde v5.
+- **Bilan :** [`docs/V7.md`](../../docs/V7.md) et [`docs/MUSIQUE.md`](../../docs/MUSIQUE.md).
+- **Limites :**
+  - aucun téléphone physique ;
+  - aucune écoute humaine ;
+  - rotation calculée sur l'appareil (suit son horloge) ;
+  - équilibrage non joué.
+
 ## V6 — « Stack or Crash » (18 novembre 2026)
 
 - **Cadre :** exception de l'utilisateur ; Alexis seul, sans FLK ni revue externe, fusion et publication par Alexis. Ce sont des **auto-vérifications**.

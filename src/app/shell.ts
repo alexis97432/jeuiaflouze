@@ -1232,7 +1232,7 @@ export function createShell(options: ShellOptions): Shell {
 
   /** V7 : texte du renouvellement (compte à rebours et heure locale de minuit UTC). */
   const renewalText = (nowMs: number) =>
-    `Nouvelle sélection ${untilRotation(nowMs)}, à ${rotationLocalTime(nowMs)} (heure de ton appareil, minuit UTC).`;
+    `Nouvelle sélection ${untilRotation(nowMs)}, à ${rotationLocalTime(nowMs)} (heure de ton appareil).`;
   /** Jour de la sélection affichée (pour détecter le renouvellement pendant que l'écran est ouvert). */
   let shopDay = -1;
 
@@ -1263,7 +1263,7 @@ export function createShell(options: ShellOptions): Shell {
     daily.append(
       cardTitle(doc, 'refresh', 'Sélection du jour', 'shop-daily-title'),
       el(doc, 'p', { class: 'hint', 'data-testid': 'shop-renewal' }, renewalText(nowMs)),
-      el(doc, 'p', { class: 'hint small' }, 'La sélection change les offres, jamais tes objets : ce que tu possèdes reste dans ta collection.'),
+      el(doc, 'p', { class: 'hint small' }, 'Même sélection pour tout le monde, renouvelée chaque jour à la même heure. Elle change les offres, jamais tes objets : ce que tu possèdes reste dans ta collection.'),
     );
     parts.push(daily);
 
@@ -1397,7 +1397,7 @@ export function createShell(options: ShellOptions): Shell {
     if (pendingPurchase !== null) return;
     const open = checkOpenOffer({ kind: shopItem.kind, id: shopItem.id, day: offerDay }, today().getTime(), sellableCatalog());
     if (!open.ok) {
-      const notice: ShopNotice = { text: `L’offre ${item.name} a expiré au renouvellement de minuit (UTC). Rien n’a été débité.`, testId: 'shop-expired' };
+      const notice: ShopNotice = { text: `L’offre ${item.name} a expiré : la sélection du jour a changé à ${rotationLocalTime(today().getTime() - 60_000)} (heure de ton appareil). Rien n’a été débité.`, testId: 'shop-expired' };
       announce(notice.text);
       fx.sound('error');
       if (screen === 'shop') renderShop({ notice, focus: notice.testId });
