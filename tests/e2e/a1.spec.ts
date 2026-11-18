@@ -454,10 +454,13 @@ test('boutique : pièces du jeu distinctes de l’argent réel, prix dans les bo
   await expect(page.getByRole('heading', { name: 'Boutique' })).toBeFocused();
   await expect(page.getByTestId('wallet')).toContainText('0 pièce du jeu');
   await expect(page.getByTestId('wallet')).toContainText('ne s’achètent pas avec de l’argent réel');
-  // Sans pièces : chaque bouton dit ce qui manque et ne peut pas être appuyé.
-  await expect(page.getByTestId('buy-nacre')).toHaveText('Il manque 120');
-  await expect(page.getByTestId('buy-nacre')).toBeDisabled();
-  await expect(page.getByTestId('shop-recif').locator('.rarity')).toHaveText('Épique');
+  // Sans pièces : chaque bouton dit ce qui manque et ne peut pas être appuyé. V7 : les offres
+  // changent chaque jour (sélection du jour), on vérifie donc celles qui sont affichées.
+  const firstBuy = page.locator('[data-testid^="buy-"]:not([data-testid="buy-life"])').first();
+  await expect(firstBuy).toHaveText(/^Il manque \d+$/);
+  await expect(firstBuy).toBeDisabled();
+  await expect(page.getByTestId('shop-section-theme').locator('.rarity').first()).toHaveText(/^(Commun|Rare|Épique|Légendaire)$/);
+  await expect(page.getByTestId('shop-renewal')).toContainText('minuit UTC');
   await noHorizontalOverflow(page);
 });
 

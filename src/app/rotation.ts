@@ -129,11 +129,11 @@ export function checkOpenOffer(offer: { kind: CosmeticKind; id: string; day: num
 
 /** « dans 5 h 12 » / « dans 8 min » jusqu'au prochain renouvellement. */
 export function untilRotation(nowMs: number): string {
-  const left = Math.max(0, nextRotationAt(nowMs) - nowMs);
-  const h = Math.floor(left / 3_600_000);
-  const m = Math.max(1, Math.ceil((left % 3_600_000) / 60_000));
-  if (h === 0) return `dans ${m === 60 ? '1 h' : `${m} min`}`;
-  return m === 60 ? `dans ${h + 1} h` : `dans ${h} h ${String(m).padStart(2, '0')}`;
+  const minutes = Math.ceil(Math.max(0, nextRotationAt(nowMs) - nowMs) / 60_000);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `dans ${Math.max(1, m)} min`;
+  return `dans ${h} h ${String(m).padStart(2, '0')}`;
 }
 
 /** Heure locale du renouvellement (« 01:00 »), selon le fuseau de l'appareil. */

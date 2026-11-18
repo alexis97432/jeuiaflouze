@@ -44,7 +44,11 @@ export function composeSection(track: TrackDef, index: number): SectionScore {
   const add = (part: Exclude<Part, 'drums'>, t: number, d: number, m: number, v: number) => {
     const inst = track.voices[part];
     if (!inst || t >= duration) return;
-    notes.push({ t, d: Math.max(0.03, Math.min(d, duration + 2 - t)), m, v, inst, part });
+    // Registre borné : au-dessus du do 7 (96), on redescend d'une octave (pas de sons perçants,
+    // pas de repliement à 22 kHz).
+    let note = m;
+    while (note > 96) note -= 12;
+    notes.push({ t, d: Math.max(0.03, Math.min(d, duration + 2 - t)), m: note, v, inst, part });
   };
 
   // — Nappe : accords tenus, conduite des voix —
@@ -158,7 +162,7 @@ export function composeSection(track: TrackDef, index: number): SectionScore {
           case 'broken8': m = tones[[0, 2, 1, 2, 0, 3, 1, 2][k % 8]!]!; break;
           case 'pulse16': m = tones[[0, 0, 3, 0, 1, 0, 3, 2][k % 8]!]!; len = stepLen * 0.6; v = k % 4 === 0 ? 0.6 : 0.42; break;
           case 'sparkle':
-            m = random() < 0.42 + energy * 0.25 ? tones[Math.floor(random() * tones.length)]! + 12 : null;
+            m = random() < 0.42 + energy * 0.25 ? tones[Math.floor(random() * tones.length)]! : null;
             len = stepLen * 3;
             v = 0.4;
             break;

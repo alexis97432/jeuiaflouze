@@ -27,9 +27,9 @@ Point de reprise si la session s'interrompt. Mis à jour à chaque étape.
 | # | Étape | État |
 |---|---|---|
 | V7-0 | Branche, état de reprise, direction | fait |
-| V7-1 | Crashs : reproduction, corrections, diagnostic | corrections moteur faites (`738c6eb`) ; journal à brancher dans le shell |
-| V7-2 | Musique procédurale originale, réglages audio | à faire |
-| V7-3 | Boutique tournante, musiques en boutique, migration | à faire |
+| V7-1 | Crashs : reproduction, corrections, diagnostic | fait : corrections moteur (`738c6eb`), journal branché (Réglages → Diagnostic) |
+| V7-2 | Musique procédurale originale, réglages audio | fait : 15 pistes, lecteur, centrale audio, réglages ; pistes des 4 nouveaux univers écrites, branchées en V7-4 |
+| V7-3 | Boutique tournante, musiques en boutique, migration | fait : sélection du jour, musiques achetables, sauvegarde v5, tests `tests/app/v7-*.test.ts` |
 | V7-4 | Nouvelles matières et nouveaux univers | à faire |
 | V7-5 | Vérifications, publication, bilan | à faire |
 
@@ -48,6 +48,16 @@ Outils : fuzzeur du rendu (parties simulées, tailles et densités extrêmes, bl
    - budgets en pixels ;
    - libération en fin de partie et en arrière-plan.
 4. **Rien d'anormal** sur ces points : écouteurs, boucles d'animation et tas JS stables d'une partie à l'autre. Un contexte audio était créé par partie puis fermé ; la centrale audio unique de la V7 le remplace.
+
+## Prochaines étapes
+
+1. V7-4 : 4 matières (Papier, Mosaïque, Vitrail, Phénix) et 4 univers (Désert, Montagne, Fête foraine, Royaume des nuées), une de chaque rareté. Chaque univers reçoit sa musique (mirage, cimes, manege, nuees, déjà écrites dans `src/app/music/tracks.ts`). Puis mise à jour des pools de rotation et des tests de catalogue.
+2. V7-5 :
+   - e2e ;
+   - stress multi-parties ;
+   - captures ;
+   - docs `docs/V7.md` et `docs/MUSIQUE.md` ;
+   - PR, CI, fusion, Pages et vérification en ligne.
 
 ## Reprise
 
