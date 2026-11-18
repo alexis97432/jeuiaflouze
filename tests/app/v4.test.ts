@@ -357,8 +357,8 @@ describe('V4 — bouton retour du téléphone', () => {
     expect(history.calls).toEqual(['push']);
     await phoneBack();
     expect(s.screen).toBe('home');
-    button('Récompenses').click();
-    button('Retour').click(); // bouton de l'écran : le shell retire lui-même son entrée
+    button('Passe').click(); button('Missions et cadeau').click();
+    button('Jouer').click(); // onglet Jouer : le shell retire lui-même son entrée
     await flush();
     expect(s.screen).toBe('home');
     expect(history.calls).toEqual(['push', 'push', 'back']);
@@ -439,9 +439,9 @@ describe('V4 — fenêtres accessibles', () => {
     storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 500, grants: ['v2-objectives-backfill'] }));
     const { button, byTestId } = setup({ meta: createMetaStore(storage) });
     button('Boutique').click();
-    button('Acheter 1 vie').click();
+    button('Acheter · 30').click();
     expect(byTestId('confirm')).not.toBeNull();
-    button('Non').click();
+    button('Annuler').click();
     await flush();
     expect(byTestId('confirm')).toBeNull();
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 500 });

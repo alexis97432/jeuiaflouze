@@ -157,6 +157,8 @@ export const PROGRESS_LOCK = 'poc:meta:v1:progress';
 
 export type Shell = {
   readonly screen: Screen;
+  /** Inspection (tests) : aperçus vivants suivis et boucle d'animation active. */
+  readonly previews: { watched: number; running: boolean };
   destroy(): void;
 };
 
@@ -418,8 +420,6 @@ export function createShell(options: ShellOptions): Shell {
     clearTimeout(guardTimer);
     delete view.dataset.inputReady;
     view.classList.toggle('entering', changed);
-    // Les aperçus de l'écran précédent sont oubliés : rien ne continue de tourner.
-    animator.clear();
     const tab = (TAB_SCREENS as readonly string[]).includes(next) ? (next as TabScreen) : null;
     if (tab) lastTab = tab;
     const content = children.filter((c): c is HTMLElement => c !== null);
@@ -432,6 +432,8 @@ export function createShell(options: ShellOptions): Shell {
       view.replaceChildren(...content);
     }
     view.dataset.tabs = tab ? 'true' : 'false';
+    // Les aperçus de l'écran précédent sont oubliés : rien ne continue de tourner.
+    animator.prune();
     // Nouvel écran : on repart du haut (pas la position de défilement de l'écran précédent).
     if (changed) {
       try {
@@ -952,7 +954,7 @@ export function createShell(options: ShellOptions): Shell {
 
   /** Fenêtre de confirmation d'achat : rien n'est débité avant la confirmation. */
   const confirmPurchase = (opts: { title: string; name: string; price: number; art?: HTMLElement; extra?: HTMLElement[]; onYes: () => void; yesTestId: string; noTestId: string }) => {
-    const yes = uiButton(doc, { label: `Acheter · ${opts.price}`, variant: 'primary', block: true, testId: opts.yesTestId, ariaLabel: `Confirmer l’achat de ${opts.name} pour ${opts.price} pièces du jeu`, onClick: () => { closeSheet(); opts.onYes(); } });
+    const yes = uiButton(doc, { label: `Oui, acheter · ${opts.price}`, variant: 'primary', block: true, testId: opts.yesTestId, ariaLabel: `Confirmer l’achat de ${opts.name} pour ${opts.price} pièces du jeu`, onClick: () => { closeSheet(); opts.onYes(); } });
     yes.append(icon(doc, 'coin'));
     const no = uiButton(doc, { label: 'Annuler', variant: 'ghost', block: true, testId: opts.noTestId, onClick: () => closeSheet() });
     const body: HTMLElement[] = [];
@@ -2257,6 +2259,9 @@ export function createShell(options: ShellOptions): Shell {
   return {
     get screen() {
       return screen;
+    },
+    get previews() {
+      return animator.stats;
     },
     destroy() {
       destroyed = true;

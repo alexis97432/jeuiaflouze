@@ -10,8 +10,10 @@ const catalog: ShopItem[] = [
 const rich = (coins: number): ProgressDoc => ({ ...INITIAL_DOC, coins });
 
 describe('catalogue', () => {
-  it('prix C4/C5 et aucune apparence d’objectif à vendre', () => {
-    expect(COIN_SHOP.map((i) => [i.id, i.price])).toEqual([['graphite', 60], ['nacre', 120], ['holographique', 240]]);
+  it('prix fixés (V5 inchangés, V6 par rareté), univers Récif, aucune apparence d’objectif à vendre', () => {
+    expect(COIN_SHOP.map((i) => [i.id, i.kind, i.price])).toEqual([
+      ['graphite', 'skin', 60], ['bois', 'skin', 60], ['nacre', 'skin', 120], ['circuit', 'skin', 280], ['holographique', 'skin', 240], ['recif', 'theme', 320],
+    ]);
     const objectiveSkins = ['marbre', 'bonbon', 'verre', 'strie', 'ceramique'];
     expect(COIN_SHOP.some((i) => objectiveSkins.includes(i.id))).toBe(false);
   });

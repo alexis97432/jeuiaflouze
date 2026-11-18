@@ -12,8 +12,10 @@ export type PreviewDraw = (time: number | undefined) => void;
 export type PreviewAnimator = {
   /** Dessine tout de suite (image fixe), puis anime si permis. */
   watch(canvas: HTMLCanvasElement, draw: PreviewDraw): void;
-  /** Oublie tous les aperçus (changement d'écran). */
+  /** Oublie tous les aperçus. */
   clear(): void;
+  /** Oublie les aperçus retirés de la page (changement d'écran, fenêtre fermée). */
+  prune(): void;
   /** Réévalue l'autorisation d'animer (réglages changés). */
   refresh(): void;
   destroy(): void;
@@ -38,7 +40,7 @@ export function createPreviewAnimator(win: (Window & typeof globalThis) | null, 
     })
     : null;
 
-  const canRun = () => !destroyed && !!win && allowed() && doc?.visibilityState !== 'hidden' && entries.size > 0;
+  const canRun = () => !destroyed && typeof win?.requestAnimationFrame === 'function' && allowed() && doc?.visibilityState !== 'hidden' && entries.size > 0;
 
   const frame = (now: number) => {
     raf = null;
@@ -92,6 +94,14 @@ export function createPreviewAnimator(win: (Window & typeof globalThis) | null, 
       for (const e of entries.values()) observer?.unobserve(e.canvas);
       entries.clear();
       stop();
+    },
+    prune() {
+      for (const e of [...entries.values()]) {
+        if (e.canvas.isConnected) continue;
+        observer?.unobserve(e.canvas);
+        entries.delete(e.canvas);
+      }
+      if (entries.size === 0) stop();
     },
     refresh() {
       if (canRun()) schedule();

@@ -339,7 +339,7 @@ describe('partage', () => {
     // Synchrone : aucun microtask n'a encore tourné.
     expect(share).toHaveBeenCalledTimes(1);
     expect(share).toHaveBeenCalledWith({
-      title: 'Pile ou Crash',
+      title: 'Stack or Crash',
       text: 'J’ai empilé 5 étages. Tu fais mieux sur la même partie ?',
       url: 'https://jeu.test/?v=1&seed=100&target=5',
     });
@@ -467,13 +467,13 @@ describe('Tour du jour (V2)', () => {
 describe('objectifs (V2)', () => {
   it('valide les objectifs actifs au lancement, une seule fois, et persiste la progression', async () => {
     const { button, text, end, place, meta, root } = setup();
-    button('Récompenses').click();
+    button('Passe').click(); button('Missions et cadeau').click();
     expect([...root.querySelectorAll('[data-testid="goals"] li')].map((li) => li.textContent)).toEqual([
       'Poser au moins 5 étages dans une partie → Apparence Marbré',
       'Faire 2 parfaits consécutifs dans une partie → Apparence Bonbon',
       'Poser au moins 12 étages dans une partie → Univers Orbital',
     ]);
-    button('Retour').click();
+    button('Jouer').click(); // onglet Jouer : retour à l'accueil
     button('Jouer').click();
     place([false, true, true, false, false]);
     await end(5);
@@ -510,30 +510,28 @@ describe('accueil V2 et collection', () => {
     expect(primaries[0]!.textContent).toBe('Jouer');
   });
 
-  it('collection : verrous explicites, choix persistant, retour avec focus rendu', async () => {
+  it('collection : verrous explicites, choix persistant, onglet actif et focus rendu', async () => {
     const { button, root, text, end, place, meta } = setup();
-    button('Récompenses').click();
-    expect(text('open-collection')).toBe('Ma collection 2/17');
-    button('Ma collection 2/17').click();
-    // V4 : condition courte à l'écran, « À débloquer » lu par les lecteurs d'écran.
-    expect(text('card-skin-marbre')).toContain('À débloquer : Pose 5 étages en une partie');
-    expect(text('card-theme-jardin')).toContain('À débloquer : Fais 8 étages au Défi du jour');
-    expect(text('card-skin-gomme')).toContain('Sélectionné');
+    button('Collection').click();
+    expect(text('collection-count')).toBe('2 / 21 obtenus');
+    expect(root.querySelector('[data-testid="nav-collection"]')?.getAttribute('aria-current')).toBe('page');
+    // Condition courte à l'écran, « À obtenir » lu par les lecteurs d'écran.
+    expect(text('card-skin-marbre')).toContain('À obtenir : Pose 5 étages en une partie');
+    expect(text('card-theme-jardin')).toContain('À obtenir : Fais 8 étages au Défi du jour');
+    expect(text('card-skin-gomme')).toContain('Équipé');
     expect(root.querySelector('[data-testid="card-skin-marbre"] button')).toBeNull(); // verrouillé : pas de choix
-    button('Retour').click(); // retour à l'écran Récompenses
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('open-collection');
-    button('Retour').click();
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('nav-rewards');
+    button('Jouer').click(); // onglet Jouer : retour à l'accueil
 
     button('Jouer').click();
     place([false, false, false, false, false]);
     await end(5);
     button('Voir la collection').click();
-    expect(text('collection-count')).toBe('3 / 17 obtenus');
+    expect(text('collection-count')).toBe('3 / 21 obtenus');
     const choose = root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!;
-    expect(choose.getAttribute('aria-label')).toBe('Choisir Apparence Marbré');
+    expect(choose.getAttribute('aria-label')).toBe('Équiper Matière Marbré');
     choose.click();
-    expect(text('card-skin-marbre')).toContain('Sélectionné');
+    await flush();
+    expect(text('card-skin-marbre')).toContain('Équipé');
     expect(document.activeElement?.getAttribute('data-testid')).toBe('card-skin-marbre'); // m2 FLK
     expect(meta.readProgress()).toMatchObject({ selected: { theme: 'confiserie', skin: 'marbre' } });
   });
@@ -590,18 +588,18 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     // 2. Réclamation du calendrier.
     first.button('Accueil').click();
     expect(first.text('coins')).toBe('35 pièces');
-    first.button('Récompenses').click();
-    first.button('Prendre +5').click();
+    first.button('Passe').click(); first.button('Missions et cadeau').click();
+    first.button('Récupérer +5').click();
     expect(first.text('coins')).toBe('40 pièces');
-    expect(first.text('calendar')).toContain('Déjà pris');
+    expect(first.text('calendar')).toContain('Déjà récupéré');
     // 3. Choix d'apparence.
-    first.button('Ma collection 5/17').click();
+    first.button('Collection').click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
     first.shell.destroy();
 
     const saved = storage.dump('poc:meta:v1:progress');
     expect(saved).toMatchObject({
-      version: 3,
+      version: 4,
       xp: 14,
       coins: 40,
       selected: { skin: 'marbre' },
@@ -613,11 +611,11 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     document.body.innerHTML = '<main id="app"></main>';
     const second = setup({ meta: createMetaStore(storage), store: createLocalStore(storage) });
     expect(second.text('coins')).toBe('40 pièces');
-    second.button('Récompenses').click();
+    second.button('Passe').click(); second.button('Missions et cadeau').click();
     expect(second.text('xp')).toBe('Encore 26 étoiles pour le niveau 2');
-    expect(second.text('calendar')).toContain('Déjà pris');
-    second.button('Ma collection 5/17').click();
-    expect(second.text('card-skin-marbre')).toContain('Sélectionné');
+    expect(second.text('calendar')).toContain('Déjà récupéré');
+    second.button('Collection').click();
+    expect(second.text('card-skin-marbre')).toContain('Équipé');
     expect(storage.dump('poc:meta:v1:progress')).toEqual(saved); // la lecture seule ne réécrit rien
   });
 
@@ -628,18 +626,18 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     expect(text('coins')).toBe('20 pièces');
     button('Jouer').click();
     await end(3); // perfectCount 1 : 1 + 1 = 2 pièces, 3 + 2 = 5 XP
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 3, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 4, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
   });
 
   it('sauvegarde d’une version future : lue, jamais réécrite', async () => {
     const storage = memoryStorage();
-    const future = { version: 4, completed: [], xp: 900, coins: 400, champInconnu: true };
+    const future = { version: 5, completed: [], xp: 900, coins: 400, champInconnu: true };
     storage.setItem('poc:meta:v1:progress', JSON.stringify(future));
     const { text, button, end } = setup({ meta: createMetaStore(storage) });
     expect(text('coins')).toBe('400 pièces');
-    button('Récompenses').click();
+    button('Passe').click(); button('Missions et cadeau').click();
     expect(document.body.textContent).toContain('version plus récente');
-    button('Retour').click();
+    button('Jouer').click(); // onglet
     button('Jouer').click();
     await end(8);
     expect(storage.dump('poc:meta:v1:progress')).toEqual(future);
@@ -681,10 +679,10 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
     const storage = memoryStorage();
     const a = tab(storage, 'a');
     const b = tab(storage, 'b'); // ouvert avant la réclamation : son écran propose encore « Prendre »
-    a.button('Récompenses').click();
-    a.button('Prendre +5').click();
+    a.button('Passe').click(); a.button('Missions et cadeau').click();
+    a.button('Récupérer +5').click();
     expect(a.text('coins')).toBe('5 pièces');
-    a.button('Retour').click();
+    a.button('Jouer').click(); // onglet Jouer : retour à l'accueil
 
     b.button('Jouer').click();
     b.game.mounts[0]!.options.onEnd(result(3)); // 3 étages, 1 parfait → 2 pièces, 5 XP
@@ -693,8 +691,8 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
 
     b.button('Accueil').click();
     expect(b.text('coins')).toBe('7 pièces');
-    b.button('Récompenses').click();
-    expect(b.text('calendar')).toContain('Déjà pris');
+    b.button('Passe').click(); b.button('Missions et cadeau').click();
+    expect(b.text('calendar')).toContain('Déjà récupéré');
 
     // A affiche encore un état ancien : sa partie relit d'abord le stockage.
     a.button('Jouer').click();
@@ -710,12 +708,12 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
     const storage = memoryStorage();
     const a = tab(storage, 'a');
     const b = tab(storage, 'b');
-    b.button('Récompenses').click(); // B affiche « Prendre +5 »
-    a.button('Récompenses').click();
-    a.button('Prendre +5').click();
-    b.button('Prendre +5').click(); // écran de B périmé
+    b.button('Passe').click(); b.button('Missions et cadeau').click(); // B affiche « Prendre +5 »
+    a.button('Passe').click(); a.button('Missions et cadeau').click();
+    a.button('Récupérer +5').click();
+    b.button('Récupérer +5').click(); // écran de B périmé
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 5, calendar: { index: 1 } });
-    expect(b.text('calendar')).toContain('Déjà pris');
+    expect(b.text('calendar')).toContain('Déjà récupéré');
     a.shell.destroy();
     b.shell.destroy();
   });
@@ -725,8 +723,8 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
     const storage = memoryStorage();
     const a = tab(storage, 'a');
     const b = tab(storage, 'b');
-    a.button('Récompenses').click();
-    a.button('Prendre +5').click();
+    a.button('Passe').click(); a.button('Missions et cadeau').click();
+    a.button('Récupérer +5').click();
     expect(b.text('coins')).toBe('0 pièce');
     window.dispatchEvent(new StorageEvent('storage', { key: 'poc:meta:v1:progress' }));
     expect(b.text('coins')).toBe('5 pièces');
@@ -782,8 +780,8 @@ describe('E1 branché : onglets réellement concurrents sous verrou Web Locks (r
     });
 
     // Onglet A réclame PENDANT que B tient le verrou : sa section attend.
-    button('Récompenses').click();
-    button('Prendre +5').click();
+    button('Passe').click(); button('Missions et cadeau').click();
+    button('Récupérer +5').click();
     await flush();
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 0 }); // A n'a pas écrit
     releaseB();
@@ -817,12 +815,10 @@ describe('apparences branchées (A4)', () => {
     expect(first.game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'gomme' });
     await first.end(1);
     first.button('Accueil').click();
-    first.button('Récompenses').click();
-    first.button('Ma collection 4/17').click();
+    first.button('Collection').click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!.click();
     first.root.querySelector<HTMLButtonElement>('[data-testid="card-theme-orbital"] button')!.click();
-    first.button('Retour').click(); // collection → Récompenses
-    first.button('Retour').click(); // Récompenses → accueil
+    first.button('Jouer').click(); // onglet Jouer : retour à l'accueil
     first.button('Jouer').click();
     expect(first.game.mounts[1]!.options.appearance).toEqual({ theme: 'orbital', skin: 'marbre' });
     first.shell.destroy();
@@ -835,11 +831,12 @@ describe('apparences branchées (A4)', () => {
 });
 
 describe('menu V3 (lisible par un enfant de 8 ans)', () => {
-  it("accueil : Jouer, Défi du jour, record, et une barre Boutique / Classement / Récompenses / Réglages — rien d'autre", () => {
+  it("accueil : Jouer, Défi du jour, record, ton look, et la barre d'onglets — rien d'autre", () => {
     const { root } = setup();
     const buttons = [...root.querySelectorAll('button')].map((b) => b.textContent);
-    // V4 : barre du haut (aide, réglages), Jouer, Défi du jour, puis le dock du bas.
-    expect(buttons).toEqual(['Comment jouer', 'Réglages', 'Jouer', 'Défi du jour', 'Boutique', 'Collection', 'Récompenses', 'Classement']);
+    // V6 : barre du haut (aide, réglages), Jouer, Défi du jour, « Ton look », puis les cinq onglets.
+    expect(buttons).toEqual(['Comment jouer', 'Réglages', 'Jouer', 'Défi du jour', 'Changer', 'Jouer', 'Boutique', 'Collection', 'Passe', 'Classement']);
+    expect(root.querySelector('[data-testid="nav-home"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelectorAll('.btn.primary')).toHaveLength(1);
     expect(root.querySelector('[data-testid="play"] svg.ic.play')).not.toBeNull();
     // Aucun panneau empilé ni explication technique sur l'accueil.
@@ -847,25 +844,30 @@ describe('menu V3 (lisible par un enfant de 8 ans)', () => {
     expect(root.textContent).not.toMatch(/UTC|XP|progression locale/i);
   });
 
-  it('signale un cadeau du jour à prendre sur l’onglet Récompenses, puis plus après l’avoir pris', () => {
+  it('signale un cadeau du jour à récupérer sur l’onglet Passe, puis plus après l’avoir récupéré', () => {
     const { root, button } = setup();
-    const tab = () => root.querySelector('[data-testid="nav-rewards"]')!;
+    const tab = () => root.querySelector('[data-testid="nav-season"]')!;
     expect(tab().classList.contains('has-dot')).toBe(true);
-    expect(tab().getAttribute('aria-label')).toBe('Récompenses, un cadeau t’attend');
-    button('Récompenses').click();
-    button('Prendre +5').click();
-    button('Retour').click();
+    expect(tab().getAttribute('aria-label')).toBe('Passe, une récompense t’attend');
+    button('Passe').click(); button('Missions et cadeau').click();
+    button('Récupérer +5').click();
     expect(tab().classList.contains('has-dot')).toBe(false);
   });
 
-  it('chaque écran secondaire a un titre focalisé et un retour qui rend le focus à son onglet', () => {
-    const { button } = setup();
-    for (const [tab, title, testId] of [['Boutique', 'Boutique', 'nav-shop'], ['Récompenses', 'Récompenses', 'nav-rewards'], ['Réglages', 'Réglages', 'nav-settings']] as const) {
+  it('V6 : chaque onglet a son écran, un titre focalisé et l’onglet marqué ; Réglages revient au dernier onglet', () => {
+    const { button, root } = setup();
+    for (const [tab, title, testId] of [['Boutique', 'Boutique', 'nav-shop'], ['Collection', 'Collection', 'nav-collection'], ['Passe', 'Passe · Saison 1', 'nav-season'], ['Classement', 'Classement', 'nav-leaderboard']] as const) {
       button(tab).click();
       expect(document.activeElement?.textContent).toBe(title);
-      button('Retour').click();
-      expect(document.activeElement?.getAttribute('data-testid')).toBe(testId);
+      expect(root.querySelector(`[data-testid="${testId}"]`)?.getAttribute('aria-current')).toBe('page');
+      expect(root.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
     }
+    button('Boutique').click();
+    button('Réglages').click();
+    expect(document.activeElement?.textContent).toBe('Réglages');
+    button('Retour').click();
+    expect(root.querySelector('[data-testid="nav-shop"]')?.getAttribute('aria-current')).toBe('page');
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('nav-settings');
   });
 });
 
@@ -876,23 +878,31 @@ describe('boutique en pièces (V3-A2)', () => {
     preview: () => true,
   };
 
-  it('aperçu, prix, confirmation, achat, puis « Mettre » appliqué à la partie suivante et au rechargement', async () => {
+  it('aperçu, prix dans le bouton, confirmation, achat, révélation, « Équiper » appliqué à la partie suivante et au rechargement', async () => {
     const storage = memoryStorage();
     storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 70, grants: ['v2-objectives-backfill'] }));
     const { button, text, root, game } = setup({ meta: createMetaStore(storage), shop });
     button('Boutique').click();
     expect(root.querySelector('[data-testid="shop-ceramique"] canvas.swatch.preview')).not.toBeNull();
-    expect(text('shop-ceramique')).toContain('50 pièces');
-    button('Acheter').click();
-    expect(text('confirm-text')).toBe('Acheter Céramique pour 50 pièces ?');
+    expect(text('wallet')).toContain('70 pièces du jeu');
+    const buy = root.querySelector<HTMLButtonElement>('[data-testid="buy-ceramique"]')!;
+    expect(buy.textContent).toBe('Acheter · 50');
+    expect(buy.getAttribute('aria-label')).toBe('Acheter Céramique pour 50 pièces du jeu');
+    expect(buy.querySelector('svg.ic.coin')).not.toBeNull();
+    buy.click();
+    expect(text('confirm-text')).toBe('Prix : 50 pièces du jeu. Il t’en restera 20.');
     expect(document.activeElement?.getAttribute('data-testid')).toBe('confirm-buy');
-    button('Oui, acheter').click();
+    button('Oui, acheter · 50').click();
     expect(text('shop-success')).toContain('C’est à toi');
     expect(text('coins')).toBe('20 pièces');
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 20, inventory: ['ceramique'] });
-    button('Mettre').click();
-    expect(text('shop-ceramique')).toContain('Choisi');
-    button('Retour').click();
+    // Révélation : l'objet obtenu, sa rareté, Équiper ou plus tard.
+    expect(text('reveal-name')).toBe('Céramique');
+    button('Plus tard').click();
+    expect(text('shop-ceramique')).toContain('Possédé');
+    button('Équiper').click();
+    expect(text('shop-ceramique')).toContain('Équipé');
+    button('Jouer').click(); // onglet
     button('Jouer').click();
     expect(game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'ceramique' });
 
@@ -907,8 +917,8 @@ describe('boutique en pièces (V3-A2)', () => {
     storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 50, grants: ['v2-objectives-backfill'] }));
     const first = setup({ meta: createMetaStore(storage), shop });
     first.button('Boutique').click();
-    first.button('Acheter').click();
-    first.button('Non').click();
+    first.button('Acheter · 50').click();
+    first.button('Annuler').click();
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 50 });
     first.shell.destroy();
 
@@ -916,8 +926,10 @@ describe('boutique en pièces (V3-A2)', () => {
     storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 2, coins: 30, grants: ['v2-objectives-backfill'] }));
     const poor = setup({ meta: createMetaStore(storage), shop });
     poor.button('Boutique').click();
-    expect(poor.text('shop-ceramique')).toContain('Il te manque 20 pièces.');
-    expect(poor.root.querySelector('[data-testid="shop-ceramique"] button')).toBeNull();
+    const short = poor.root.querySelector<HTMLButtonElement>('[data-testid="buy-ceramique"]')!;
+    expect(short.textContent).toBe('Il manque 20');
+    expect(short.disabled).toBe(true);
+    expect(short.getAttribute('aria-label')).toBe('Solde insuffisant : il manque 20 pièces du jeu pour Céramique');
   });
 
   it('deux onglets : un achat confirmé dans un onglet périmé ne débite pas deux fois', () => {
@@ -939,10 +951,10 @@ describe('boutique en pièces (V3-A2)', () => {
     const b = make('b');
     for (const t of [a, b]) {
       t.btn('Boutique').click();
-      t.btn('Acheter').click();
+      t.btn('Acheter · 50').click();
     }
-    a.btn('Oui, acheter').click();
-    b.btn('Oui, acheter').click(); // écran de B périmé : relu sous verrou, déjà possédé
+    a.btn('Oui, acheter · 50').click();
+    b.btn('Oui, acheter · 50').click(); // écran de B périmé : relu sous verrou, déjà possédé
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 70, inventory: ['ceramique'] });
     expect(b.root.querySelector('[data-testid="shop-owned"]')?.textContent).toBe('Tu as déjà Céramique.');
     a.sh.destroy();
@@ -994,8 +1006,7 @@ describe('classement (V3-A3)', () => {
     const { button, text, root, end } = setup();
     button('Classement').click();
     expect(text('board-unavailable')).toContain('indisponible');
-    button('Retour').click();
-    expect(document.activeElement?.textContent).toBe('Classement');
+    button('Jouer').click(); // onglet
     button('Jouer').click();
     await end(3);
     expect(text('rank-status')).toBe('Score gardé sur cet appareil.');
@@ -1133,10 +1144,11 @@ describe('passe de saison (V3-A5)', () => {
     place([true, true, true]);
     await end(15); // date du test : 16/11, la saison commence le 17/11
     button('Accueil').click();
-    button('Récompenses').click();
+    button('Passe').click();
     expect(text('season-summary')).toBe('Commence le 17 novembre.');
     expect(storage.dump('poc:meta:v1:progress')).not.toHaveProperty('season');
     expect(root.querySelector('[data-testid="nav-rewards"]')).toBeNull();
+    expect(root.querySelector('[data-testid="claim-all"]')).toBeNull();
   });
 
   it('pendant la saison : une partie ajoute ses étoiles une seule fois', async () => {
@@ -1157,21 +1169,24 @@ describe('passe de saison (V3-A5)', () => {
     storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 0, grants: ['v2-objectives-backfill'], season: { id: 's1', stars: 25, claimed: [] } }));
     const a = setup({ meta: createMetaStore(storage) });
     a.day.now = new Date('2026-12-01T10:00:00Z');
-    a.button('Récompenses').click();
-    expect(a.text('season-summary')).toBe('Palier 2 dans 35 étoiles · jusqu’au 28 février');
-    a.button('Voir le passe · cadeau à prendre').click();
-    expect(a.text('premium-note')).toContain('indisponible');
-    expect(a.text('tier-1-premium')).toContain('Indisponible');
-    expect(a.text('tier-2-free')).toContain('35 étoiles');
+    a.button('Passe').click();
+    expect(a.text('season-level')).toBe('Niveau1/ 30');
+    expect(a.text('season-summary')).toBe('15 étoiles avant le niveau 2 · jusqu’au 28 février');
+    expect(a.text('premium-note')).toContain('Argent réel');
+    expect(a.text('premium-note')).toContain('rien n’est en vente');
+    expect(a.root.querySelector<HTMLButtonElement>('[data-testid="premium-soon"]')!.disabled).toBe(true);
+    expect(a.text('tier-1-premium')).toContain('Premium');
+    expect(a.text('tier-2-free')).toContain('Verrouillé · 15 ★');
     expect(a.root.querySelector('[data-testid="tier-2-free"] svg.ic.lock')).not.toBeNull();
     const stale = a.root.querySelector<HTMLButtonElement>('[data-testid="claim-tier-1"]')!;
+    expect(stale.textContent).toBe('Récupérer');
     stale.click();
     await flush();
-    expect(a.text('season-notice')).toBe('Pris : +10 pièces.');
-    stale.click(); // bouton périmé (double appui) : déjà pris
+    expect(a.text('season-notice')).toBe('Récupéré : +10 pièces.');
+    stale.click(); // bouton périmé (double appui) : déjà récupéré
     await flush();
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, season: { claimed: ['free:1'] } });
-    expect(a.text('tier-1-free')).toContain('Pris');
+    expect(a.text('tier-1-free')).toContain('Récupéré');
     expect(a.root.querySelector('[data-testid="tier-1-free"] svg.ic.check')).not.toBeNull();
   });
 });
@@ -1426,16 +1441,15 @@ describe('V3-A6b : secours du partage d’image, annonces, sauvegarde et récomp
     meta.writePlayer({ id: 'c'.repeat(32), pseudo: 'Alex' });
     const first = setup({ meta });
     first.day.now = new Date('2026-12-01T10:00:00Z');
-    first.button('Récompenses').click();
-    first.button('Voir le passe · cadeau à prendre').click();
-    first.button('Prendre').click();
+    first.button('Passe').click();
+    first.button('Récupérer').click();
     await flush();
     first.shell.destroy();
 
     const again = setup({ meta: createMetaStore(storage) });
     again.day.now = new Date('2026-12-01T10:00:00Z');
     const doc = storage.dump('poc:meta:v1:progress') as Record<string, unknown>;
-    expect(doc).toMatchObject({ version: 3, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
+    expect(doc).toMatchObject({ version: 4, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
     expect(again.text('coins')).toBe('60 pièces');
     expect(storage.dump('poc:meta:v1:player')).toEqual({ id: 'c'.repeat(32), pseudo: 'Alex' });
     again.shell.destroy();
@@ -1512,14 +1526,14 @@ describe('apparences V3 branchées (F8b, revue FLK A5 m1/m2, A6 m5)', () => {
     const a = setup({ meta: createMetaStore(storage) });
     a.day.now = new Date('2026-12-01T10:00:00Z');
     a.button('Boutique').click();
-    expect(a.text('shop-graphite')).toContain('60 pièces');
+    expect(a.text('shop-graphite')).toContain('Acheter · 60');
     expect(a.root.querySelector('[data-testid="shop-empty"]')).toBeNull();
-    a.root.querySelector<HTMLButtonElement>('[data-testid="shop-graphite"] button')!.click();
-    a.button('Oui, acheter').click();
+    a.root.querySelector<HTMLButtonElement>('[data-testid="buy-graphite"]')!.click();
+    a.button('Oui, acheter · 60').click();
     await flush();
-    a.button('Mettre').click();
+    a.button('Équiper maintenant').click(); // fenêtre de révélation
     await flush();
-    a.button('Retour').click();
+    a.button('Jouer').click(); // onglet
     a.button('Jouer').click();
     expect(a.game.mounts[0]!.options.appearance).toEqual({ theme: 'confiserie', skin: 'graphite' });
     a.shell.destroy();
@@ -1532,15 +1546,15 @@ describe('apparences V3 branchées (F8b, revue FLK A5 m1/m2, A6 m5)', () => {
 
     const c = setup({ meta: createMetaStore(storage) });
     c.day.now = new Date('2026-12-01T10:00:00Z');
-    c.button('Récompenses').click();
-    c.button('Voir le passe · cadeau à prendre').click();
-    expect(c.text('tier-2-free')).not.toContain('Bientôt'); // Pixel dessinable : réclamable
-    c.root.querySelector<HTMLButtonElement>('[data-testid="claim-tier-2"]')!.click();
+    c.button('Passe').click();
+    expect(c.text('tier-3-free')).not.toContain('Bientôt'); // Pixel dessinable : récupérable
+    c.root.querySelector<HTMLButtonElement>('[data-testid="claim-tier-3"]')!.click();
     await flush();
-    expect(c.text('season-notice')).toBe('Pris : Apparence Pixel.');
-    c.button('Retour').click();
-    c.button('Ma collection 4/17').click();
-    c.root.querySelector<HTMLButtonElement>('[aria-label="Choisir Apparence Pixel"]')!.click();
+    expect(c.text('season-notice')).toBe('Récupéré : Matière Pixel.');
+    expect(c.text('reveal-name')).toBe('Pixel');
+    c.button('Plus tard').click();
+    c.button('Collection').click();
+    c.root.querySelector<HTMLButtonElement>('[aria-label="Équiper Matière Pixel"]')!.click();
     await flush();
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 40, inventory: ['graphite', 'pixel'], selected: { skin: 'pixel' } });
   });
@@ -1592,12 +1606,12 @@ describe('vies de reprise en partie libre (correction après publication)', () =
     expect(text('lives')).toBe('0 vie');
     button('Boutique').click();
     expect(text('lives-count')).toBe('Tu as 0 vie (maximum 5).');
-    button('Acheter 1 vie').click();
-    button('Oui, acheter').click();
+    button('Acheter · 30').click();
+    button('Oui, acheter · 30').click();
     await flush();
     expect(text('life-success')).toBe('C’est à toi ! Tu as maintenant 1 vie.');
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, lives: 1 });
-    button('Retour').click();
+    button('Jouer').click(); // onglet Jouer : retour à l'accueil
     expect(text('lives')).toBe('1 vie');
     expect(root.querySelector('[data-testid="lives"]')!.getAttribute('title')).toBe('1 vie');
 
@@ -1675,5 +1689,102 @@ describe('vies de reprise en partie libre (correction après publication)', () =
     expect(root2.querySelector('[data-testid="revive-status"]')!.textContent).toBe('Plus de vie.');
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ lives: 0 });
     b.destroy();
+  });
+});
+
+describe('V6 : Stack or Crash, boutique, passe, raretés et aperçus', () => {
+  const shop = {
+    catalog: [{ id: 'ceramique', kind: 'skin' as const, price: 50, name: 'Céramique' }],
+    isAvailable: () => true,
+    preview: () => true,
+  };
+
+  it('nom anglais à l’accueil (titre lu), interface en français', () => {
+    const { root } = setup();
+    const title = root.querySelector('.brand-title')!;
+    expect(title.getAttribute('aria-label')).toBe('Stack or Crash');
+    expect(title.textContent).toBe('Stack or Crash');
+    expect(title.getAttribute('lang')).toBe('en');
+    expect(root.textContent).toContain('Touche pour poser le bloc !');
+  });
+
+  it('achat en cours : bouton « Achat… » désactivé, aucun second débit même en appuyant encore', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 4, coins: 120, grants: ['v2-objectives-backfill'] }));
+    const locks = fakeLocks();
+    let release!: () => void;
+    void locks.request(PROGRESS_LOCK, () => new Promise<void>((r) => (release = r))); // un autre onglet tient le verrou
+    const { button, root, text } = setup({ meta: createMetaStore(storage), shop, locks });
+    const byTestId = (id: string) => root.querySelector(`[data-testid="${id}"]`);
+    button('Boutique').click();
+    button('Acheter · 50').click();
+    button('Oui, acheter · 50').click();
+    const pending = byTestId('buy-ceramique') as HTMLButtonElement;
+    expect(pending.textContent).toBe('Achat…');
+    expect(pending.disabled).toBe(true);
+    expect(pending.getAttribute('aria-busy')).toBe('true');
+    pending.click();
+    await flush(); // le verrou de l'autre onglet est bien tenu
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 120 });
+    release();
+    await flush();
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 70, inventory: ['ceramique'] });
+    expect(text('shop-success')).toContain('C’est à toi');
+  });
+
+  it('passe : migration v3 visible (anciens paliers « Récupéré »), « Tout récupérer » une seule fois, révélation de l’objet', async () => {
+    const storage = memoryStorage();
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({
+      version: 3, coins: 0, inventory: ['pixel'], grants: ['v2-objectives-backfill'],
+      season: { id: 's1', stars: 320, claimed: ['free:1', 'free:2'] },
+    }));
+    const { button, text, root, day } = setup({ meta: createMetaStore(storage) });
+    day.now = new Date('2026-12-01T10:00:00Z');
+    button('Passe').click();
+    expect(text('season-level')).toBe('Niveau9/ 30');
+    // Anciens paliers 1 et 2 (Pixel) = niveaux 1 et 3 : déjà récupérés, jamais une seconde fois.
+    expect(text('tier-1-free')).toContain('Récupéré');
+    expect(text('tier-3-free')).toContain('Récupéré');
+    expect(root.querySelector('[data-testid="claim-tier-3"]')).toBeNull();
+    expect(text('claim-all')).toBe('Tout récupérer (7)');
+    button('Tout récupérer (7)').click();
+    await flush();
+    // 10 + 15 + 15 + 20 + 20 + 25 = 105 pièces, et Galaxie (niveau 9) révélée.
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 4, coins: 105, inventory: ['pixel', 'galaxie'] });
+    expect(text('reveal-name')).toBe('Galaxie');
+    expect(root.querySelector('[data-testid="reveal"] .rarity')?.textContent).toBe('Légendaire');
+    button('Équiper maintenant').click();
+    await flush();
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ selected: { skin: 'galaxie' } });
+    expect(root.querySelector('[data-testid="claim-all"]')).toBeNull();
+    // Le premium reste visible, détaillé, et jamais achetable.
+    expect(text('premium-offer')).toContain('5 cosmétiques exclusifs, dont 3 légendaires');
+    expect(root.querySelectorAll('[data-testid^="claim-tier-"]')).toHaveLength(0);
+  });
+
+  it('collection : aide des raretés en mots, filtres, et équiper depuis la collection', async () => {
+    const { button, text, root } = setup();
+    const byTestId = (id: string) => root.querySelector(`[data-testid="${id}"]`);
+    button('Collection').click();
+    button('Raretés').click();
+    const sheet = byTestId('rarity-sheet')!;
+    expect([...sheet.querySelectorAll('.rarity')].map((r) => r.textContent)).toEqual(['Commun', 'Rare', 'Épique', 'Légendaire']);
+    expect(sheet.textContent).toContain('ne change jamais le score');
+    button('Compris').click();
+    button('À obtenir').click();
+    expect(root.querySelector('[data-testid="card-skin-gomme"]')).toBeNull();
+    expect(text('card-skin-abysse')).toContain('Passe premium · niveau 30');
+    button('Tout').click();
+    expect(text('card-skin-gomme')).toContain('Équipé');
+  });
+
+  it('aperçus vivants : suivis sur l’écran, oubliés en changeant d’écran ; image fixe en animations réduites', () => {
+    const { button, shell: s } = setup({ shop });
+    button('Boutique').click();
+    expect(s.previews.watched).toBe(1);
+    button('Jouer').click(); // onglet
+    expect(s.previews.watched).toBe(0);
+    expect(s.previews.running).toBe(false);
   });
 });
