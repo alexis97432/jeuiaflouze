@@ -39,6 +39,11 @@ export interface MaterialEnv {
   readonly cam: number;
   /** Numéro d'étage (variations stables d'un étage à l'autre). */
   readonly floor: number;
+  /**
+   * Calques à dessiner : tout (défaut), la base fixe (mise en cache par le renderer) ou seulement
+   * la partie vivante (reflet qui glisse, éclat) des matières communes et rares.
+   */
+  readonly layer?: 'all' | 'base' | 'live';
 }
 
 export const STATIC_ENV: MaterialEnv = { t: 0, motion: false, full: true, wx: 0, wy: -H, ox: 0, cam: 0, floor: 0 };
@@ -778,17 +783,23 @@ export function faceGradient(ctx: CanvasRenderingContext2D, color: Rgb, skin: Ma
 
 // ——— Calques communs ———
 
-/** Volume : lumière à gauche, ombre à droite (dans la brique). */
+/**
+ * Volume : lumière à gauche, ombre à droite (dans la brique). Deux bandes fines seulement : même
+ * rendu qu'un dégradé sur toute la largeur, pour une fraction des pixels à remplir.
+ */
 function sideShade(ctx: CanvasRenderingContext2D, w: number, strength: number): void {
   if (w < 6) return;
-  const g = ctx.createLinearGradient(0, 0, w, 0);
-  const edge = Math.min(0.2, 14 / w);
-  g.addColorStop(0, `rgba(255,255,255,${0.16 * strength})`);
-  g.addColorStop(edge, 'rgba(255,255,255,0)');
-  g.addColorStop(1 - edge, 'rgba(0,0,0,0)');
-  g.addColorStop(1, `rgba(0,0,0,${0.2 * strength})`);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, H);
+  const band = Math.min(14, w * 0.2);
+  const l = ctx.createLinearGradient(0, 0, band, 0);
+  l.addColorStop(0, `rgba(255,255,255,${(0.16 * strength).toFixed(3)})`);
+  l.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = l;
+  ctx.fillRect(0, 0, band, H);
+  const r = ctx.createLinearGradient(w - band, 0, w, 0);
+  r.addColorStop(0, 'rgba(0,0,0,0)');
+  r.addColorStop(1, `rgba(0,0,0,${(0.2 * strength).toFixed(3)})`);
+  ctx.fillStyle = r;
+  ctx.fillRect(w - band, 0, band, H);
 }
 
 /**
@@ -817,13 +828,16 @@ function sheen(ctx: CanvasRenderingContext2D, w: number, env: MaterialEnv, alpha
 
 /** Vignette intérieure : les bords s'assombrissent, comme une vitrine profonde (légendaires). */
 function innerDepth(ctx: CanvasRenderingContext2D, w: number, strength: number): void {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, `rgba(0,0,0,${0.35 * strength})`);
-  g.addColorStop(0.25, 'rgba(0,0,0,0)');
-  g.addColorStop(0.75, 'rgba(0,0,0,0)');
-  g.addColorStop(1, `rgba(0,0,0,${0.45 * strength})`);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, H);
+  const top = ctx.createLinearGradient(0, 0, 0, H * 0.25);
+  top.addColorStop(0, `rgba(0,0,0,${(0.35 * strength).toFixed(3)})`);
+  top.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = top;
+  ctx.fillRect(0, 0, w, H * 0.25);
+  const bottom = ctx.createLinearGradient(0, H * 0.75, 0, H);
+  bottom.addColorStop(0, 'rgba(0,0,0,0)');
+  bottom.addColorStop(1, `rgba(0,0,0,${(0.45 * strength).toFixed(3)})`);
+  ctx.fillStyle = bottom;
+  ctx.fillRect(0, H * 0.75, w, H * 0.25);
   sideShade(ctx, w, strength * 1.4);
 }
 
@@ -851,11 +865,9 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
   gomme: (ctx, w, color, env, real) => {
     // Caoutchouc doux : grain fin, cœur légèrement lumineux (diffusion), arêtes adoucies.
     if (real) fillTex(ctx, w, GRAIN, objX(env, env.floor), objY(env.floor), 0.9);
-    const g = ctx.createRadialGradient(w * 0.5, H * 0.7, 2, w * 0.5, H * 0.7, Math.max(w, 30) * 0.6);
-    g.addColorStop(0, css(lighten(color, 0.25), 0.28));
-    g.addColorStop(1, css(color, 0));
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, H);
+    // Cœur légèrement plus clair (diffusion du caoutchouc) : une bande douce au milieu.
+    ctx.fillStyle = css(lighten(color, 0.25), 0.16);
+    ctx.fillRect(w * 0.18, H * 0.45, w * 0.64, H * 0.3);
     sideShade(ctx, w, 1);
   },
   strie: (ctx, w, color) => {
@@ -953,7 +965,6 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
       ctx.fillRect(0, 0, w, H);
     }
     sideShade(ctx, w, 0.8);
-    if (env.full) sheen(ctx, w, env, 0.45);
   },
   ceramique: (ctx, w, color, env, real) => {
     // Céramique émaillée : craquelure, émail plus épais en bas, grand reflet.
@@ -973,7 +984,6 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
     ctx.fillStyle = pool;
     ctx.fillRect(0, 0, w, H);
     sideShade(ctx, w, 1);
-    if (env.full) sheen(ctx, w, env, 0.5);
   },
   verre: (ctx, w, color, env, real) => {
     // Verre dépoli : givre, bulles prises dans la masse, arêtes qui réfractent la lumière.
@@ -1003,12 +1013,12 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
     ctx.lineWidth = 2;
     roundedRect(ctx, 3, 3, Math.max(0, w - 6), H - 6, RADIUS - 3);
     ctx.stroke();
-    if (env.full) sheen(ctx, w, env, 0.55, [235, 250, 255]);
     void color;
   },
   nacre: (ctx, w, color, env, real) => {
     // Nacre : voiles irisés qui changent doucement avec le temps et la hauteur.
-    const drift = env.motion ? env.t * 6 : 0;
+    // Irisation fixée par la position (la base se met en cache) ; le reflet qui glisse est vivant.
+    const drift = 0;
     if (!real || !fillTex(ctx, w, NACRE, env.wx * 0.6 + drift, -env.wy * 0.3 + drift * 0.5, 0.62)) {
       const tints: Rgb[] = [[255, 190, 222], [180, 212, 255]];
       tints.forEach((t, k) => {
@@ -1028,7 +1038,6 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
       ctx.fillRect(0, 0, w, H);
     }
     sideShade(ctx, w, 0.7);
-    if (env.full) sheen(ctx, w, env, 0.6, [255, 245, 255], 20);
   },
   pixel: (ctx, w, color, env, real) => {
     // 8-bit : carreaux biseautés nets, et un éclat de pixels qui défile (rare).
@@ -1040,18 +1049,6 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
           ctx.fillStyle = (row + col + env.floor) % 4 === 1 ? css(lighten(color, 0.3), 0.55) : css(darken(color, 0.22), 0.45);
           ctx.fillRect(sx, sy, size, size);
         }
-      }
-    }
-    if (env.full) {
-      const span = 460;
-      const pos = env.motion ? (((env.t * 60 - env.floor * 10) % span) + span) % span - 50 : 120;
-      const lx = Math.round((pos - env.wx) / 5) * 5;
-      for (let k = 0; k < 6; k++) {
-        const x = lx + k * 5 - Math.floor(k / 2) * 10;
-        const y = H - 5 - k * 5;
-        if (x < 0 || x > w - 5 || y < 0) continue;
-        ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.fillRect(x, y, 5, 5);
       }
     }
   },
@@ -1207,9 +1204,7 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
       if (env.full) fillTex(ctx, w, STARS_FAR, env.wx + drift * 1.6, env.wy + env.cam * 0.3, 1, 'lighter');
       const twinkle = env.motion ? 0.75 + 0.25 * Math.sin(env.t * 2.4 + env.floor) : 0.95;
       fillTex(ctx, w, STARS_NEAR, env.wx, env.wy, twinkle, 'lighter');
-      // Couleur de l'étage, très légère : le rythme des étages reste lisible.
-      ctx.fillStyle = css(color, 0.1);
-      ctx.fillRect(0, 0, w, H);
+      // La couleur de l'étage est déjà dans la face (dégradé) : le rythme des étages reste lisible.
     } else {
       for (let k = 0; k < Math.min(36, Math.floor(w / 5)); k++) {
         const big = vary(env.floor, 500 + k) > 0.85;
@@ -1220,7 +1215,6 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
       }
     }
     innerDepth(ctx, w, 0.9);
-    if (env.full) sheen(ctx, w, env, 0.16, [200, 190, 255], 22);
   },
   cristal: (ctx, w, color, env, real) => {
     // Cristal : facettes, caustique de lumière qui traverse la masse, arêtes prismatiques.
@@ -1257,7 +1251,7 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
     sideShade(ctx, w, 0.7);
     void color;
   },
-  aurore: (ctx, w, color, env, real) => {
+  aurore: (ctx, w, _color, env, real) => {
     // Aurore : nuit étoilée continue sur toute la tour, rideaux verts et violets qui ondulent.
     const drift = env.motion ? env.t : 0;
     if (real && fillTex(ctx, w, STARS_FAR, env.wx, env.wy + env.cam * 0.4, 1, 'lighter')) {
@@ -1277,12 +1271,10 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
       ctx.closePath();
       ctx.fill();
     }
-    ctx.fillStyle = css(color, 0.08);
-    ctx.fillRect(0, 0, w, H);
     innerDepth(ctx, w, 0.75);
     if (env.full) sheen(ctx, w, env, 0.14, [210, 255, 235], 22);
   },
-  abysse: (ctx, w, color, env, real) => {
+  abysse: (ctx, w, _color, env, real) => {
     // Abysse : lumière filtrée par la surface (caustiques), plancton lumineux, et un petit
     // poisson qui traverse la tour d'une brique à l'autre.
     const drift = env.motion ? env.t : 0;
@@ -1340,15 +1332,46 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
         ctx.fill();
       }
     }
-    ctx.fillStyle = css(color, 0.08);
-    ctx.fillRect(0, 0, w, H);
     innerDepth(ctx, w, 0.8);
   },
 };
 
+/**
+ * Partie vivante des matières rares : le reflet qui glisse (ou l'éclat de pixels). Séparée de la
+ * base pour que le renderer mette la base en cache et ne redessine que ce calque léger.
+ */
+const LIVE: Partial<Record<MaterialSkin, (ctx: CanvasRenderingContext2D, w: number, env: MaterialEnv) => void>> = {
+  marbre: (ctx, w, env) => sheen(ctx, w, env, 0.45),
+  ceramique: (ctx, w, env) => sheen(ctx, w, env, 0.5),
+  verre: (ctx, w, env) => sheen(ctx, w, env, 0.55, [235, 250, 255]),
+  nacre: (ctx, w, env) => sheen(ctx, w, env, 0.6, [255, 245, 255], 20),
+  pixel: (ctx, w, env) => {
+    const span = 460;
+    const pos = env.motion ? (((env.t * 60 - env.floor * 10) % span) + span) % span - 50 : 120;
+    const lx = Math.round((pos - env.wx) / 5) * 5;
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    for (let k = 0; k < 6; k++) {
+      const x = lx + k * 5 - Math.floor(k / 2) * 10;
+      const y = H - 5 - k * 5;
+      if (x < 0 || x > w - 5 || y < 0) continue;
+      ctx.fillRect(x, y, 5, 5);
+    }
+  },
+};
+
+/** Matières dont la base ne dépend ni du temps ni de la caméra : le renderer peut la mettre en cache. */
+export const CACHEABLE = new Set<MaterialSkin>(['gomme', 'strie', 'bonbon', 'graphite', 'bois', 'marbre', 'ceramique', 'verre', 'nacre', 'pixel']);
+
 /** Motif propre à la matière, dessiné dans la brique déjà découpée (sous la face supérieure). */
 export function paintMaterial(ctx: CanvasRenderingContext2D, w: number, color: Rgb, skin: MaterialSkin, env: MaterialEnv): void {
-  PAINTERS[skin](ctx, w, color, env, isRealContext(ctx));
+  const layer = env.layer ?? 'all';
+  if (layer !== 'live') PAINTERS[skin](ctx, w, color, env, isRealContext(ctx));
+  if (layer !== 'base' && env.full) LIVE[skin]?.(ctx, w, env);
+}
+
+/** Calque vivant seul (au-dessus d'une base en cache) ; false si la matière n'en a pas. */
+export function hasLiveLayer(skin: MaterialSkin): boolean {
+  return LIVE[skin] !== undefined;
 }
 
 /** Effets signés par les matières épiques et légendaires (pose, parfait, aura du bloc mobile). */

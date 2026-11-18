@@ -4,11 +4,16 @@ import {
   createFaceGradient,
   DEFAULT_SKIN,
   drawBlock,
+  edgeColors,
   RADIUS,
   SKIN_RARITY,
   type DrawSkinId,
 } from './blocks';
-import { releaseTextures, SKIN_FX, type MaterialEnv, type MaterialSkin } from './materials';
+import { CACHEABLE, hasLiveLayer, isRealContext, paintMaterial, releaseTextures, SKIN_FX, type MaterialEnv, type MaterialSkin } from './materials';
+
+/** Briques en cache au plus (images à la résolution de l'écran) : mémoire bornée. */
+export const MAX_BLOCK_CACHE = 40;
+type BlockCanvas = HTMLCanvasElement | OffscreenCanvas;
 import {
   CosmeticRng,
   drawDuck,
@@ -222,13 +227,16 @@ export class Renderer {
   private skin: DrawSkinId;
   /** V6 : origine de la matière de chaque pièce posée (bord gauche du bloc mobile à la pose). */
   private readonly origins = new Map<number, number>();
+  /** V6 : briques communes et rares déjà dessinées (une seule copie d'image par brique et par image). */
+  private readonly blockCache = new Map<string, BlockCanvas>();
+  private readonly canCacheBlocks: boolean;
   /** V6 : instant, mouvement et qualité de l'image en cours (matières vivantes). */
   private frameT = 0;
   private frameMotion = true;
   private frameFull = true;
   /** V6 : qualité adaptative. Cadence trop basse soutenue → calques coûteux retirés (visuel seulement). */
-  private slowFrames = 0;
-  private sampledFrames = 0;
+  private slowTime = 0;
+  private sampledTime = 0;
   public autoLight = false;
   /** Appelé quand la qualité adaptative se déclenche (le montage recalcule alors la résolution). */
   public onAutoLight: (() => void) | null = null;
@@ -249,6 +257,12 @@ export class Renderer {
     this.ctx = ctx;
     this.theme = theme;
     this.skin = skin;
+    this.canCacheBlocks = isRealContext(ctx) && (typeof OffscreenCanvas !== 'undefined' || typeof document !== 'undefined');
+  }
+
+  /** Briques en cache (tests de bornes). */
+  get blockCacheSize(): number {
+    return this.blockCache.size;
   }
 
   get skinId(): DrawSkinId { return this.skin; }
@@ -297,17 +311,20 @@ export class Renderer {
   setTheme(theme: Theme): void {
     this.theme = theme;
     this.gradients.clear();
+    this.blockCache.clear();
   }
 
   setSkin(skin: DrawSkinId): void {
     this.skin = skin;
     this.gradients.clear();
+    this.blockCache.clear();
     releaseTextures();
   }
 
   /** Fin de vie (destroy) : caches graphiques libérés. */
   dispose(): void {
     this.gradients.clear();
+    this.blockCache.clear();
     this.origins.clear();
     this.particles.clear();
     releaseTextures();
@@ -327,6 +344,7 @@ export class Renderer {
     this.cssH = Math.max(1, cssHeight);
     this.dpr = dpr;
     if (this.canvas.width === w && this.canvas.height === h) return false;
+    this.blockCache.clear();
     this.canvas.width = w;
     this.canvas.height = h;
     return true;
@@ -462,6 +480,8 @@ export class Renderer {
       w.y -= Math.min(12, size * 0.3);
     }
     const { x, y, s, side } = this.wordSpot(size);
+    // Plus de place sous le HUD (petit écran) : pas de mot ; le HUD porte déjà l'information.
+    if (!side && (this.cssH * ACTIVE_FRAC - BLOCK_HEIGHT * this.scale() * 0.5 - this.hudBottom) / 1.45 < 12) return;
     this.words.push({
       text, color, size: s, life: this.reducedMotion ? Math.min(life, 0.9) : life, weight, age: 0,
       x, y, rot: this.cos.range(-0.09, 0.09), side,
@@ -471,8 +491,17 @@ export class Renderer {
   /** À chaque image : les mots restent entre le HUD (qui peut grandir) et la zone de pose. */
   private keepWordsClear(): void {
     const limit = this.cssH * ACTIVE_FRAC - BLOCK_HEIGHT * this.frameScale * 0.5;
-    for (const w of this.words) {
+    // Place entre le HUD et la zone de pose : le mot rétrécit pour tenir, ou s'efface s'il n'y en a
+    // plus assez (petit écran, bandeau de palier affiché) — jamais sur le HUD ni sur la pose.
+    const fit = (limit - this.hudBottom) / 1.45;
+    for (let i = this.words.length - 1; i >= 0; i--) {
+      const w = this.words[i]!;
       if (w.side) continue;
+      if (fit < 12) {
+        this.words.splice(i, 1);
+        continue;
+      }
+      if (w.size > fit) w.size = fit;
       w.y = Math.max(this.hudBottom + w.size * 0.7, Math.min(limit - w.size * 0.75, w.y));
     }
   }
@@ -546,17 +575,18 @@ export class Renderer {
     this.lastNow = now;
     const t = now / 1000;
     const motion = !this.reducedMotion;
-    // Qualité adaptative : plus de 2 s d'images lentes (> 34 ms) sur 3 s → calques coûteux retirés.
-    if (dt > 0 && dt < 0.1 && !this.autoLight) {
-      this.sampledFrames++;
-      if (dt > 0.034) this.slowFrames++;
-      if (this.sampledFrames >= 180) {
-        if (this.slowFrames > 120) {
+    // Qualité adaptative : sur une fenêtre de 2 s, si plus de 60 % du temps passe dans des images
+    // lentes (> 34 ms, moins de 30 images/s), les calques coûteux sont retirés pour la suite.
+    if (dt > 0 && dt < 0.25 && !this.autoLight) {
+      this.sampledTime += dt;
+      if (dt > 0.034) this.slowTime += dt;
+      if (this.sampledTime >= 2) {
+        if (this.slowTime > this.sampledTime * 0.6) {
           this.autoLight = true;
           this.onAutoLight?.();
         }
-        this.sampledFrames = 0;
-        this.slowFrames = 0;
+        this.sampledTime = 0;
+        this.slowTime = 0;
       }
     }
     const full = this.effectiveFull;
@@ -1285,14 +1315,67 @@ export class Renderer {
       cam: this.viewCamera,
       floor: variant,
     };
+    const sky = mix(this.skyTop, this.skyBottom, frac);
+    if (this.cachedBlock(x, y, w, color, alpha, variant, env, sky)) return;
     drawBlock(this.ctx, x, y, w, color, {
       skin: this.skin,
-      sky: mix(this.skyTop, this.skyBottom, frac),
+      sky,
       alpha,
       gradient: this.faceGradient(color),
       variant,
       env,
     });
+  }
+
+  /**
+   * Brique commune ou rare : base dessinée une fois dans une image en cache, puis copiée ; seul le
+   * reflet qui glisse (rares) est redessiné. Faux si le cache ne s'applique pas (dessin direct).
+   */
+  private cachedBlock(x: number, y: number, w: number, color: Rgb, alpha: number, variant: number, env: MaterialEnv, sky: Rgb): boolean {
+    const skin = this.skin as MaterialSkin;
+    if (!this.canCacheBlocks || !CACHEABLE.has(skin) || this.reveal > 0 || w <= 0) return false;
+    const { ctx } = this;
+    const m = ctx.getTransform();
+    const k = Math.hypot(m.a, m.b);
+    if (!(k > 0) || k > 3.5) return false;
+    const outline = edgeColors(color, this.skin, sky).outline;
+    const key = `${skin}|${color.join(',')}|${Math.round(w * 4)}|${variant}|${Math.round((env.wx - env.ox) * 2)}|${outline.join(',')}|${k.toFixed(3)}`;
+    let sprite = this.blockCache.get(key);
+    if (!sprite) {
+      const pw = Math.ceil(w * k);
+      const ph = Math.ceil(BLOCK_HEIGHT * k);
+      let c: BlockCanvas | null = null;
+      try {
+        c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(pw, ph) : Object.assign(document.createElement('canvas'), { width: pw, height: ph });
+      } catch {
+        c = null;
+      }
+      const x2 = (c?.getContext('2d') ?? null) as CanvasRenderingContext2D | null;
+      if (!c || !x2) return false;
+      x2.setTransform(pw / w, 0, 0, ph / BLOCK_HEIGHT, 0, 0);
+      drawBlock(x2, 0, 0, w, color, { skin: this.skin, sky, alpha: 1, variant, env: { ...env, layer: 'base' } });
+      if (this.blockCache.size >= MAX_BLOCK_CACHE) {
+        const first = this.blockCache.keys().next().value;
+        if (first !== undefined) this.blockCache.delete(first);
+      }
+      this.blockCache.set(key, c);
+      sprite = c;
+    } else {
+      // Récemment utilisée : en fin de liste (éviction de la plus ancienne).
+      this.blockCache.delete(key);
+      this.blockCache.set(key, sprite);
+    }
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.drawImage(sprite as CanvasImageSource, x, y, w, BLOCK_HEIGHT);
+    if (env.full && hasLiveLayer(skin)) {
+      ctx.translate(x, y);
+      roundedRect(ctx, 0, 0, w, BLOCK_HEIGHT, RADIUS);
+      ctx.clip();
+      paintMaterial(ctx, w, color, skin, { ...env, layer: 'live' });
+    }
+    ctx.restore();
+    return true;
   }
 
   /** Pose signée des matières épiques et légendaires ; célébration du parfait (légendaires). */

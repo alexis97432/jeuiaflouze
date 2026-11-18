@@ -6,7 +6,7 @@
  */
 import { CREAM, css, hex, roundedRect, type Rgb } from '../color';
 import {
-  altitude, byStage, cloud, drifters, egg, fade, hash, layerY, orb, reveal, starfield, sx, TAU,
+  altitude, byStage, cloud, drawCached, drifters, egg, fade, hash, layerY, orb, reveal, starfield, sx, TAU,
   type Scene, type SceneEnv,
 } from '../scene';
 import type { Theme } from '../theme-types';
@@ -66,13 +66,20 @@ function asteroid(ctx: CanvasRenderingContext2D, x: number, y: number, r: number
   ctx.restore();
 }
 
+/** Nuage de nébuleuse (image en cache : un seul remplissage par image). */
 function nebula(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: Rgb, alpha: number): void {
-  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-  g.addColorStop(0, css(color, 0.32 * alpha));
-  g.addColorStop(0.6, css(color, 0.12 * alpha));
-  g.addColorStop(1, css(color, 0));
-  ctx.fillStyle = g;
-  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  const rr = Math.round(r / 4) * 4;
+  const a0 = ctx.globalAlpha;
+  ctx.globalAlpha = a0 * alpha;
+  drawCached(ctx, `nebula|${rr}|${color.join(',')}`, x - rr, y - rr, rr * 2, rr * 2, (s) => {
+    const g = s.createRadialGradient(rr, rr, 0, rr, rr, rr);
+    g.addColorStop(0, css(color, 0.32));
+    g.addColorStop(0.6, css(color, 0.12));
+    g.addColorStop(1, css(color, 0));
+    s.fillStyle = g;
+    s.fillRect(0, 0, rr * 2, rr * 2);
+  });
+  ctx.globalAlpha = a0;
 }
 
 const scene: Scene = {
@@ -86,26 +93,39 @@ const scene: Scene = {
     // Courbure de la Terre : un grand arc lumineux qui apparaît puis s'éloigne en bas.
     const earth = fade(env, 8, 14) * (1 - fade(env, 34, 44) * 0.6);
     if (earth > 0) {
+      // Limbe terrestre : une bande en cache (même forme à toute hauteur), translatée ; dessous, l'océan plein.
       const r = w * 2.2;
       const cy = h * 0.98 + r - fade(env, 8, 22) * h * 0.16 + fade(env, 22, 45) * h * 0.25;
-      const g = ctx.createRadialGradient(w / 2, cy, r * 0.97, w / 2, cy, r * 1.04);
-      g.addColorStop(0, css([60, 140, 220], earth));
-      g.addColorStop(0.55, css([140, 210, 255], 0.9 * earth));
-      g.addColorStop(1, css([140, 210, 255], 0));
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(w / 2, cy, r * 1.04, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = css([40, 90, 170], earth);
-      ctx.beginPath();
-      ctx.arc(w / 2, cy, r * 0.985, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = css([255, 255, 255], 0.35 * earth);
-      for (let k = 0; k < 7; k++) {
-        ctx.beginPath();
-        ctx.ellipse(w * hash(k, 70), cy - r * 0.985 + 10 + hash(k, 71) * 22, 30 + hash(k, 72) * 40, 4, 0, 0, TAU);
-        ctx.fill();
+      const top = cy - r * 1.04;
+      const band = Math.ceil(r * 0.12);
+      const a0 = ctx.globalAlpha;
+      ctx.globalAlpha = a0 * earth;
+      drawCached(ctx, `earth|${Math.round(w)}`, 0, top, w, band, (s) => {
+        const ccy = r * 1.04;
+        const g = s.createRadialGradient(w / 2, ccy, r * 0.97, w / 2, ccy, r * 1.04);
+        g.addColorStop(0, css([60, 140, 220]));
+        g.addColorStop(0.55, css([140, 210, 255], 0.9));
+        g.addColorStop(1, css([140, 210, 255], 0));
+        s.fillStyle = g;
+        s.beginPath();
+        s.arc(w / 2, ccy, r * 1.04, 0, TAU);
+        s.fill();
+        s.fillStyle = css([40, 90, 170]);
+        s.beginPath();
+        s.arc(w / 2, ccy, r * 0.985, 0, TAU);
+        s.fill();
+        s.fillStyle = css([255, 255, 255], 0.35);
+        for (let k = 0; k < 7; k++) {
+          s.beginPath();
+          s.ellipse(w * hash(k, 70), ccy - r * 0.985 + 10 + hash(k, 71) * 22, 30 + hash(k, 72) * 40, 4, 0, 0, TAU);
+          s.fill();
+        }
+      });
+      if (top + band < h) {
+        ctx.fillStyle = css([40, 90, 170]);
+        ctx.fillRect(0, top + band - 1, w, h - top - band + 1);
       }
+      ctx.globalAlpha = a0;
     }
     // Grande lune (ceinture d'astéroïdes), puis nébuleuse colorée et galaxie spirale.
     const moon = fade(env, 30, 38);
@@ -135,19 +155,22 @@ const scene: Scene = {
       nebula(ctx, w * 0.3, h * 0.3, w * 0.55, [139, 117, 237], deep);
       nebula(ctx, w * 0.75, h * 0.18, w * 0.45, [98, 222, 191], deep);
       nebula(ctx, w * 0.6, h * 0.55, w * 0.4, [255, 102, 160], deep * 0.8);
-      // Galaxie spirale lointaine.
+      // Galaxie spirale lointaine : une image en cache, qui tourne lentement.
       ctx.save();
       ctx.translate(w * 0.8, h * 0.4);
       ctx.rotate(motion ? t * 0.03 : 0.4);
       ctx.scale(1, 0.45);
-      for (let k = 0; k < 90; k++) {
-        const a = k * 0.35;
-        const r = 2 + k * 0.42;
-        for (const arm of [0, Math.PI]) {
-          ctx.fillStyle = `rgba(230,220,255,${(deep * (1 - k / 95) * 0.7).toFixed(3)})`;
-          ctx.fillRect(Math.cos(a + arm) * r, Math.sin(a + arm) * r, 1.4, 1.4);
+      ctx.globalAlpha *= deep;
+      drawCached(ctx, 'spiral', -42, -42, 84, 84, (s) => {
+        for (let k = 0; k < 90; k++) {
+          const a = k * 0.35;
+          const r = 2 + k * 0.42;
+          for (const arm of [0, Math.PI]) {
+            s.fillStyle = `rgba(230,220,255,${((1 - k / 95) * 0.7).toFixed(3)})`;
+            s.fillRect(42 + Math.cos(a + arm) * r, 42 + Math.sin(a + arm) * r, 1.4, 1.4);
+          }
         }
-      }
+      });
       ctx.restore();
       if (motion && env.full) {
         // Comète : un passage lent toutes les 10 s.

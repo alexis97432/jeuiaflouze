@@ -6,7 +6,7 @@
  */
 import { CREAM, css, hex, mix, roundedRect, type Rgb } from '../color';
 import {
-  altitude, byStage, cloud, drifters, egg, fade, glowRect, hash, layerY, orb, reveal, starfield, sx, TAU,
+  altitude, byStage, cloud, drawCached, drifters, egg, fade, glowRect, hash, layerY, orb, reveal, starfield, sx, TAU,
   type Scene, type SceneEnv,
 } from '../scene';
 import type { Theme } from '../theme-types';
@@ -15,52 +15,65 @@ import { glow, star, twinkle } from './kit';
 const BLOCKS = ['#FF4FB8', '#3FE0FF', '#B46CFF', '#FFD24A', '#56F0A0', '#FF7A5C'].map(hex);
 const SIGNS: readonly Rgb[] = [[255, 79, 184], [63, 224, 255], [255, 210, 74], [86, 240, 160], [180, 108, 255]];
 
-/** Rangée d'immeubles : silhouettes rectangulaires, fenêtres et enseignes. */
+/**
+ * Rangée d'immeubles : silhouettes, fenêtres et enseignes dessinées une fois dans une image en
+ * cache (une copie par image), puis les feux d'antenne qui clignotent par-dessus.
+ */
 function skyline(env: SceneEnv, p: number, seed: number, minH: number, maxH: number, color: Rgb, windows: number, signs: boolean): void {
   const { ctx, t, motion } = env;
   const s = env.scale;
   const base = layerY(env, 0, p);
   if (layerY(env, maxH, p) > env.h + 10) return;
+  type Building = { x: number; bw: number; bh: number; k: number };
+  const list: Building[] = [];
   let x = -env.w / 2 / s - 20;
   let k = 0;
   while (x < env.w / 2 / s + 20 && k < 40) {
     const bw = 24 + hash(seed, k) * 34;
     const bh = minH + hash(seed, k + 100) * (maxH - minH);
-    const left = sx(env, x);
-    const top = layerY(env, bh, p);
-    ctx.fillStyle = css(color);
-    ctx.fillRect(left, top, bw * s + 1, base - top + 2);
-    if (hash(seed, k + 300) > 0.6) {
-      // Antenne et feu rouge clignotant.
-      ctx.fillRect(left + bw * s * 0.5 - 0.8, top - 16 * s, 1.6, 16 * s);
-      const on = !motion || Math.sin(t * 2.5 + k) > 0.2;
-      if (on) glow(ctx, left + bw * s * 0.5, top - 16 * s, 5 * s, [255, 60, 60], 0.9);
-    }
-    if (windows > 0 && env.full) {
-      const cols = Math.max(1, Math.floor(bw / 7));
-      const rows = Math.min(30, Math.floor(bh / 9));
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const id = k * 997 + r * 31 + c;
-          const lit = hash(seed, id) < windows;
-          if (!lit) continue;
-          const flick = motion && hash(seed, id + 7) > 0.97 ? (Math.sin(t * 3 + id) > 0 ? 1 : 0.3) : 1;
-          const wy = top + (4 + r * 9) * s;
-          if (wy > env.h || wy < -10) continue;
-          ctx.fillStyle = `rgba(255,${200 + Math.floor(hash(seed, id + 3) * 50)},${120 + Math.floor(hash(seed, id + 5) * 80)},${(0.75 * flick).toFixed(3)})`;
-          ctx.fillRect(left + (3 + c * 7) * s, wy, 3.5 * s, 4.5 * s);
-        }
-      }
-    }
-    if (signs && hash(seed, k + 500) > 0.55) {
-      const c = SIGNS[k % SIGNS.length]!;
-      const sy = top + (12 + hash(seed, k + 600) * Math.max(4, bh - 40)) * s;
-      const pulse = motion ? 0.75 + 0.25 * Math.sin(t * 4 + k * 2) : 1;
-      if (hash(seed, k + 700) > 0.5) glowRect(ctx, left + 4 * s, sy, 4 * s, 22 * s, c, pulse);
-      else glowRect(ctx, left + 5 * s, sy, Math.max(8, bw - 10) * s, 5 * s, c, pulse);
-    }
+    list.push({ x, bw, bh, k });
     x += bw + 2 + hash(seed, k + 200) * 6;
     k++;
+  }
+  const spriteH = (maxH + 20) * s;
+  const q = (v: number) => Math.round(v / 8) * 8;
+  const qc: Rgb = [q(color[0]), q(color[1]), q(color[2])];
+  const key = `skyline|${seed}|${p}|${Math.round(env.w)}|${s.toFixed(3)}|${qc.join(',')}|${env.full ? 1 : 0}`;
+  drawCached(ctx, key, 0, base - spriteH, env.w, spriteH + 2, (c) => {
+    const yOf = (h: number) => spriteH - h * s;
+    for (const b of list) {
+      const left = env.w / 2 + b.x * s;
+      const top = yOf(b.bh);
+      c.fillStyle = css(qc);
+      c.fillRect(left, top, b.bw * s + 1, spriteH - top + 2);
+      if (hash(seed, b.k + 300) > 0.6) c.fillRect(left + b.bw * s * 0.5 - 0.8, top - 16 * s, 1.6, 16 * s);
+      if (windows > 0 && env.full) {
+        const cols = Math.max(1, Math.floor(b.bw / 7));
+        const rows = Math.min(30, Math.floor(b.bh / 9));
+        for (let r = 0; r < rows; r++) {
+          for (let col = 0; col < cols; col++) {
+            const id = b.k * 997 + r * 31 + col;
+            if (hash(seed, id) >= windows) continue;
+            c.fillStyle = `rgba(255,${200 + Math.floor(hash(seed, id + 3) * 50)},${120 + Math.floor(hash(seed, id + 5) * 80)},0.75)`;
+            c.fillRect(left + (3 + col * 7) * s, top + (4 + r * 9) * s, 3.5 * s, 4.5 * s);
+          }
+        }
+      }
+      if (signs && hash(seed, b.k + 500) > 0.55) {
+        const sc = SIGNS[b.k % SIGNS.length]!;
+        const sy = top + (12 + hash(seed, b.k + 600) * Math.max(4, b.bh - 40)) * s;
+        if (hash(seed, b.k + 700) > 0.5) glowRect(c, left + 4 * s, sy, 4 * s, 22 * s, sc, 1);
+        else glowRect(c, left + 5 * s, sy, Math.max(8, b.bw - 10) * s, 5 * s, sc, 1);
+      }
+    }
+  });
+  // Feux d'antenne : seuls éléments vivants de la rangée.
+  for (const b of list) {
+    if (hash(seed, b.k + 300) <= 0.6) continue;
+    const on = !motion || Math.sin(t * 2.5 + b.k) > 0.2;
+    if (!on) continue;
+    const top = base - b.bh * s;
+    glow(ctx, env.w / 2 + b.x * s + b.bw * s * 0.5, top - 16 * s, 5 * s, [255, 60, 60], 0.9);
   }
 }
 

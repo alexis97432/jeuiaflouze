@@ -698,8 +698,9 @@ export function createShell(options: ShellOptions): Shell {
         { value: 'missions', label: 'Missions et cadeau' },
       ],
       onChange: (v) => {
+        if (v === seasonTab) return; // section déjà ouverte : rien à redessiner
         seasonTab = v;
-        renderSeason('season-tabs');
+        renderSeason(); // focus sur le titre, comme à chaque écran : la nouvelle section est annoncée
       },
     }));
     if (notice) parts.push(el(doc, 'p', { class: 'notice ok', role: 'status', 'data-testid': 'season-notice' }, notice));
@@ -1187,9 +1188,10 @@ export function createShell(options: ShellOptions): Shell {
         if (item) equipItem(item);
       },
       onFilter: (f) => {
+        if (f === collectionFilter) return;
         collectionFilter = f;
         renderCollectionScreen();
-        view.querySelector<HTMLElement>('[data-testid="collection-filter"] [aria-checked="true"], [data-testid="collection-filter"] button')?.focus();
+        view.querySelector<HTMLElement>(`[data-testid="collection-filter-${f}"]`)?.focus();
       },
       onRarityHelp: () => openRarityHelp(),
     }, { filter: collectionFilter, ...(focusCard ? { focusCard } : {}), ...(options.shop?.preview ? { preview: options.shop.preview } : {}), animate });
@@ -1239,8 +1241,19 @@ export function createShell(options: ShellOptions): Shell {
     const day = utcDateKey(today());
     const giftReady = calendarStatus(progress, day).canClaim || seasonClaimable();
     const nav = el(doc, 'nav', { class: 'dock tabbar', 'aria-label': 'Menu principal' });
-    const tab = (id: TabScreen, iconName: IconName, label: string, testId: string, open: () => void, dot = false) => {
-      const b = dockButton(doc, { icon: iconName, label, testId, onClick: open, dot, ...(dot ? { ariaLabel: `${label}, une récompense t’attend` } : {}) });
+    const tab = (id: TabScreen, iconName: IconName, label: string, testId: string, open: () => void, dot = false, name?: string) => {
+      const aria = dot ? `${label}, une récompense t’attend` : name;
+      // Onglet déjà ouvert : l'écran revient à son état de départ (haut, première section) et le dit.
+      const onClick = id === active
+        ? () => {
+          seasonTab = 'pass';
+          collectionFilter = 'all';
+          open();
+          doc.defaultView?.scrollTo?.(0, 0);
+          announce(`Tu es déjà sur l’écran ${label}.`);
+        }
+        : open;
+      const b = dockButton(doc, { icon: iconName, label, testId, onClick, dot, ...(aria ? { ariaLabel: aria } : {}) });
       b.classList.add('tab');
       if (id === active) {
         b.classList.add('active');
@@ -1249,7 +1262,8 @@ export function createShell(options: ShellOptions): Shell {
       return b;
     };
     nav.append(
-      tab('home', 'play', 'Jouer', 'nav-home', () => renderHome()),
+      // Nom lu « Jouer (accueil) » : il contient le libellé visible et se distingue du grand bouton Jouer.
+      tab('home', 'play', 'Jouer', 'nav-home', () => renderHome(), false, 'Jouer (accueil)'),
       tab('shop', 'shop', 'Boutique', 'nav-shop', () => renderShop()),
       tab('collection', 'palette', 'Collection', 'nav-collection', () => renderCollectionScreen()),
       tab('season', 'medal', 'Passe', 'nav-season', () => renderSeason(), giftReady),

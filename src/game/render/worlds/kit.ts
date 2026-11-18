@@ -1,6 +1,6 @@
 /** Petits éléments de décor partagés par les univers (dessinés centrés en 0, 0). */
 import { css, roundedRect, type Rgb } from '../color';
-import { TAU } from '../scene';
+import { drawCached, TAU } from '../scene';
 import type { DecorItem } from '../theme-types';
 
 export function star(ctx: CanvasRenderingContext2D, r: number, color: Rgb, alpha: number): void {
@@ -76,13 +76,19 @@ export function fish(ctx: CanvasRenderingContext2D, len: number, color: Rgb, alp
   ctx.fill();
 }
 
-/** Point lumineux (luciole, plancton, lumière de drone). */
+/** Point lumineux (luciole, plancton, lumière de drone), servi depuis le cache d'images. */
 export function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: Rgb, alpha: number): void {
   if (alpha <= 0.01) return;
-  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-  g.addColorStop(0, css(color, alpha));
-  g.addColorStop(0.35, css(color, alpha * 0.45));
-  g.addColorStop(1, css(color, 0));
-  ctx.fillStyle = g;
-  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  const rr = Math.max(1, Math.round(r * 2) / 2);
+  const a0 = ctx.globalAlpha;
+  ctx.globalAlpha = a0 * Math.min(1, alpha);
+  drawCached(ctx, `glow|${rr}|${color.join(',')}`, x - rr, y - rr, rr * 2, rr * 2, (s) => {
+    const g = s.createRadialGradient(rr, rr, 0, rr, rr, rr);
+    g.addColorStop(0, css(color));
+    g.addColorStop(0.35, css(color, 0.45));
+    g.addColorStop(1, css(color, 0));
+    s.fillStyle = g;
+    s.fillRect(0, 0, rr * 2, rr * 2);
+  });
+  ctx.globalAlpha = a0;
 }

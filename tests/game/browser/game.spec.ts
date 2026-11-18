@@ -291,7 +291,10 @@ test.describe('V2 (F3) : univers', () => {
       const st = await page.evaluate(() => (window as any).__flk.drawStats());
       lines.push(`${theme}: ${st.n} images, médiane ${st.median.toFixed(2)} ms, p95 ${st.p95.toFixed(2)} ms`);
       expect(st.n).toBeGreaterThan(20);
-      expect(st.p95).toBeLessThan(12); // garde-fou large contre une régression grossière
+      // Garde-fou large contre une régression grossière. V6 : scènes en plusieurs plans et matières
+      // vivantes ; mesuré ici ≈ 1,5 à 2 × la V5 (médiane 4 à 6 ms, p95 8 à 12 ms, CPU ×4, sans GPU),
+      // d'où 16 ms. Mesure headless : ce ne sont pas des FPS d'appareil.
+      expect(st.p95).toBeLessThan(16);
     }
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     console.info('[mesure Chromium headless, conteneur cloud, CPU ×4, 50 étages] ' + lines.join(' | '));
@@ -312,19 +315,19 @@ test.describe('V2 (F4) : apparences', () => {
     });
   }
 
-  test('18 aperçus univers × apparence, tous différents ; false sans Canvas 2D', async ({ page }) => {
+  test('V6 : 30 aperçus (5 univers × 6 apparences V2), tous différents ; false sans Canvas 2D', async ({ page }) => {
     await page.goto(URL);
     const prints = await page.evaluate(() => (window as any).__flk.previewBoard());
-    expect(Object.keys(prints)).toHaveLength(18);
-    expect(new Set(Object.values(prints)).size).toBe(18);
+    expect(Object.keys(prints)).toHaveLength(30);
+    expect(new Set(Object.values(prints)).size).toBe(30);
     expect(await page.evaluate(() => (window as any).__flk.previewWithoutContext())).toBe(false);
   });
 
-  test('V3 (F8) : 42 aperçus univers × 14 apparences, tous différents', async ({ page }) => {
+  test('V6 : 95 aperçus (5 univers × 19 matières), tous différents', async ({ page }) => {
     await page.goto(URL);
     const prints = await page.evaluate(() => (window as any).__flk.previewBoard({ w: 120, h: 84 }, true));
-    expect(Object.keys(prints)).toHaveLength(42);
-    expect(new Set(Object.values(prints)).size).toBe(42);
+    expect(Object.keys(prints)).toHaveLength(95);
+    expect(new Set(Object.values(prints)).size).toBe(95);
   });
 
   test('appearance transmise au montage : le jeu applique univers et apparence', async ({ page }) => {

@@ -150,20 +150,92 @@ export function cloud(ctx: CanvasRenderingContext2D, x: number, y: number, s: nu
   }
 }
 
-/** Disque lumineux (soleil, lune, planète) avec halo. */
+// ——— Images mises en cache (halos, astres, galaxie) ———
+
+type SpriteCanvas = HTMLCanvasElement | OffscreenCanvas;
+const MAX_SPRITES = 24;
+const sprites = new Map<string, SpriteCanvas>();
+
+function newCanvas(w: number, h: number): SpriteCanvas | null {
+  try {
+    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+    if (typeof document !== 'undefined') {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      return c;
+    }
+  } catch {
+    // Pas de canvas hors écran : dessin direct.
+  }
+  return null;
+}
+
+/** Images en cache (tests de bornes). */
+export const spriteCount = (): number => sprites.size;
+
+/**
+ * Dessine `paint` (repère local 0..w × 0..h, en px CSS) à (x, y), via une image mise en cache à la
+ * résolution courante : un halo ou une galaxie coûte un seul remplissage par image. Sans vrai
+ * canvas (tests), dessin direct.
+ */
+export function drawCached(
+  ctx: CanvasRenderingContext2D, key: string, x: number, y: number, w: number, h: number,
+  paint: (c: CanvasRenderingContext2D) => void,
+): void {
+  const m = typeof ctx.getTransform === 'function' ? ctx.getTransform() : null;
+  const res = m && typeof m.a === 'number' ? Math.max(1, Math.round(Math.hypot(m.a, m.b) * 4) / 4) : 0;
+  const pw = Math.ceil(w * res);
+  const ph = Math.ceil(h * res);
+  const full = `${key}|${res}|${pw}x${ph}`;
+  let sprite = res > 0 && pw > 0 && ph > 0 && pw * ph < 1_200_000 ? sprites.get(full) : undefined;
+  if (!sprite && res > 0 && pw > 0 && ph > 0 && pw * ph < 1_200_000) {
+    const c = newCanvas(pw, ph);
+    const x2 = (c?.getContext('2d') ?? null) as CanvasRenderingContext2D | null;
+    if (c && x2) {
+      x2.setTransform(res, 0, 0, res, 0, 0);
+      paint(x2);
+      if (sprites.size >= MAX_SPRITES) {
+        const first = sprites.keys().next().value;
+        if (first !== undefined) sprites.delete(first);
+      }
+      sprites.set(full, c);
+      sprite = c;
+    }
+  }
+  if (sprite) {
+    ctx.drawImage(sprite as CanvasImageSource, x, y, w, h);
+    return;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  paint(ctx);
+  ctx.restore();
+}
+
+/** Disque lumineux (soleil, lune, planète) avec halo, servi depuis le cache d'images. */
 export function orb(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: Rgb, halo: number, alpha = 1): void {
   if (alpha <= 0.01) return;
-  if (halo > 0) {
-    const g = ctx.createRadialGradient(x, y, r * 0.6, x, y, r * (2.4 + halo));
-    g.addColorStop(0, css(color, 0.35 * alpha * halo));
-    g.addColorStop(1, css(color, 0));
-    ctx.fillStyle = g;
-    ctx.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
-  }
-  ctx.fillStyle = css(color, alpha);
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, TAU);
-  ctx.fill();
+  const rr = Math.round(r * 2) / 2;
+  const R = halo > 0 ? rr * (2.4 + halo) : rr;
+  const q = (v: number) => Math.round(v / 6) * 6;
+  const c: Rgb = [q(color[0]), q(color[1]), q(color[2])];
+  const a0 = ctx.globalAlpha;
+  ctx.globalAlpha = a0 * alpha;
+  drawCached(ctx, `orb|${rr}|${c.join(',')}|${halo.toFixed(2)}`, x - R, y - R, R * 2, R * 2, (s) => {
+    if (halo > 0) {
+      const g = s.createRadialGradient(R, R, rr * 0.6, R, R, R);
+      g.addColorStop(0, css(c, 0.35 * halo));
+      g.addColorStop(1, css(c, 0));
+      s.fillStyle = g;
+      s.fillRect(0, 0, R * 2, R * 2);
+    }
+    s.fillStyle = css(c);
+    s.beginPath();
+    s.arc(R, R, rr, 0, TAU);
+    s.fill();
+  });
+  ctx.globalAlpha = a0;
 }
 
 /** Champ d'étoiles (écran), scintillement doux ; `alpha` 0 → rien. */

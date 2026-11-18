@@ -33,8 +33,8 @@ const SCREENS: Opener[] = [
   { name: 'accueil', open: async () => undefined },
   { name: 'boutique', open: (p) => p.getByTestId('nav-shop').click() },
   { name: 'collection', open: (p) => p.getByTestId('nav-collection').click() },
-  { name: 'récompenses', open: (p) => p.getByTestId('nav-rewards').click() },
-  { name: 'passe', open: async (p) => { await p.getByTestId('nav-rewards').click(); await p.getByTestId('open-season').click(); } },
+  { name: 'missions', open: async (p) => { await p.getByTestId('nav-season').click(); await p.getByRole('button', { name: 'Missions et cadeau' }).click(); } },
+  { name: 'passe', open: (p) => p.getByTestId('nav-season').click() },
   { name: 'classement', open: (p) => p.getByTestId('nav-leaderboard').click() },
   { name: 'réglages', open: (p) => p.getByTestId('nav-settings').click() },
   {
