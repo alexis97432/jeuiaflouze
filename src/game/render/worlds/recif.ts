@@ -334,7 +334,7 @@ export const recif: Theme = {
   scene,
   tiers: [
     {
-      name: 'Fond marin', skyTop: hex('#0E4A6E'), skyBottom: hex('#08304A'), ink: CREAM,
+      name: 'Fond marin', skyTop: hex('#08605A'), skyBottom: hex('#08304A'), ink: CREAM,
       decor: (ctx, it, t, motion) => {
         ctx.strokeStyle = 'rgba(210,250,255,0.5)';
         ctx.lineWidth = 1;

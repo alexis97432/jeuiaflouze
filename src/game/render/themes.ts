@@ -88,7 +88,7 @@ export function haloFor(ink: Rgb): Rgb {
  * du meilleur contraste avec le ciel derrière le bloc. Le bord reste lisible partout.
  */
 export function outlineFor(c: Rgb, sky: Rgb): Rgb {
-  const dark = darken(c, 0.7);
+  const dark = darken(c, 0.76);
   const light = lighten(c, 0.72);
   return contrast(dark, sky) >= contrast(light, sky) ? dark : light;
 }

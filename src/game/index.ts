@@ -26,6 +26,7 @@ export { renderAppearancePreview, type PreviewOptions } from './render/preview';
 export {
   summarizeRun,
   renderResultCard,
+  GAME_NAME,
   dayInWords,
   CARD_WIDTH,
   CARD_HEIGHT,

@@ -16,9 +16,14 @@ import {
   type AnyRunResult,
   type Block,
 } from '../core';
-import { BLOCK_HEIGHT, drawBlock, isDrawSkinId, type DrawSkinId } from './blocks';
+import { BLOCK_HEIGHT, drawBlock, isDrawSkinId, SKIN_RARITY, type DrawSkinId } from './blocks';
 import { resolveAnyAppearance, type AnyAppearance } from './mount';
-import { bestInk, css, getTheme, haloFor, mix, skyAt, type Rgb } from './themes';
+import { RARITY_INFO } from './rarity';
+import type { SceneEnv } from './scene';
+import { bestInk, css, getTheme, haloFor, lighten, mix, skyAt, stageAt, type Rgb } from './themes';
+
+/** Nom du jeu (V6) : affiché sur la carte. Le dépôt, l'URL et les sauvegardes ne changent pas. */
+export const GAME_NAME = 'Stack or Crash';
 
 /** Case du motif : pose normale ou parfaite, couverte ou non par un bonus (v2). */
 export type PatternCell = 'placed' | 'perfect' | 'bonus-placed' | 'bonus-perfect';
@@ -201,10 +206,31 @@ export function renderResultCard(canvas: HTMLCanvasElement, card: ResultCard, op
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
   const groundY = H - 250;
+  // V6 : la scène de l'univers à la hauteur atteinte (image fixe, sans premier plan).
+  const scene: SceneEnv = {
+    ctx, w: W, h: H, groundY, cam: 0, scale: W / 400, height: summary.height, stage: stageAt(summary.height),
+    t: 0, motion: false, full: true, seed: summary.height * 31 + summary.perfectCount, activeFrac: 0.45,
+  };
+  const paintScene = (fn: () => void) => {
+    ctx.save();
+    try {
+      fn();
+    } catch {
+      // Décor seulement : la carte reste lisible sans lui.
+    }
+    ctx.restore();
+  };
+  paintScene(() => theme.scene.far(scene));
+  paintScene(() => theme.scene.back(scene));
   ctx.fillStyle = css(theme.ground.body);
   ctx.fillRect(0, groundY, W, H - groundY);
-  ctx.fillStyle = css(theme.ground.top);
-  ctx.fillRect(0, groundY, W, 12);
+  paintScene(() => theme.scene.ground(scene, groundY));
+  // Voile derrière le texte : le score reste lisible sur un décor riche.
+  const veil = ctx.createLinearGradient(0, 0, 0, 520);
+  veil.addColorStop(0, css(mix(sky.top, sky.bottom, 0.1), 0.55));
+  veil.addColorStop(1, css(mix(sky.top, sky.bottom, 0.4), 0));
+  ctx.fillStyle = veil;
+  ctx.fillRect(0, 0, W, 520);
 
   const text = (s: string, x: number, y: number, size: number, color: string, weight = 800, align: CanvasTextAlign = 'center') => {
     ctx.font = FONT(weight, size);
@@ -219,7 +245,7 @@ export function renderResultCard(canvas: HTMLCanvasElement, card: ResultCard, op
   };
 
   // En-tête : nom du jeu, mode, univers.
-  text('Pile ou Crash', W / 2, 92, 64, css(ink), 900);
+  text(GAME_NAME, W / 2, 92, 64, css(ink), 900);
   const words = card.mode === 'daily' && card.day ? dayInWords(card.day) : null;
   const day = words ? ` · ${words}` : '';
   text(`${MODE_LABEL[card.mode]}${day} · ${theme.name}`, W / 2, 148, 34, css(ink), 700);
@@ -290,8 +316,66 @@ export function renderResultCard(canvas: HTMLCanvasElement, card: ResultCard, op
   if (summary.patternTotal > cells.length) {
     text(`(${summary.patternTotal - cells.length} poses plus tôt)`, W / 2, H - 22, 22, css(groundInk), 600);
   }
+  drawRarityFrame(ctx, skin, W, H);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   return true;
+}
+
+/**
+ * Signature de la carte selon la rareté de la matière (V6) : aucun cadre pour Commun, un liseré
+ * pour Rare, un double cadre pour Épique, un cadre doré orné et un ruban pour Légendaire.
+ */
+function drawRarityFrame(ctx: CanvasRenderingContext2D, skin: DrawSkinId, W: number, H: number): void {
+  const rarity = SKIN_RARITY[skin];
+  if (rarity === 'commun') return;
+  const info = RARITY_INFO[rarity];
+  const c = info.color;
+  const inset = 18;
+  ctx.save();
+  if (rarity === 'legendaire') {
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, css(lighten(c, 0.55)));
+    g.addColorStop(0.5, css(c));
+    g.addColorStop(1, css(lighten(c, 0.4)));
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 14;
+  } else {
+    ctx.strokeStyle = css(c, 0.95);
+    ctx.lineWidth = rarity === 'epique' ? 10 : 7;
+  }
+  roundRect(ctx, inset, inset, W - inset * 2, H - inset * 2, 36);
+  ctx.stroke();
+  if (rarity !== 'rare') {
+    ctx.strokeStyle = css(lighten(c, 0.6), 0.85);
+    ctx.lineWidth = 3;
+    roundRect(ctx, inset + 14, inset + 14, W - (inset + 14) * 2, H - (inset + 14) * 2, 26);
+    ctx.stroke();
+  }
+  if (rarity === 'legendaire') {
+    // Coins ornés : petites étoiles à quatre branches.
+    for (const [x, y] of [[inset + 10, inset + 10], [W - inset - 10, inset + 10], [inset + 10, H - inset - 10], [W - inset - 10, H - inset - 10]] as const) {
+      ctx.fillStyle = css(lighten(c, 0.5));
+      ctx.beginPath();
+      ctx.moveTo(x, y - 22);
+      ctx.quadraticCurveTo(x, y, x + 22, y);
+      ctx.quadraticCurveTo(x, y, x, y + 22);
+      ctx.quadraticCurveTo(x, y, x - 22, y);
+      ctx.quadraticCurveTo(x, y, x, y - 22);
+      ctx.fill();
+    }
+  }
+  // Ruban sur le bord haut : la rareté écrite en toutes lettres (jamais la couleur seule).
+  const label = `Matière ${info.name.toLowerCase()}`;
+  ctx.font = FONT(800, 26);
+  const tw = ctx.measureText(label).width + 44;
+  roundRect(ctx, (W - tw) / 2, inset - 22, tw, 44, 22);
+  ctx.fillStyle = css(c);
+  ctx.fill();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, W / 2, inset + 1);
+  ctx.restore();
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
