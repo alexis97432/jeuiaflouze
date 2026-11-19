@@ -102,48 +102,84 @@ export interface DrawBlockOptions {
 export function edgeColors(color: Rgb, skin: DrawSkinId, sky: Rgb): { face: Rgb; outline: Rgb } {
   const face = faceTone(color, skin as MaterialSkin, sky);
   // V2 : contour calculé sur la couleur d'étage (inchangé) ; V3+ : sur la teinte de la matière.
-  const outline = outlineFor(skin === 'marbre' ? darken(color, 0.25) : isSkinId(skin) ? color : face, sky);
+  // V8 : contour calculé sur la teinte réelle de la face (la couleur vient de la matière).
+  const outline = outlineFor(face, sky);
   return { face, outline };
 }
 
-/** Bloc « jouet » en relief, strictement contenu dans [x, x + w]. */
+/**
+ * V8 : épaisseur visible de la face supérieure (unités). La lumière vient d'en haut à gauche :
+ * dessus éclairé, biseau gauche clair, biseau droit et bas dans l'ombre.
+ */
+export const TOP_FACE = 6;
+
+/**
+ * Bloc en relief, strictement contenu dans [x, x + w] (V8 : relief de matière, plus de contour
+ * épais de dessin animé ; un liseré fin garde la limite lisible sur tous les ciels).
+ */
 export function drawBlock(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, color: Rgb, o: DrawBlockOptions): void {
   if (w <= 0) return;
   const p = reliefParts(w);
   const H = BLOCK_HEIGHT;
   const glassy = GLASSY.has(o.skin);
   const env: MaterialEnv = o.env ?? { ...STATIC_ENV, wx: x, wy: y, ox: x, floor: o.variant };
+  const r = Math.min(RADIUS, w / 2, H / 2);
   ctx.save();
   ctx.globalAlpha = o.alpha * (o.skin === 'verre' ? 0.72 : 1);
   ctx.translate(x, y);
-  roundedRect(ctx, 0, 0, w, H, RADIUS);
+  roundedRect(ctx, 0, 0, w, H, r);
   ctx.fillStyle = o.gradient ?? createFaceGradient(ctx, color, o.skin);
   ctx.fill();
   ctx.save();
   ctx.clip(); // tout ce qui suit est découpé par la forme du bloc
   paintMaterial(ctx, w, color, o.skin as MaterialSkin, env);
   const tone = glassy ? faceTone(color, o.skin as MaterialSkin, o.sky) : color;
-  // Lèvre sombre en bas : volume et séparation entre étages.
-  ctx.fillStyle = css(darken(tone, o.skin === 'marbre' ? 0.05 : glassy ? 0.5 : 0.28), glassy ? 0.75 : 0.9);
-  ctx.fillRect(p.lip.x, H - p.lip.h, p.lip.w, p.lip.h);
-  // Face supérieure : claire et en retrait des bords (verre fin pour les matières « vitrine »).
-  ctx.fillStyle = css(lighten(tone, o.skin === 'marbre' ? 0.75 : glassy ? 0.4 : 0.35), glassy ? 0.42 : 0.95);
-  roundedRect(ctx, p.top.x, 1.5, p.top.w, p.top.h, p.top.h / 2);
-  ctx.fill();
-  if (!glassy && w > 8) {
-    // Arête lumineuse : le bord supérieur accroche la lumière.
-    ctx.fillStyle = css(lighten(tone, 0.7), 0.55);
-    ctx.fillRect(p.top.x + 2, 1.6, Math.max(0, p.top.w - 4), 0.9);
+  const T = Math.min(TOP_FACE, H * 0.24);
+  // 1. Dessus : bande éclairée qui donne l'épaisseur, pli d'ombre à la jonction avec la face.
+  const top = ctx.createLinearGradient(0, 0, 0, T);
+  top.addColorStop(0, css(lighten(tone, glassy ? 0.35 : 0.42), glassy ? 0.4 : 0.62));
+  top.addColorStop(1, css(lighten(tone, glassy ? 0.12 : 0.16), glassy ? 0.22 : 0.4));
+  ctx.fillStyle = top;
+  ctx.fillRect(0, 0, w, T);
+  ctx.fillStyle = css(darken(tone, 0.45), glassy ? 0.35 : 0.42);
+  ctx.fillRect(0, T, w, 0.9);
+  if (w > 6) {
+    // Arête vive du dessus : elle accroche la lumière.
+    ctx.fillStyle = css(lighten(tone, 0.78), glassy ? 0.5 : 0.7);
+    ctx.fillRect(1.5, 0.4, w - 3, 0.9);
   }
+  // 2. Biseaux : gauche éclairé, droite dans l'ombre (lumière haute à gauche).
+  if (w > 8) {
+    const bl = Math.min(3, w * 0.1);
+    const lg = ctx.createLinearGradient(0, 0, bl, 0);
+    lg.addColorStop(0, 'rgba(255,255,255,0.22)');
+    lg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = lg;
+    ctx.fillRect(0, T, bl, H - T);
+    const br = Math.min(6, w * 0.16);
+    const rg = ctx.createLinearGradient(w - br, 0, w, 0);
+    rg.addColorStop(0, 'rgba(0,0,0,0)');
+    rg.addColorStop(1, 'rgba(0,0,0,0.34)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(w - br, 0, br, H);
+  }
+  // 3. Bas de la face : occlusion douce, puis lèvre sombre qui sépare les étages.
+  const ao = ctx.createLinearGradient(0, H - 9, 0, H);
+  ao.addColorStop(0, 'rgba(0,0,0,0)');
+  ao.addColorStop(1, `rgba(0,0,0,${glassy ? 0.4 : 0.3})`);
+  ctx.fillStyle = ao;
+  ctx.fillRect(0, H - 9, w, 9);
+  ctx.fillStyle = css(darken(tone, glassy ? 0.6 : 0.5), 0.85);
+  ctx.fillRect(p.lip.x, H - 1.6, p.lip.w, 1.6);
   drawGloss(ctx, p, o.skin);
   ctx.restore();
   ctx.globalAlpha = o.alpha;
-  // Contour intérieur : tracé dans [0, w] (inset d'une demi-épaisseur), jamais au-delà.
-  const lw = 1.5;
+  // Liseré intérieur fin : tracé dans [0, w], jamais au-delà ; clair sur ciel sombre, sombre sinon.
+  const lw = 1;
   if (w > lw * 2) {
-    ctx.strokeStyle = css(edgeColors(color, o.skin, o.sky).outline, 0.85);
+    ctx.strokeStyle = css(edgeColors(color, o.skin, o.sky).outline, 0.75);
     ctx.lineWidth = lw;
-    roundedRect(ctx, lw / 2, lw / 2, w - lw, H - lw, RADIUS - lw / 2);
+    roundedRect(ctx, lw / 2, lw / 2, w - lw, H - lw, Math.max(0, r - lw / 2));
     ctx.stroke();
   }
   ctx.restore();
@@ -155,7 +191,7 @@ function drawGloss(ctx: CanvasRenderingContext2D, p: ReliefParts, skin: DrawSkin
   if (p.gloss.w <= 4) return;
   if (skin === 'ceramique') {
     // Grand reflet ovale très brillant.
-    ctx.fillStyle = css([255, 255, 255], 0.6);
+    ctx.fillStyle = css([255, 255, 255], 0.42);
     ctx.beginPath();
     ctx.ellipse(p.gloss.x + p.gloss.w * 0.5, H * 0.42, p.gloss.w * 0.5, 3.2, -0.08, 0, Math.PI * 2);
     ctx.fill();
@@ -172,7 +208,8 @@ function drawGloss(ctx: CanvasRenderingContext2D, p: ReliefParts, skin: DrawSkin
     return;
   }
   if (skin === 'verre' || skin === 'pixel') return; // reflet diagonal / rendu 8-bit sans reflet
-  ctx.fillStyle = css([255, 255, 255], skin === 'marbre' ? 0.5 : skin === 'bois' ? 0.22 : 0.35);
+  // V8 : reflet de matière discret (le relief vient désormais de la lumière, pas d'un trait blanc).
+  ctx.fillStyle = css([255, 255, 255], skin === 'marbre' ? 0.3 : skin === 'bois' ? 0.12 : 0.18);
   roundedRect(ctx, p.gloss.x, H * 0.38, p.gloss.w, 3.5, 1.75);
   ctx.fill();
 }

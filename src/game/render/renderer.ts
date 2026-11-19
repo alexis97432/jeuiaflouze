@@ -1,4 +1,5 @@
 import { FIELD_WIDTH, MILLI, START_WIDTH, type BonusId, type BoostId, type Block, type StepEvent, type StepEventV2, type StepEventV3 } from '../core';
+import { skinColor } from './palette';
 import {
   BLOCK_HEIGHT,
   createFaceGradient,
@@ -56,8 +57,8 @@ import { releaseSprites, type SceneEnv } from './scene';
 
 export { BLOCK_HEIGHT, reliefParts, SKIN_IDS, type ReliefParts, type SkinId } from './blocks';
 /** Bornes des effets : jamais plus d'objets que ça, quelle que soit la série. */
-/** Police du canvas, alignée sur l'interface V4 (Fredoka embarquée, sinon police arrondie du système). */
-export const GAME_FONT = '"Fredoka Variable", "Fredoka", ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif';
+/** Police du canvas (V8 : Oswald embarquée, comme les titres de l'interface). */
+export const GAME_FONT = '"Oswald Variable", "Oswald", "Arial Narrow", Impact, system-ui, sans-serif';
 export const MAX_DEBRIS = 16;
 /** V5 : réserve unique de particules (étoiles, poussière, braises, éclats, plumes). */
 export const MAX_PARTICLES = 64;
@@ -702,6 +703,18 @@ export class Renderer {
     this.guard('scene-fond', () => theme.scene.back(scene));
     this.guard('decor', () => this.drawDecor(scale, groundY, t, motion, tierIndex(Math.max(0, len - 1))));
     ctx.restore();
+    // V8 : perspective aérienne. Un voile de la couleur du bas du ciel éloigne le fond et détache
+    // la tour du décor (profondeur), sans assombrir l'écran.
+    if (full) {
+      this.guard('atmosphere', () => {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const haze = ctx.createLinearGradient(0, this.cssH * 0.25, 0, this.cssH);
+        haze.addColorStop(0, css(skyBottom, 0));
+        haze.addColorStop(1, css(skyBottom, 0.32));
+        ctx.fillStyle = haze;
+        ctx.fillRect(0, this.cssH * 0.25, this.cssW, this.cssH * 0.75);
+      });
+    }
     const duck = this.duck;
     if (duck) {
       this.guard('absurdites', () => {
@@ -744,6 +757,15 @@ export class Renderer {
     for (let i = waveFrom; i < len; i++) {
       this.waveOffsets[i - waveFrom] = acc;
       acc += BLOCK_HEIGHT * this.compressionAt(i);
+    }
+    // V8 : ombre portée de la tour sur le décor, avant les étages.
+    if (this.frameFull) {
+      this.guard('ombres', () => this.towerShadow(view, firstVisible, lastVisible, (i) => {
+        const inWave = i >= waveFrom;
+        const off = inWave ? this.waveOffsets[i - waveFrom]! : 0;
+        const c = inWave ? this.compressionAt(i) : 0;
+        return yScreen(i * BLOCK_HEIGHT - off + BLOCK_HEIGHT * (1 - c));
+      }, yScreen(0)));
     }
     const rim = hud?.fever ? 0.9 : Math.min(0.6, Math.max(0, (view.perfectStreak - 2) * 0.2));
     const rimColor: Rgb = hud?.fever ? [255, 170, 60] : [255, 255, 255];
@@ -907,6 +929,18 @@ export class Renderer {
     if (this.feverMix > 0.01) this.guard('bords', () => this.vignette([255, 120, 40], 0.3 * this.feverMix * (1 + 0.4 * this.feverBeat)));
 
     // 7. HUD, puis onomatopées placées sous le HUD de cette image (jamais dessus ni sur la pose).
+    // V8 : vignette légère (bords plus sombres) : le regard reste sur la tour.
+    if (full) {
+      this.guard('vignette', () => {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const R = Math.hypot(this.cssW, this.cssH) / 2;
+        const v = ctx.createRadialGradient(this.cssW / 2, this.cssH * 0.45, R * 0.45, this.cssW / 2, this.cssH * 0.45, R);
+        v.addColorStop(0, 'rgba(0,0,0,0)');
+        v.addColorStop(1, 'rgba(0,0,0,0.26)');
+        ctx.fillStyle = v;
+        ctx.fillRect(0, 0, this.cssW, this.cssH);
+      });
+    }
     this.drawHud(view, sky.ink);
     if (this.words.length > 0) {
       this.guard('mots', () => {
@@ -1016,7 +1050,8 @@ export class Renderer {
   }
 
   private colorFor(floor: number): Rgb {
-    return this.theme.blocks[floor % this.theme.blocks.length]!;
+    // V8 : la couleur vient de la matière, pas de l'univers (palette.ts).
+    return skinColor(this.skin, floor);
   }
 
   private update(dt: number, view: ViewState, scale: number, groundY: number): void {
@@ -1590,16 +1625,59 @@ export class Renderer {
   }
 
   /** Ombre portée par `above` sur le haut de `below`, limitée à leur intersection. */
+  /**
+   * V8 : ombre de contact. L'étage du dessus (ou le bloc mobile) projette une ombre douce sur le
+   * dessus de l'étage du dessous, décalée vers la droite (lumière haute à gauche). Pour le bloc
+   * mobile, elle montre exactement où il se posera : repère de lecture, pas seulement décor.
+   */
   private contactShadow(below: Block, above: Block, belowTop: number): void {
     const l = Math.max(below.left, above.left) / MILLI;
-    const r = Math.min(below.left + below.width, above.left + above.width) / MILLI;
+    const r = Math.min(below.left + below.width, above.left + above.width + 3 * MILLI) / MILLI;
     if (r <= l) return;
     const { ctx } = this;
     ctx.save();
     roundedRect(ctx, below.left / MILLI, belowTop, below.width / MILLI, BLOCK_HEIGHT, RADIUS);
     ctx.clip();
-    ctx.fillStyle = 'rgba(20,20,50,0.16)';
-    ctx.fillRect(l, belowTop, r - l, 5);
+    const g = ctx.createLinearGradient(0, belowTop, 0, belowTop + 10);
+    g.addColorStop(0, 'rgba(8,6,6,0.5)');
+    g.addColorStop(1, 'rgba(8,6,6,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(l + 1.5, belowTop, r - l - 1.5, 10);
+    ctx.restore();
+  }
+
+  /**
+   * V8 : ombre portée de la tour sur le décor (lumière haute à gauche) et ombre au sol. Deux
+   * aplats translucides décalés suffisent à donner un flou bon marché ; rien n'est dessiné pour le
+   * bloc mobile (sa limite reste nette).
+   */
+  private towerShadow(view: ViewState, from: number, to: number, yTop: (i: number) => number, groundY: number): void {
+    const { ctx } = this;
+    ctx.save();
+    for (const [dx, dy, a] of [[3, 2, 0.14], [7, 5, 0.09]] as const) {
+      ctx.fillStyle = `rgba(6,4,4,${a})`;
+      ctx.beginPath();
+      for (let i = from; i < to; i++) {
+        const b = view.stack[i]!;
+        ctx.rect(b.left / MILLI + dx, yTop(i) + dy, b.width / MILLI, BLOCK_HEIGHT);
+      }
+      ctx.fill();
+    }
+    if (from === 0 && view.stack.length > 0) {
+      const base = view.stack[0]!;
+      const cx = (base.left + base.width / 2) / MILLI + 6;
+      const half = base.width / MILLI / 2 + 18;
+      const g = ctx.createRadialGradient(cx, groundY, 0, cx, groundY, half);
+      g.addColorStop(0, 'rgba(6,4,4,0.42)');
+      g.addColorStop(1, 'rgba(6,4,4,0)');
+      ctx.fillStyle = g;
+      ctx.save();
+      ctx.translate(cx, groundY);
+      ctx.scale(1, 0.18);
+      ctx.translate(-cx, -groundY);
+      ctx.fillRect(cx - half, groundY - half, half * 2, half * 2);
+      ctx.restore();
+    }
     ctx.restore();
   }
 

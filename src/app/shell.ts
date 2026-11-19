@@ -990,7 +990,7 @@ export function createShell(options: ShellOptions): Shell {
     const note = el(doc, 'p', { class: 'hint small center' }, 'Tes réglages restent sur cet appareil.');
     // Licences de la police et des icônes, livrées avec le jeu (OFL 1.1, ISC, MIT).
     const credits = el(doc, 'p', { class: 'hint small center' });
-    const creditsLink = el(doc, 'a', { href: 'licences-tiers.txt', class: 'credits', 'data-testid': 'credits', target: '_blank', rel: 'noopener' }, 'Crédits : police Fredoka, icônes Lucide');
+    const creditsLink = el(doc, 'a', { href: 'licences-tiers.txt', class: 'credits', 'data-testid': 'credits', target: '_blank', rel: 'noopener' }, 'Crédits : police Oswald, icônes Lucide');
     credits.append(creditsLink);
     const musicCredits = el(doc, 'p', { class: 'hint small center', 'data-testid': 'music-credits' }, 'Musiques : compositions originales de Stack or Crash, jouées par le synthétiseur du jeu (aucun fichier externe).');
     show('settings', [header, theme, musicCard, sound, vibration, motion, effects, diagnostic, help, note, credits, musicCredits], title);

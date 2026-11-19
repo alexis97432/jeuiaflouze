@@ -27,7 +27,7 @@
     "vitest": "4.1.12"
   },
   "dependencies": {
-    "@fontsource-variable/fredoka": "5.3.0",
+    "@fontsource-variable/oswald": "^5.3.0",
     "lucide": "1.66.0"
   }
 }

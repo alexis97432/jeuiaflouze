@@ -6,6 +6,7 @@
  * dessin : aucun RAF, écouteur, stockage, réseau, son, nom, URL ni identifiant.
  * Le shell (Alexis) convertit en fichier, partage, télécharge et écrit le texte.
  */
+import { skinColor } from './palette';
 import { GAME_FONT } from './renderer';
 import {
   MILLI,
@@ -286,7 +287,7 @@ export function renderResultCard(canvas: HTMLCanvasElement, card: ResultCard, op
     const floor = summary.towerFrom + i;
     const y = -(i + 1) * BLOCK_HEIGHT;
     const behind = mix(sky.top, sky.bottom, Math.min(1, Math.max(0, (groundY + y * s) / H)));
-    const color = theme.blocks[floor % theme.blocks.length]!;
+    const color = skinColor(skin, floor);
     drawBlock(ctx, b.left / MILLI, y, b.width / MILLI, color, { skin, sky: behind, alpha: 1, variant: floor });
   });
   ctx.setTransform(k, 0, 0, k, 0, 0);

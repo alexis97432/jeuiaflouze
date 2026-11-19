@@ -1,42 +1,45 @@
 /*
+ * V8 — palette « pierre, braise, émeraude, laiton » (remplace les pastels bonbon et le bleu-mauve
+ * des V4–V7) et formes plus franches. Titres en Oswald (OFL), texte dans la police du système.
  * V4 — jetons de couleur et de forme. Thème clair par défaut ; sombre si l'utilisateur le choisit
  * (data-theme="dark") ou si l'appareil est en sombre et que le joueur a laissé « Auto ».
  * Le thème de l'interface est indépendant des univers des blocs (Confiserie, Orbital, Jardin).
  * Contrastes vérifiés (texte ≥ 4,5:1) par tests/app/contrast.test.ts (jetons) et tests/e2e/v4.spec.ts (rendu).
  */
 :root {
-  --font: 'Fredoka Variable', 'Fredoka', ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Oswald Variable', 'Oswald', 'Arial Narrow', Impact, sans-serif;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
-  --bg: #fff3e0;
-  --bg-blob-1: #ffd3e2;
-  --bg-blob-2: #c6f1e4;
-  --bg-blob-3: #e2dbff;
-  --surface: #ffffff;
-  --surface-2: #fff8ef;
-  --surface-3: #f4ecff;
-  --ink: #23204a;
-  --ink-soft: #57537e;
-  --edge: #23204a;
-  --line-soft: rgba(35, 32, 74, 0.14);
-  --focus: #2f6bff;
+  --bg: #ebe5da;
+  --bg-blob-1: #e6d0bc;
+  --bg-blob-2: #d3ddd0;
+  --bg-blob-3: #e2d7c0;
+  --surface: #faf7f1;
+  --surface-2: #f3eee5;
+  --surface-3: #e8e1d4;
+  --ink: #1d1b19;
+  --ink-soft: #534e47;
+  --edge: #1d1b19;
+  --line-soft: rgba(29, 27, 25, 0.14);
+  --focus: #1f5fd6;
 
-  --primary: #ff5e6c;
-  --primary-hi: #ff8a94;
-  --secondary: #3fd6b3;
-  --secondary-hi: #7be8cf;
-  --accent: #ffc83d;
-  --accent-hi: #ffdc7d;
-  --violet: #7c5cff;
-  --violet-ink: #5536d1;
+  --primary: #e4633a;
+  --primary-hi: #ee8a62;
+  --secondary: #3fb88a;
+  --secondary-hi: #72cfa9;
+  --accent: #e0a838;
+  --accent-hi: #eec46c;
+  --violet: #8a5a2b;
+  --violet-ink: #7a4a1f;
   /* Ruban « Niveau atteint » : texte blanc, même fond dans les deux thèmes (contraste ≥ 4,5:1). */
-  --ribbon-violet: #5536d1;
+  --ribbon-violet: #6b3d1c;
   /* Mot « Crash » du titre : corail assez foncé pour le grand texte (≥ 3:1 sur le fond). */
-  --brand-accent: #e0364a;
-  --on-color: #23204a;
+  --brand-accent: #b8402a;
+  --on-color: #1d1b19;
 
-  --coin: #f5a623;
-  --heart: #ff4d6d;
-  --star: #ffb800;
+  --coin: #d9962a;
+  --heart: #d8453b;
+  --star: #e0a838;
   --ok-ink: #137a5a;
   --ok-bg: #d8f6ec;
   --warn-ink: #9a4b00;
@@ -44,84 +47,84 @@
   --danger-ink: #b42335;
   --danger-bg: #ffe0e4;
 
-  --shadow: 0 8px 24px rgba(35, 32, 74, 0.12);
-  --radius-s: 12px;
-  --radius: 18px;
-  --radius-l: 26px;
-  --press: 5px;
+  --shadow: 0 6px 18px rgba(29, 27, 25, 0.14);
+  --radius-s: 8px;
+  --radius: 12px;
+  --radius-l: 16px;
+  --press: 3px;
   --tap: 52px;
 
-  --scrim: rgba(22, 20, 52, 0.55);
+  --scrim: rgba(16, 14, 12, 0.6);
   color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-  --bg: #16163a;
-  --bg-blob-1: #3b1d50;
-  --bg-blob-2: #0f3a48;
-  --bg-blob-3: #2a2768;
-  --surface: #23234f;
-  --surface-2: #2b2b5e;
-  --surface-3: #33306b;
-  --ink: #fff3e0;
-  --ink-soft: #cbc6f0;
-  --edge: #6b65b8;
-  --line-soft: rgba(255, 243, 224, 0.16);
+  --bg: #151413;
+  --bg-blob-1: #2a1a14;
+  --bg-blob-2: #10241d;
+  --bg-blob-3: #2a2414;
+  --surface: #1f1d1b;
+  --surface-2: #282522;
+  --surface-3: #322e2a;
+  --ink: #f2ece2;
+  --ink-soft: #c2b9ab;
+  --edge: #7a7064;
+  --line-soft: rgba(242, 236, 226, 0.14);
   --focus: #8fb1ff;
-  --primary: #ff6b78;
-  --primary-hi: #ff98a1;
-  --secondary: #46dcb9;
-  --secondary-hi: #83ead2;
-  --accent: #ffcd4d;
-  --accent-hi: #ffe08a;
-  --violet: #9b85ff;
-  --violet-ink: #c6b8ff;
-  --brand-accent: #ff98a1;
-  --on-color: #1b1a3a;
+  --primary: #f0704a;
+  --primary-hi: #f59372;
+  --secondary: #4cc796;
+  --secondary-hi: #7fd9b2;
+  --accent: #e8b14a;
+  --accent-hi: #f0c878;
+  --violet: #d08a4e;
+  --violet-ink: #e0a874;
+  --brand-accent: #f0704a;
+  --on-color: #161412;
   --ok-ink: #7be8cf;
   --ok-bg: #12403a;
   --warn-ink: #ffd88a;
   --warn-bg: #43361a;
   --danger-ink: #ffb3bd;
   --danger-bg: #4a1f2e;
-  --shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-  --scrim: rgba(6, 6, 22, 0.7);
+  --shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  --scrim: rgba(6, 5, 4, 0.72);
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']):not([data-theme='dark']),
   :root[data-theme='system'] {
-    --bg: #16163a;
-    --bg-blob-1: #3b1d50;
-    --bg-blob-2: #0f3a48;
-    --bg-blob-3: #2a2768;
-    --surface: #23234f;
-    --surface-2: #2b2b5e;
-    --surface-3: #33306b;
-    --ink: #fff3e0;
-    --ink-soft: #cbc6f0;
-    --edge: #6b65b8;
-    --line-soft: rgba(255, 243, 224, 0.16);
+    --bg: #151413;
+    --bg-blob-1: #2a1a14;
+    --bg-blob-2: #10241d;
+    --bg-blob-3: #2a2414;
+    --surface: #1f1d1b;
+    --surface-2: #282522;
+    --surface-3: #322e2a;
+    --ink: #f2ece2;
+    --ink-soft: #c2b9ab;
+    --edge: #7a7064;
+    --line-soft: rgba(242, 236, 226, 0.14);
     --focus: #8fb1ff;
-    --primary: #ff6b78;
-    --primary-hi: #ff98a1;
-    --secondary: #46dcb9;
-    --secondary-hi: #83ead2;
-    --accent: #ffcd4d;
-    --accent-hi: #ffe08a;
-    --violet: #9b85ff;
-    --violet-ink: #c6b8ff;
-    --brand-accent: #ff98a1;
-    --on-color: #1b1a3a;
+    --primary: #f0704a;
+    --primary-hi: #f59372;
+    --secondary: #4cc796;
+    --secondary-hi: #7fd9b2;
+    --accent: #e8b14a;
+    --accent-hi: #f0c878;
+    --violet: #d08a4e;
+    --violet-ink: #e0a874;
+    --brand-accent: #f0704a;
+    --on-color: #161412;
     --ok-ink: #7be8cf;
     --ok-bg: #12403a;
     --warn-ink: #ffd88a;
     --warn-bg: #43361a;
     --danger-ink: #ffb3bd;
     --danger-bg: #4a1f2e;
-    --shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-    --scrim: rgba(6, 6, 22, 0.7);
+    --shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+    --scrim: rgba(6, 5, 4, 0.72);
     color-scheme: dark;
   }
 }

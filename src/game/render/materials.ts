@@ -327,7 +327,7 @@ const MARBLE: TexSpec = {
       const cloud = smoothstep(0.5, 0.85, turb);
       const dark = Math.max(core * 0.9 + halo, hair);
       if (dark > cloud * 0.5) {
-        d[i] = 46; d[i + 1] = 48; d[i + 2] = 70;
+        d[i] = 62; d[i + 1] = 56; d[i + 2] = 52;
         d[i + 3] = Math.round(Math.min(1, dark) * 175);
       } else {
         d[i] = d[i + 1] = d[i + 2] = 255;
@@ -436,10 +436,12 @@ const MAGMA: TexSpec = {
 const NEBULA: TexSpec = {
   key: 'nebula', w: 512, h: 512,
   paint: (x, w, h) => {
-    x.fillStyle = 'rgb(9,7,26)';
+    x.fillStyle = 'rgb(10,7,7)';
     x.fillRect(0, 0, w, h);
     const r = prng(1234);
-    const palette: Rgb[] = [[110, 50, 200], [40, 90, 220], [210, 60, 170], [40, 170, 190], [255, 120, 90], [150, 90, 255]];
+    // V8 : nébuleuses chaudes (poussières rouille, gaz ambré, bulles d'hydrogène rouge, rares nuages
+    // sarcelle) au lieu du bleu-violet : la Galaxie ne ressemble plus à l'Aurore ni à l'Abysse.
+    const palette: Rgb[] = [[200, 86, 40], [236, 150, 60], [176, 36, 52], [40, 140, 130], [240, 206, 150], [130, 56, 36]];
     x.globalCompositeOperation = 'lighter';
     for (let k = 0; k < 34; k++) {
       const cx = r() * w;
@@ -531,11 +533,12 @@ const AURORA: TexSpec = {
       const len = h * (0.42 + fold * 0.38);
       const bright = 0.35 + 0.65 * smoothstep(0.3, 0.75, fold);
       const g = x.createLinearGradient(0, top, 0, top + len);
-      g.addColorStop(0, `rgba(190,110,255,${0.0})`);
-      g.addColorStop(0.08, `rgba(190,110,255,${0.55 * bright})`);
-      g.addColorStop(0.3, `rgba(80,255,170,${0.9 * bright})`);
-      g.addColorStop(0.75, `rgba(40,220,190,${0.35 * bright})`);
-      g.addColorStop(1, 'rgba(40,220,190,0)');
+      // V8 : aurore verte, frange rose rare en haut (comme une vraie aurore boréale).
+      g.addColorStop(0, `rgba(255,90,130,${0.0})`);
+      g.addColorStop(0.08, `rgba(255,90,130,${0.38 * bright})`);
+      g.addColorStop(0.3, `rgba(70,255,140,${0.9 * bright})`);
+      g.addColorStop(0.75, `rgba(30,200,110,${0.35 * bright})`);
+      g.addColorStop(1, 'rgba(30,200,110,0)');
       x.fillStyle = g;
       x.fillRect(px, top, 2, len);
     }
@@ -717,8 +720,8 @@ const PIXELS: TexSpec = {
 
 // ——— Couleurs de base des matières ———
 
-const GRAPHITE: Rgb = [58, 60, 70];
-const GALAXY: Rgb = [22, 18, 58];
+const GRAPHITE: Rgb = [60, 60, 62];
+const GALAXY: Rgb = [24, 16, 14];
 const ROCK: Rgb = [52, 30, 24];
 const GOLD: Rgb = [226, 178, 64];
 const WOOD_TONE: Rgb = [186, 128, 78];
@@ -920,12 +923,12 @@ const FLAMES: TexSpec = {
 };
 
 const PCB: Rgb = [22, 70, 58];
-const SMOKE: Rgb = [24, 20, 40];
-const NIGHT: Rgb = [14, 22, 52];
+const SMOKE: Rgb = [26, 20, 20];
+const NIGHT: Rgb = [8, 24, 20];
 const EMBER_DARK: Rgb = [74, 18, 26];
 const DEEP: Rgb = [6, 44, 78];
 const HOLO: readonly Rgb[] = [[255, 128, 206], [255, 214, 120], [130, 240, 170], [120, 196, 255], [196, 140, 255]];
-const NEON_TUBES: readonly Rgb[] = [[60, 240, 255], [255, 70, 200], [180, 255, 80], [255, 190, 60]];
+const NEON_TUBES: readonly Rgb[] = [[255, 60, 70], [255, 176, 50], [255, 96, 150], [255, 236, 190]];
 
 export type MaterialSkin =
   | 'gomme' | 'marbre' | 'bonbon' | 'verre' | 'strie' | 'ceramique'
@@ -936,7 +939,7 @@ export type MaterialSkin =
 /** Teinte moyenne de la face (contour, lisibilité). */
 export function faceTone(color: Rgb, skin: MaterialSkin, sky: Rgb): Rgb {
   switch (skin) {
-    case 'marbre': return lighten(color, 0.5);
+    case 'marbre': return color;
     case 'ceramique': return darken(color, 0.15);
     // « Verre » est dessiné à 72 % d'opacité : le ciel transparaît dans la face.
     case 'verre': return mix(color, sky, 0.28);
@@ -966,7 +969,7 @@ export function faceGradient(ctx: CanvasRenderingContext2D, color: Rgb, skin: Ma
   const stops = (...s: [number, Rgb][]) => { for (const [k, c] of s) g.addColorStop(k, css(c)); };
   switch (skin) {
     case 'ceramique': stops([0, lighten(color, 0.05)], [1, darken(color, 0.32)]); break;
-    case 'marbre': stops([0, lighten(color, 0.66)], [1, lighten(color, 0.4)]); break;
+    case 'marbre': stops([0, lighten(color, 0.14)], [0.6, color], [1, darken(color, 0.1)]); break;
     case 'graphite': { const c = mix(color, GRAPHITE, 0.78); stops([0, lighten(c, 0.16)], [0.5, c], [1, darken(c, 0.25)]); break; }
     case 'nacre': { const c = lighten(color, 0.55); stops([0, mix(c, [255, 222, 238], 0.45)], [0.5, mix(c, [222, 236, 255], 0.45)], [1, mix(c, [236, 255, 240], 0.35)]); break; }
     case 'holographique': { const c = lighten(color, 0.3); HOLO.forEach((h, i) => g.addColorStop(i / (HOLO.length - 1), css(mix(c, h, 0.55)))); break; }
@@ -1217,7 +1220,7 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
     }
     ctx.strokeStyle = 'rgba(255,255,255,0.6)';
     ctx.lineWidth = 2;
-    roundedRect(ctx, 3, 3, Math.max(0, w - 6), H - 6, RADIUS - 3);
+    roundedRect(ctx, 3, 3, Math.max(0, w - 6), H - 6, Math.max(0.5, RADIUS - 2));
     ctx.stroke();
     void color;
   },
@@ -1458,16 +1461,16 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
     void color;
   },
   aurore: (ctx, w, _color, env, real) => {
-    // Aurore : nuit étoilée continue sur toute la tour, rideaux verts et violets qui ondulent.
+    // Aurore : nuit étoilée continue sur toute la tour, rideaux verts frangés de rose qui ondulent.
     const drift = env.motion ? env.t : 0;
     if (real && fillTex(ctx, w, STARS_FAR, env.wx, env.wy + env.cam * 0.4, 1, 'lighter')) {
       fillTex(ctx, w, AURORA, env.wx * 0.9 + drift * 9, env.wy * 0.5 + env.cam * 0.35 + Math.sin(drift * 0.6) * 6, 0.95, 'lighter');
       if (env.full) fillTex(ctx, w, AURORA, -env.wx * 0.7 + drift * 15 + 130, env.wy * 0.45 + env.cam * 0.2 + 40, 0.5, 'lighter');
     } else {
       const g = ctx.createLinearGradient(0, 4, 0, H);
-      g.addColorStop(0, 'rgba(190,110,255,0.35)');
-      g.addColorStop(0.45, 'rgba(80,255,170,0.55)');
-      g.addColorStop(1, 'rgba(40,220,190,0)');
+      g.addColorStop(0, 'rgba(255,90,130,0.25)');
+      g.addColorStop(0.45, 'rgba(70,255,140,0.55)');
+      g.addColorStop(1, 'rgba(30,200,110,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(0, 6);
@@ -1704,9 +1707,9 @@ export const SKIN_FX: Partial<Record<MaterialSkin, SkinFx>> = {
     aura: [255, 140, 60],
   },
   galaxie: {
-    place: { kind: 'star', colors: [[200, 180, 255], [140, 200, 255], [255, 255, 255]], count: 8, speed: 120 },
-    perfect: { kind: 'star', colors: [[220, 160, 255], [120, 220, 255], [255, 200, 240]], count: 12, ring: [190, 150, 255] },
-    aura: [150, 110, 255],
+    place: { kind: 'star', colors: [[255, 210, 150], [255, 160, 90], [255, 255, 255]], count: 8, speed: 120 },
+    perfect: { kind: 'star', colors: [[255, 190, 110], [120, 220, 200], [255, 230, 200]], count: 12, ring: [255, 180, 110] },
+    aura: [255, 150, 80],
   },
   cristal: {
     place: { kind: 'glint', colors: [[255, 255, 255], [200, 240, 255]], count: 7, speed: 120 },
@@ -1714,8 +1717,8 @@ export const SKIN_FX: Partial<Record<MaterialSkin, SkinFx>> = {
     aura: [200, 240, 255],
   },
   aurore: {
-    place: { kind: 'star', colors: [[120, 255, 190], [200, 140, 255]], count: 8, speed: 100 },
-    perfect: { kind: 'spark', colors: [[120, 255, 190], [200, 140, 255], [255, 255, 255]], count: 12, ring: [120, 255, 200] },
+    place: { kind: 'star', colors: [[120, 255, 170], [255, 130, 170]], count: 8, speed: 100 },
+    perfect: { kind: 'spark', colors: [[120, 255, 170], [255, 130, 170], [255, 255, 255]], count: 12, ring: [120, 255, 180] },
     aura: [110, 255, 200],
   },
   abysse: {
