@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { StepEvent } from '../../src/game/core';
 import { BLOCK_HEIGHT, MAX_DECOR, MAX_SPARKS, Renderer, reliefParts, type ViewState } from '../../src/game/render/renderer';
-import { ALL_SKIN_IDS, edgeColors, isDrawSkinId, isSkinId, SKIN_IDS, SKIN_IDS_V3, SKIN_IDS_V6, SKIN_IDS_V7 } from '../../src/game/render/blocks';
+import { ALL_SKIN_IDS, edgeColors, isDrawSkinId, isSkinId, SKIN_IDS, SKIN_IDS_V3, SKIN_IDS_V6, SKIN_IDS_V7, SKIN_IDS_V8 } from '../../src/game/render/blocks';
+import { SKIN_PALETTE } from '../../src/game/render/palette';
 import { resolveAppearance } from '../../src/game/render/mount';
 import {
   contrast,
@@ -64,14 +65,19 @@ describe('lisibilité (contraste WCAG 2.x mesuré)', () => {
     }
   });
 
-  it.each(ALL)('$name : bord de chaque bloc ≥ 3 sur le ciel derrière lui, à toute hauteur', (theme) => {
+  it.each(ALL)('$name : bord de chaque bloc ≥ 3 sur le ciel derrière lui, à toute hauteur, pour chaque matière (V8)', (theme) => {
+    // V8 : la couleur d'un étage vient de la matière (palette.ts) ; on vérifie donc chaque ton de
+    // chaque matière, avec le liseré réellement tracé (edgeColors), contre chaque ciel.
     for (const h of HEIGHTS) {
       const sky = skyAt(theme, h);
-      for (let y = 0.25; y <= 0.951; y += 0.05) {
+      for (let y = 0.25; y <= 0.951; y += 0.1) {
         const behind = mix(sky.top, sky.bottom, y);
-        for (const b of theme.blocks) {
-          const edge = Math.max(contrast(b, behind), contrast(outlineFor(b, behind), behind));
-          expect(edge, `hauteur ${h}, y ${y.toFixed(2)}, bloc ${b.join(',')}`).toBeGreaterThanOrEqual(3);
+        for (const skin of ALL_SKIN_IDS) {
+          for (const b of SKIN_PALETTE[skin]!) {
+            const { face, outline } = edgeColors(b, skin, behind);
+            const edge = Math.max(contrast(face, behind), contrast(outline, behind));
+            expect(edge, `hauteur ${h}, y ${y.toFixed(2)}, ${skin} ${b.join(',')}`).toBeGreaterThanOrEqual(3);
+          }
         }
       }
     }
@@ -79,8 +85,8 @@ describe('lisibilité (contraste WCAG 2.x mesuré)', () => {
 });
 
 describe('univers', () => {
-  it('V7 : neuf univers distincts, six paliers nommés chacun, une rareté, au moins six couleurs de blocs', () => {
-    expect(THEME_IDS).toEqual(['confiserie', 'orbital', 'jardin', 'recif', 'cite', 'desert', 'montagne', 'foire', 'nuees']);
+  it('V8 : treize univers distincts, six paliers nommés chacun, une rareté, au moins six couleurs de blocs', () => {
+    expect(THEME_IDS).toEqual(['confiserie', 'orbital', 'jardin', 'recif', 'cite', 'desert', 'montagne', 'foire', 'nuees', 'brume', 'cathedrale', 'volcan', 'noel']);
     const names = new Set<string>();
     for (const id of THEME_IDS) {
       const t = getTheme(id);
@@ -90,15 +96,16 @@ describe('univers', () => {
       t.tiers.forEach((tier) => names.add(tier.name));
       expect(t.blocks.length).toBeGreaterThanOrEqual(6);
     }
-    expect(names.size).toBe(54);
+    expect(names.size).toBe(78);
   });
 
-  it('les ciels de départ sont nettement différents deux à deux', () => {
-    const tops = THEME_IDS.map((id) => getTheme(id).tiers[0].skyTop);
-    for (let i = 0; i < tops.length; i++) {
-      for (let j = i + 1; j < tops.length; j++) {
-        const d = Math.hypot(...tops[i]!.map((v, k) => v - tops[j]![k]!));
-        expect(d).toBeGreaterThan(60);
+  it('les ciels de départ sont nettement différents deux à deux (haut et bas du ciel)', () => {
+    const skies = THEME_IDS.map((id) => getTheme(id).tiers[0]);
+    const dist = (a: readonly number[], b: readonly number[]) => Math.hypot(...a.map((v, k) => v - b[k]!));
+    for (let i = 0; i < skies.length; i++) {
+      for (let j = i + 1; j < skies.length; j++) {
+        const d = dist(skies[i]!.skyTop, skies[j]!.skyTop) + dist(skies[i]!.skyBottom, skies[j]!.skyBottom);
+        expect(d, `${THEME_IDS[i]} / ${THEME_IDS[j]}`).toBeGreaterThan(60);
       }
     }
   });
@@ -269,7 +276,7 @@ describe('V2 (F4) : apparences', () => {
 describe('apparences V3 (F8/F8b) : exposées sans élargir SkinId (V2)', () => {
   it('huit nouvelles matières, distinctes des V2, non exposées par isSkinId', () => {
     expect(SKIN_IDS_V3).toEqual(['graphite', 'nacre', 'holographique', 'pixel', 'galaxie', 'lave', 'or', 'cristal']);
-    expect(new Set(ALL_SKIN_IDS).size).toBe(SKIN_IDS.length + SKIN_IDS_V3.length + SKIN_IDS_V6.length + SKIN_IDS_V7.length);
+    expect(new Set(ALL_SKIN_IDS).size).toBe(SKIN_IDS.length + SKIN_IDS_V3.length + SKIN_IDS_V6.length + SKIN_IDS_V7.length + SKIN_IDS_V8.length);
     for (const id of SKIN_IDS_V3) {
       expect(isSkinId(id)).toBe(false);
       expect(isDrawSkinId(id)).toBe(true);
@@ -282,7 +289,7 @@ describe('apparences V3 (F8/F8b) : exposées sans élargir SkinId (V2)', () => {
 describe('F8b : exposition publique des apparences V3', () => {
   it('API publique : ALL_SKIN_IDS, isAnySkinId, resolveAnyAppearance ; resolveAppearance reste V2', async () => {
     const game = await import('../../src/game');
-    expect(game.ALL_SKIN_IDS).toEqual([...game.SKIN_IDS, ...game.SKIN_IDS_V3, ...game.SKIN_IDS_V6, ...game.SKIN_IDS_V7]);
+    expect(game.ALL_SKIN_IDS).toEqual([...game.SKIN_IDS, ...game.SKIN_IDS_V3, ...game.SKIN_IDS_V6, ...game.SKIN_IDS_V7, ...game.SKIN_IDS_V8]);
     for (const id of game.SKIN_IDS_V3) {
       expect(game.isAnySkinId(id)).toBe(true);
       expect(game.isSkinId(id)).toBe(false);

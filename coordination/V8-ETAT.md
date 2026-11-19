@@ -53,12 +53,22 @@ Point de reprise si la session s'interrompt. Mis à jour à chaque étape.
 | # | Étape | État |
 |---|---|---|
 | V8-0 | Branche, audits, décisions | fait |
-| V8-1 | Économie : simulation, recalibrage, migration, tests | à faire |
-| V8-2 | Relief, palettes par matière, aperçus studio, police | à faire |
-| V8-3 | Collection dark (univers, matières, piano) | à faire |
-| V8-4 | Noël (univers, matières, musique, règle saisonnière) | à faire |
+| V8-1 | Économie : simulation, recalibrage, migration, tests | fait (`f772b97`) |
+| V8-2 | Relief, palettes par matière, aperçus studio, police | fait (`666aaa4`) |
+| V8-3 | Collection dark (univers, matières, piano) | fait : 3 univers, 4 matières, 3 pièces de piano écrites |
+| V8-4 | Noël (univers, matières, musique, règle saisonnière) | fait : univers, 3 matières, valse « Veillée », section saisonnière |
 | V8-5 | Vérifications, PR, fusion, publication, bilan | à faire |
 
 ## Reprise
 
-Scripts de session (scratchpad, à recréer si perdus) : `v8/audit.cjs` (teintes des aperçus de la collection).
+Scripts de session (scratchpad, à recréer si perdus) :
+- `v8/audit.cjs` : teintes des aperçus de la collection ;
+- `v8/shoot-entry.ts` et `v8/shoot.cjs` : images réelles du jeu, par univers, matière et hauteur ;
+- `v8/shots.cjs` : accueil et partie dans l'application construite.
+
+Reste à faire (V8-5) :
+- doc `docs/V8.md` et `docs/V8-ECONOMIE.md` ;
+- e2e (prix, calendrier, section Noël) ;
+- stabilité : fuzzeur et parties enchaînées sur les nouveaux contenus ;
+- mesures audio des pistes piano ;
+- PR, CI, fusion, Pages, contrôle en ligne.

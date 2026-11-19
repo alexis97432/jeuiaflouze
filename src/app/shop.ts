@@ -11,17 +11,18 @@
  * - V7 : le prix confirmé par le joueur est vérifié au moment du débit ; s'il diffère (catalogue
  *   mis à jour entre-temps), rien n'est débité.
  */
-import { MUSIC_CATALOG, musicInventoryId, SKIN_CATALOG, THEME_CATALOG, type CosmeticKind } from './catalog';
+import { MUSIC_CATALOG, musicInventoryId, SKIN_CATALOG, THEME_CATALOG, type CosmeticKind, type ShopEventId } from './catalog';
 import { ownsMusic, unlockedSkins, unlockedThemes } from './progression';
 import type { ProgressDoc } from './economy';
 
-export type ShopItem = { id: string; kind: CosmeticKind; price: number; name: string };
+/** `season` (V8) : objet saisonnier, vendu pendant son événement seulement (rotation.ts). */
+export type ShopItem = { id: string; kind: CosmeticKind; price: number; name: string; season?: ShopEventId };
 
 export { musicInventoryId };
 
 /** Catalogue en pièces, dérivé du catalogue (prix fixés par rareté). */
 export const COIN_SHOP: readonly ShopItem[] = [...SKIN_CATALOG, ...THEME_CATALOG, ...MUSIC_CATALOG].flatMap((i) =>
-  i.source.kind === 'shop' ? [{ id: i.id, kind: i.kind, price: i.source.price, name: i.name }] : []);
+  i.source.kind === 'shop' ? [{ id: i.id, kind: i.kind, price: i.source.price, name: i.name, ...(i.source.season ? { season: i.source.season } : {}) }] : []);
 
 export type ItemState = 'owned' | 'affordable' | 'too-expensive';
 

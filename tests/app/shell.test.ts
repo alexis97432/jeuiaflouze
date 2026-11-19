@@ -515,7 +515,7 @@ describe('accueil V2 et collection', () => {
   it('collection : verrous explicites, choix persistant, onglet actif et focus rendu', async () => {
     const { button, root, text, end, place, meta } = setup();
     button('Collection').click();
-    expect(text('collection-count')).toBe('2 / 29 obtenus');
+    expect(text('collection-count')).toBe('2 / 40 obtenus');
     expect(root.querySelector('[data-testid="nav-collection"]')?.getAttribute('aria-current')).toBe('page');
     // Condition courte à l'écran, « À obtenir » lu par les lecteurs d'écran.
     expect(text('card-skin-marbre')).toContain('À obtenir : Pose 5 étages en une partie');
@@ -528,7 +528,7 @@ describe('accueil V2 et collection', () => {
     place([false, false, false, false, false]);
     await end(5);
     button('Voir la collection').click();
-    expect(text('collection-count')).toBe('3 / 29 obtenus');
+    expect(text('collection-count')).toBe('3 / 40 obtenus');
     const choose = root.querySelector<HTMLButtonElement>('[data-testid="card-skin-marbre"] button')!;
     expect(choose.getAttribute('aria-label')).toBe('Équiper Matière Marbré');
     choose.click();

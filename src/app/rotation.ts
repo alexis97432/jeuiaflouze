@@ -15,16 +15,16 @@
  * Limite honnête : calculée sur l'appareil, elle suit son horloge. Changer l'heure montre la
  * sélection d'un autre jour (au même prix) ; cela ne donne ni pièce, ni cadeau, ni objet.
  */
-import { catalogItem, type CosmeticKind } from './catalog';
+import { catalogItem, type CosmeticKind, type ShopEventId } from './catalog';
 import { hashString, rng } from './music/theory';
 import { COIN_SHOP, type ShopItem } from './shop';
 import type { Rarity } from '../game';
 
 export const DAY_MS = 86_400_000;
-/** Version du catalogue tournant : à changer quand on ajoute ou retire des objets vendus. */
-export const ROTATION_VERSION = 1;
-/** Premier jour de la version (18 novembre 2026, jour UTC 20 775). */
-export const ROTATION_EPOCH_DAY = 20_775;
+/** Version du catalogue tournant : à changer quand on ajoute ou retire des objets vendus (V8 : 2). */
+export const ROTATION_VERSION = 2;
+/** Premier jour de la version (V8 : 19 novembre 2026, jour UTC 20 776). */
+export const ROTATION_EPOCH_DAY = 20_776;
 /** Au-delà, on simule seulement les derniers jours (coût borné, résultat toujours déterministe). */
 export const MAX_SIMULATED_DAYS = 400;
 export const SLOTS: Readonly<Record<CosmeticKind, number>> = { skin: 3, theme: 1, music: 2 };
@@ -43,6 +43,7 @@ const RANK: Record<Rarity, number> = { commun: 0, rare: 1, epique: 2, legendaire
 function poolOf(catalog: readonly ShopItem[]): Record<CosmeticKind, DailyOffer[]> {
   const pools: Record<CosmeticKind, DailyOffer[]> = { skin: [], theme: [], music: [] };
   for (const item of catalog) {
+    if (item.season) continue; // V8 : les objets saisonniers ont leur section, hors rotation.
     const info = catalogItem(item.kind, item.id);
     if (!info) continue;
     pools[item.kind].push({ ...item, rarity: info.rarity });
@@ -104,9 +105,53 @@ export function dailySelection(day: number, catalog: readonly ShopItem[] = COIN_
   return offers;
 }
 
-/** L'objet est-il en vente aujourd'hui ? */
+// --- V8 : événements saisonniers -----------------------------------------------------------
+
+export type ShopEvent = {
+  id: ShopEventId;
+  name: string;
+  /** Premier et dernier jour inclus (mois 1–12, jour), en jours UTC ; peut passer d'une année à l'autre. */
+  from: readonly [number, number];
+  to: readonly [number, number];
+  /** Libellés affichés, tirés de la même règle. */
+  fromLabel: string;
+  toLabel: string;
+};
+
+/** Noël : chaque année du 20 novembre au 6 janvier inclus (jours UTC). */
+export const SHOP_EVENTS: readonly ShopEvent[] = [
+  { id: 'noel', name: 'Noël', from: [11, 20], to: [1, 6], fromLabel: '20 novembre', toLabel: '6 janvier' },
+];
+
+/** L'événement est-il en cours au jour UTC `day` ? */
+export function eventActiveOn(event: ShopEvent, day: number): boolean {
+  const d = new Date(day * DAY_MS);
+  const v = (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+  const a = event.from[0] * 100 + event.from[1];
+  const b = event.to[0] * 100 + event.to[1];
+  return a <= b ? v >= a && v <= b : v >= a || v <= b;
+}
+
+/** Événements en cours au jour UTC `day`. */
+export const activeEvents = (day: number): ShopEvent[] => SHOP_EVENTS.filter((e) => eventActiveOn(e, day));
+
+/** Offres saisonnières du jour (toutes celles des événements en cours), sinon []. */
+export function seasonalOffers(day: number, catalog: readonly ShopItem[] = COIN_SHOP): DailyOffer[] {
+  const active = new Set(activeEvents(day).map((e) => e.id));
+  const order: Record<CosmeticKind, number> = { theme: 0, skin: 1, music: 2 };
+  return catalog
+    .filter((i) => i.season !== undefined && active.has(i.season))
+    .flatMap((i) => {
+      const info = catalogItem(i.kind, i.id);
+      return info ? [{ ...i, rarity: info.rarity }] : [];
+    })
+    .sort((a, b) => order[a.kind] - order[b.kind] || RANK[a.rarity] - RANK[b.rarity] || a.id.localeCompare(b.id));
+}
+
+/** L'objet est-il en vente aujourd'hui (sélection du jour ou événement en cours) ? */
 export function isOffered(day: number, kind: CosmeticKind, id: string, catalog: readonly ShopItem[] = COIN_SHOP): boolean {
-  return dailySelection(day, catalog).some((o) => o.kind === kind && o.id === id);
+  return dailySelection(day, catalog).some((o) => o.kind === kind && o.id === id)
+    || seasonalOffers(day, catalog).some((o) => o.kind === kind && o.id === id);
 }
 
 /**

@@ -26,6 +26,7 @@ export { SKIN_IDS_V3, ALL_SKIN_IDS, isAnySkinId, type SkinIdV3, type AnySkinId }
 export { SKIN_IDS_V6, SKIN_RARITY, type SkinIdV6 } from './render/blocks';
 /** V7 : une matière de plus par rareté. */
 export { SKIN_IDS_V7, type SkinIdV7 } from './render/blocks';
+export { SKIN_IDS_V8, type SkinIdV8 } from './render/blocks';
 export { RARITIES, RARITY_INFO, rarityRank, type Rarity, type RarityInfo } from './render/rarity';
 export { renderAppearancePreview, type PreviewOptions } from './render/preview';
 export {

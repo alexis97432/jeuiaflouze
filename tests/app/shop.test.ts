@@ -15,11 +15,16 @@ describe('catalogue', () => {
     expect(COIN_SHOP.map((i) => [i.id, i.kind, i.price])).toEqual([
       ['graphite', 'skin', 200], ['bois', 'skin', 220], ['nacre', 'skin', 600], ['circuit', 'skin', 1400], ['holographique', 'skin', 1300],
       ['papier', 'skin', 160], ['mosaique', 'skin', 650], ['vitrail', 'skin', 1500], ['phenix', 'skin', 3000],
+      ['ardoise', 'skin', 240], ['fer', 'skin', 700], ['ebene', 'skin', 1450], ['obsidienne', 'skin', 3200],
+      ['givre', 'skin', 600], ['velours', 'skin', 1350], ['sapin', 'skin', 2900],
       ['recif', 'theme', 1450], ['desert', 'theme', 350], ['montagne', 'theme', 800], ['foire', 'theme', 1600], ['nuees', 'theme', 3400],
+      ['brume', 'theme', 850], ['cathedrale', 'theme', 1700], ['volcan', 'theme', 3600], ['noel', 'theme', 1500],
       ['gouter-lofi', 'music', 180], ['pixel-parade', 'music', 450], ['fanfare-de-poche', 'music', 450], ['funk-des-briques', 'music', 900], ['aurore-polaire', 'music', 1800],
     ]);
     // Bandes de prix par rareté : jamais un rare moins cher qu'un commun, etc.
     const band = { commun: [150, 400], rare: [400, 900], epique: [900, 2000], legendaire: [1800, 4000] } as const;
+    // Noël : seulement pendant l'événement (section dédiée), jamais dans la rotation.
+    expect(COIN_SHOP.filter((i) => i.season === 'noel').map((i) => i.id)).toEqual(['givre', 'velours', 'sapin', 'noel']);
     for (const i of COIN_SHOP) {
       const rarity = catalogItem(i.kind, i.id)!.rarity;
       expect(i.price, i.id).toBeGreaterThanOrEqual(band[rarity][0]);

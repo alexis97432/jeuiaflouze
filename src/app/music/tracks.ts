@@ -14,6 +14,7 @@ import type { Rarity } from '../../game';
 import type { ChordSymbol, ScaleName } from './theory';
 
 export type Instrument =
+  | 'piano'
   | 'pad' | 'warmPad' | 'strings' | 'ep' | 'pluck' | 'marimba' | 'kalimba' | 'bell' | 'glass'
   | 'chip' | 'chipLead' | 'sawLead' | 'flute' | 'organ' | 'brass' | 'harp' | 'guitar' | 'clav'
   | 'bass' | 'subBass' | 'synthBass' | 'chipBass' | 'tuba';
@@ -57,6 +58,13 @@ export type TrackDef = {
   reverb: number;
   echo: number;
   sections: readonly [SectionDef, SectionDef, SectionDef, SectionDef];
+  /**
+   * V8 : mélodie écrite (phrases composées à la main), une par section, à la place de la mélodie
+   * générée. Jetons `degré:durée` séparés par des espaces (barres `|` ignorées) : degré 1 à 7 de la
+   * gamme, `'` = octave au-dessus, `,` = octave au-dessous, `#`/`b` = altération, `r` = silence ;
+   * durée en temps. Exemple : `5:1.5 6:0.5 5:1 3:1 | 2:1 3:0.5 2:0.5 1:2`.
+   */
+  written?: readonly [string, string, string, string];
 };
 
 const ALL: readonly Part[] = ['pad', 'comp', 'bass', 'arp', 'melody', 'counter', 'drums'];
@@ -178,6 +186,83 @@ export const TRACKS: readonly TrackDef[] = [
       { chords: ['6', '3', '4', '1'], parts: ['pad', 'bass', 'arp', 'melody'], energy: 0.55 },
       { chords: ['4', '5', '3', '6'], parts: ALL, energy: 0.85 },
       { chords: ['b7', '4', '1', '1'], parts: ['pad', 'counter', 'melody'], energy: 0.2 },
+    ],
+  },
+  // — V8 : collection sombre et Noël, au piano (mélodies écrites, voir `written`) —
+  {
+    id: 'sous-bois', name: 'Sous-bois', rarity: 'rare', mood: 'piano mystérieux, brume et feux follets',
+    bpm: 66, meter: 4, bars: 8, swing: 0, key: 50, scale: 'dorian',
+    voices: { pad: 'warmPad', bass: 'piano', arp: 'piano', melody: 'piano', counter: 'glass' },
+    drums: 'none', bass: 'whole', arp: 'broken8', comp: 'none',
+    melody: { density: 0.4, low: 60, high: 79 }, reverb: 0.55, echo: 0.12,
+    sections: [
+      { chords: ['1', '1', '7', '1', '4', '4', '5', '1'], parts: ['bass', 'arp', 'melody'], energy: 0.45 },
+      { chords: ['3', '3', '7', '7', '4', '4', '5', '5'], parts: ['pad', 'bass', 'arp', 'melody'], energy: 0.55 },
+      { chords: ['1', '1', '7', '1', '4', '4', '5', '1'], parts: ['pad', 'bass', 'arp', 'melody', 'counter'], energy: 0.75 },
+      { chords: ['1', '1', '7', '7', '4', '4', '5', '1'], parts: ['pad', 'bass', 'melody'], energy: 0.25 },
+    ],
+    written: [
+      "5:1.5 6:0.5 5:1 3:1 | 2:1 3:0.5 2:0.5 1:2 | 7,:1 1:1 2:1 3:1 | 2:3 r:1 | 6:1.5 5:0.5 4:1 3:1 | 4:1 6:1 1':2 | 7:1 6:0.5 5:0.5 4:1 3:1 | 2:1 1:3",
+      "3:2 5:1 3:1 | 2:1 1:1 2:2 | 3:2 7,:1 1:1 | 7,:4 | 4:1.5 3:0.5 4:1 6:1 | 5:3 r:1 | 5:1 6:1 7:1 1':1 | 2':4",
+      "5:1.5 6:0.5 5:1 3:1 | 2:1 3:0.5 2:0.5 1:2 | 7,:1 1:1 2:1 3:1 | 2:2 5:1 6:1 | 6:1.5 5:0.5 4:1 3:1 | 4:1 6:1 1':2 | 7:1 6:0.5 5:0.5 4:1 3:1 | 2:1 1:3",
+      "1':4 | 7:2 5:2 | 3:4 | 2:4 | 4:2 6:2 | 5:4 | 3:2 2:2 | 1:4",
+    ],
+  },
+  {
+    id: 'vitraux', name: 'Vitraux brisés', rarity: 'epique', mood: 'piano mélancolique et orgue lointain',
+    bpm: 58, meter: 4, bars: 8, swing: 0, key: 57, scale: 'harmonicMinor',
+    voices: { pad: 'organ', bass: 'piano', arp: 'piano', melody: 'piano', counter: 'strings' },
+    drums: 'none', bass: 'whole', arp: 'harp', comp: 'none',
+    melody: { density: 0.4, low: 64, high: 86 }, reverb: 0.65, echo: 0.1,
+    sections: [
+      { chords: ['1', '6', '4', '5', '1', '4', '5', '1'], parts: ['bass', 'arp', 'melody'], energy: 0.4 },
+      { chords: ['3', '3', 'b7', 'b7', '6', '6', '5', '5'], parts: ['pad', 'bass', 'arp', 'melody'], energy: 0.55 },
+      { chords: ['1', '6', '4', '5', '1', '4', '5', '1'], parts: ['pad', 'bass', 'arp', 'melody', 'counter'], energy: 0.8 },
+      { chords: ['1', '1', '4', '4', '1', '1', '5', '5'], parts: ['pad', 'bass', 'melody'], energy: 0.2 },
+    ],
+    written: [
+      "5:1.5 4:0.5 3:1 2:1 | 1:1 3:1 6:2 | 4:1.5 3:0.5 2:1 1:1 | 7,:3 r:1 | 3:1.5 4:0.5 5:1 1':1 | 6:2 4:1 2:1 | 7,:1 2:1 4:1 3:0.5 2:0.5 | 1:4",
+      "3:1 5:1 3':2 | 2':1 1':1 b7:2 | b7:1.5 6:0.5 5:2 | 2:4 | 1':1.5 b7:0.5 6:1 1':1 | 3':2 1':2 | 7:1 1':1 2':1 7:1 | 5:4",
+      "5:1.5 4:0.5 3:1 2:1 | 1:1 3:1 6:2 | 4:1.5 3:0.5 2:1 1:1 | 7,:2 2:1 4:1 | 3:1.5 4:0.5 5:1 1':1 | 6:2 4:1 2:1 | 7,:1 2:1 4:1 3:0.5 2:0.5 | 1:4",
+      "5:4 | 3:4 | 4:4 | 6,:4 | 1:4 | 3:4 | 7,:4 | 2:4",
+    ],
+  },
+  {
+    id: 'cendres', name: 'Cendres', rarity: 'legendaire', mood: 'piano dramatique, basses en octaves et cordes',
+    bpm: 72, meter: 4, bars: 8, swing: 0, key: 48, scale: 'harmonicMinor',
+    voices: { pad: 'strings', bass: 'piano', arp: 'piano', melody: 'piano', counter: 'strings' },
+    drums: 'none', bass: 'pulse8', arp: 'broken8', comp: 'none',
+    melody: { density: 0.4, low: 55, high: 84 }, reverb: 0.5, echo: 0.08,
+    sections: [
+      { chords: ['1', '1', '6', '6', '4', '4', '5', '5'], parts: ['bass', 'melody'], energy: 0.55 },
+      { chords: ['6', '3', '4', '1', '6', '3', '5', '5'], parts: ['pad', 'bass', 'arp', 'melody'], energy: 0.5 },
+      { chords: ['1', '1', '6', '6', '4', '4', '5', '5'], parts: ['pad', 'bass', 'arp', 'melody', 'counter'], energy: 0.9 },
+      { chords: ['1', '6', '4', '5'], parts: ['pad', 'arp', 'melody'], energy: 0.25 },
+    ],
+    written: [
+      "1:0.5 5:0.5 1':2 7:1 | 6:1 5:1 3:2 | 1':1 6:1 3':2 | 3':1 1':1 6:2 | 4:1.5 6:0.5 1':1 4':1 | 3':2 2':1 1':1 | 7:1 2':1 5':1 4':0.5 3':0.5 | 2':4",
+      "3:2 1:2 | 2:1 3:1 5:2 | 6:2 4:2 | 5:3 r:1 | 1':2 6:1 3:1 | 5:2 2:2 | 7,:1 2:1 4:1 7,:1 | 5,:4",
+      "1:0.5 5:0.5 1':2 7:1 | 6:1 5:1 3:2 | 1':1 6:1 3':2 | 3':1 1':1 6:2 | 4:1.5 6:0.5 1':1 4':1 | 3':2 2':1 1':1 | 7:1 2':1 5':1 4':0.5 3':0.5 | 1':4",
+      "5:4 | 3:4 | 1':4 | 6:4 | 4:4 | 6:4 | 7:4 | 2':4",
+    ],
+  },
+  {
+    id: 'veillee', name: 'Veillée', rarity: 'epique', mood: 'valse au piano, clochettes et cordes douces',
+    bpm: 88, meter: 3, bars: 8, swing: 0, key: 53, scale: 'major',
+    voices: { pad: 'strings', comp: 'piano', bass: 'piano', melody: 'piano', counter: 'bell' },
+    drums: 'none', bass: 'whole', arp: 'none', comp: 'waltz',
+    melody: { density: 0.45, low: 62, high: 84 }, reverb: 0.45, echo: 0.12,
+    sections: [
+      { chords: ['1', '6', '2', '5', '1', '4', '5', '1'], parts: ['comp', 'bass', 'melody'], energy: 0.45 },
+      { chords: ['6', '6', '3', '3', '4', '4', '5', '5'], parts: ['pad', 'comp', 'bass', 'melody'], energy: 0.55 },
+      { chords: ['1', '6', '2', '5', '1', '4', '5', '1'], parts: ['pad', 'comp', 'bass', 'melody', 'counter'], energy: 0.75 },
+      { chords: ['1', '1', '4', '4', '1', '1', '5', '5'], parts: ['pad', 'bass', 'melody', 'counter'], energy: 0.25 },
+    ],
+    written: [
+      "5:1.5 6:0.5 5:1 | 3:2 1:1 | 2:1 4:1 6:1 | 5:3 | 5:1.5 6:0.5 1':1 | 6:1 4:1 6:1 | 5:1 2:1 3:1 | 1:3",
+      "6:1 1':1 3':1 | 2':2 1':1 | 7:1 1':1 3':1 | 7:3 | 6:1 1':1 4':1 | 3':2 2':1 | 1':1 7:1 6:1 | 5:3",
+      "5:1.5 6:0.5 5:1 | 3:2 1:1 | 2:1 4:1 6:1 | 5:2 r:1 | 5:1.5 6:0.5 1':1 | 3':1 2':1 1':1 | 7:1 2':1 7:1 | 1':3",
+      "3:3 | 2:1.5 1:1.5 | 4:3 | 6:3 | 5:3 | 3:3 | 2:3 | 7,:3",
     ],
   },
   // — Musiques à collectionner (boutique, et une gratuite) —

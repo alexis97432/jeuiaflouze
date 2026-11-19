@@ -33,9 +33,12 @@ export const SKIN_IDS_V6: readonly SkinIdV6[] = ['bois', 'circuit', 'neon', 'aur
 /** V7 : une matière de plus par rareté (Papier, Mosaïque, Vitrail, Phénix). */
 export type SkinIdV7 = 'papier' | 'mosaique' | 'vitrail' | 'phenix';
 export const SKIN_IDS_V7: readonly SkinIdV7[] = ['papier', 'mosaique', 'vitrail', 'phenix'];
+/** V8 : collection sombre (Ardoise, Fer forgé, Ébène, Obsidienne) et Noël (Givre, Velours, Sapin d'or). */
+export type SkinIdV8 = 'ardoise' | 'fer' | 'ebene' | 'obsidienne' | 'givre' | 'velours' | 'sapin';
+export const SKIN_IDS_V8: readonly SkinIdV8[] = ['ardoise', 'fer', 'ebene', 'obsidienne', 'givre', 'velours', 'sapin'];
 /** Toute apparence que `drawBlock` sait dessiner. */
-export type DrawSkinId = SkinId | SkinIdV3 | SkinIdV6 | SkinIdV7;
-export const ALL_SKIN_IDS: readonly DrawSkinId[] = [...SKIN_IDS, ...SKIN_IDS_V3, ...SKIN_IDS_V6, ...SKIN_IDS_V7];
+export type DrawSkinId = SkinId | SkinIdV3 | SkinIdV6 | SkinIdV7 | SkinIdV8;
+export const ALL_SKIN_IDS: readonly DrawSkinId[] = [...SKIN_IDS, ...SKIN_IDS_V3, ...SKIN_IDS_V6, ...SKIN_IDS_V7, ...SKIN_IDS_V8];
 export function isDrawSkinId(v: unknown): v is DrawSkinId {
   return typeof v === 'string' && (ALL_SKIN_IDS as readonly string[]).includes(v);
 }
@@ -50,10 +53,12 @@ export const SKIN_RARITY: Record<DrawSkinId, Rarity> = {
   circuit: 'epique', holographique: 'epique', lave: 'epique', or: 'epique', neon: 'epique',
   galaxie: 'legendaire', cristal: 'legendaire', aurore: 'legendaire', abysse: 'legendaire',
   papier: 'commun', mosaique: 'rare', vitrail: 'epique', phenix: 'legendaire',
+  ardoise: 'commun', fer: 'rare', ebene: 'epique', obsidienne: 'legendaire',
+  givre: 'rare', velours: 'epique', sapin: 'legendaire',
 };
 
 /** Matières sombres « vitrine » : le haut est un verre, pas une face claire. */
-const GLASSY = new Set<DrawSkinId>(['galaxie', 'aurore', 'abysse', 'neon', 'phenix']);
+const GLASSY = new Set<DrawSkinId>(['galaxie', 'aurore', 'abysse', 'neon', 'phenix', 'obsidienne']);
 
 /** Rectangles dessinés pour un bloc en relief, en unités locales (x relatif au bord gauche). */
 export interface ReliefParts {

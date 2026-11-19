@@ -16,7 +16,7 @@ import { PLAY_RULES_VERSION, type GameEvent, type GameHandle } from './game-cont
 import type { ShellPrefs, StartGame } from './game-loader';
 import { cosmeticCard, previewOrSwatch, rarityChip, renderCollection, stateLine, type CollectionFilter, type PreviewFn } from './collection-view';
 import { byRarity, catalogItem, MUSIC_CATALOG, sourceLabel, universeTrack, type CatalogItem } from './catalog';
-import { checkOpenOffer, dailySelection, nextRotationAt, rotationDay, rotationLocalTime, untilRotation } from './rotation';
+import { activeEvents, checkOpenOffer, dailySelection, nextRotationAt, rotationDay, rotationLocalTime, seasonalOffers, untilRotation } from './rotation';
 import type { AudioHub } from '../platform/audio-hub';
 import type { MusicPlayer, PlayerState } from './music/player';
 import type { DeviceInfo, Diagnostics } from './diagnostics';
@@ -1285,24 +1285,29 @@ export function createShell(options: ShellOptions): Shell {
     );
     parts.push(daily);
 
-    const section = (kind: 'skin' | 'theme' | 'music', iconName: IconName, label: string) => {
+    const section = (
+      kind: 'skin' | 'theme' | 'music' | 'noel', iconName: IconName, label: string,
+      pool: readonly ShopItem[] = offers.filter((i) => i.kind === kind),
+    ) => {
       const box = el(doc, 'section', { class: 'card', 'aria-labelledby': `shop-${kind}-title`, 'data-testid': `shop-section-${kind}` });
       box.append(cardTitle(doc, iconName, label, `shop-${kind}-title`));
       const list = el(doc, 'ul', { class: 'items' });
-      const ofKind = offers.filter((i) => i.kind === kind);
-      const ordered = byRarity(ofKind.map((i) => catalogItem(i.kind, i.id)).filter((c): c is CatalogItem => !!c));
+      const ordered = kind === 'noel'
+        ? pool.map((i) => catalogItem(i.kind, i.id)).filter((c): c is CatalogItem => !!c)
+        : byRarity(pool.map((i) => catalogItem(i.kind, i.id)).filter((c): c is CatalogItem => !!c));
       for (const item of ordered) {
-        const shopItem = ofKind.find((i) => i.id === item.id)!;
+        const shopItem = pool.find((i) => i.id === item.id && i.kind === item.kind)!;
+        const k = item.kind;
         const st = itemState(progress, shopItem);
-        const equipped = st === 'owned' && (kind === 'skin' ? progress.selected.skin === item.id
-          : kind === 'theme' ? progress.selected.theme === item.id
+        const equipped = st === 'owned' && (k === 'skin' ? progress.selected.skin === item.id
+          : k === 'theme' ? progress.selected.theme === item.id
             : prefs.musicSource === 'equipee' && equippedMusic(progress) === item.id);
-        const visual = kind === 'music'
+        const visual = k === 'music'
           ? musicArt(item)
-          : previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin' });
+          : previewOrSwatch(doc, item.id, appearanceOf(k, item.id), shopPreview, { animate, climb: k === 'theme', material: k === 'skin' });
         const tail: HTMLElement[] = [];
-        if (kind === 'music') tail.push(listenButton(item));
-        const fem = kind === 'music' ? 'e' : '';
+        if (k === 'music') tail.push(listenButton(item));
+        const fem = k === 'music' ? 'e' : '';
         if (equipped) tail.push(stateLine(doc, 'check', `Équipé${fem}`, 'equipped'));
         else if (st === 'owned') {
           tail.push(stateLine(doc, 'check', `Possédé${fem}`, 'owned'), uiButton(doc, { label: 'Équiper', variant: 'secondary', size: 'sm', block: true, testId: `equip-${item.id}`, ariaLabel: `Équiper ${item.name}`, onClick: () => equipItem(item) }));
@@ -1311,7 +1316,7 @@ export function createShell(options: ShellOptions): Shell {
             title: `Acheter ${item.name} ?`,
             name: item.name,
             price: shopItem.price,
-            art: kind === 'music' ? musicArt(item, true) : previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin', size: { width: 280, height: 140 } }),
+            art: k === 'music' ? musicArt(item, true) : previewOrSwatch(doc, item.id, appearanceOf(k, item.id), shopPreview, { animate, climb: k === 'theme', material: k === 'skin', size: { width: 280, height: 140 } }),
             extra: [rarityChip(doc, item.rarity), el(doc, 'p', { class: 'hint' }, item.blurb)],
             onYes: () => startPurchase(shopItem, item, day),
             yesTestId: 'confirm-buy',
@@ -1324,6 +1329,18 @@ export function createShell(options: ShellOptions): Shell {
       box.append(list);
       return box;
     };
+    // V8 : collection saisonnière (Noël), vendue chaque année aux mêmes dates, hors rotation.
+    const seasonal = seasonalOffers(day, sellable);
+    for (const ev of activeEvents(day)) {
+      const items = seasonal.filter((o) => o.season === ev.id);
+      if (items.length === 0) continue;
+      const head = el(doc, 'section', { class: 'card event-head', 'aria-labelledby': `shop-event-${ev.id}`, 'data-testid': `shop-event-${ev.id}` });
+      head.append(
+        cardTitle(doc, 'gift', `Collection de ${ev.name}`, `shop-event-${ev.id}`),
+        el(doc, 'p', { class: 'hint', 'data-testid': 'shop-event-dates' }, `En vente jusqu’au ${ev.toLabel} inclus, puis chaque année du ${ev.fromLabel} au ${ev.toLabel}. Ce que tu achètes reste à toi après la saison.`),
+      );
+      parts.push(head, section('noel', 'gift', `${ev.name} : univers, matières et musique`, items));
+    }
     if (offers.length === 0) {
       const empty = el(doc, 'section', { class: 'card' });
       empty.append(el(doc, 'p', { 'data-testid': 'shop-empty' }, 'Rien à vendre pour l’instant. Reviens bientôt !'));

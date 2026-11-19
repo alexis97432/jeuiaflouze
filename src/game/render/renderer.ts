@@ -672,8 +672,9 @@ export class Renderer {
     let skyTop = sky.top;
     let skyBottom = sky.bottom;
     if (this.feverMix > 0) {
-      skyTop = mix(skyTop, FEVER_TOP, this.feverMix * 0.85);
-      skyBottom = mix(skyBottom, FEVER_BOTTOM, this.feverMix * 0.85);
+      // V8 : la Fièvre réchauffe le ciel sans l'écraser (l'univers reste reconnaissable).
+      skyTop = mix(skyTop, FEVER_TOP, this.feverMix * 0.45);
+      skyBottom = mix(skyBottom, FEVER_BOTTOM, this.feverMix * 0.45);
     }
     if (this.boostMix > 0 && this.boostShown === 'ralenti') {
       skyTop = mix(skyTop, [150, 185, 255], this.boostMix * 0.3);
@@ -692,7 +693,7 @@ export class Renderer {
 
     // 2. Fièvre : rayons de BD derrière la tour (fixes et discrets si le mouvement est réduit).
     if (this.feverMix > 0.02 && full) {
-      const alpha = (motion ? 0.16 : 0.08) * this.feverMix * (1 + 0.35 * this.feverBeat);
+      const alpha = (motion ? 0.07 : 0.04) * this.feverMix * (1 + 0.35 * this.feverBeat);
       this.guard('fievre', () => drawSunburst(ctx, this.cssW / 2, this.cssH * 0.42, Math.max(this.cssW, this.cssH) * 1.2, motion ? t * 0.22 : 0, [255, 255, 240], alpha));
     }
 

@@ -19,6 +19,10 @@ import { montagne } from './worlds/montagne';
 import { nuees } from './worlds/nuees';
 import { orbital } from './worlds/orbital';
 import { recif } from './worlds/recif';
+import { brume } from './worlds/brume';
+import { cathedrale } from './worlds/cathedrale';
+import { volcan } from './worlds/volcan';
+import { noel } from './worlds/noel';
 
 export { contrast, css, darken, hex, lighten, luminance, mix, roundedRect, type Rgb } from './color';
 export {
@@ -32,7 +36,7 @@ export {
   type TierIndex,
 } from './theme-types';
 
-export const THEME_IDS: readonly ThemeId[] = ['confiserie', 'orbital', 'jardin', 'recif', 'cite', 'desert', 'montagne', 'foire', 'nuees'];
+export const THEME_IDS: readonly ThemeId[] = ['confiserie', 'orbital', 'jardin', 'recif', 'cite', 'desert', 'montagne', 'foire', 'nuees', 'brume', 'cathedrale', 'volcan', 'noel'];
 export const DEFAULT_THEME: ThemeId = 'confiserie';
 
 const LAST = (TIER_FLOORS.length - 1) as TierIndex;
@@ -97,12 +101,13 @@ export function outlineFor(c: Rgb, sky: Rgb): Rgb {
   return contrast(dark, sky) >= contrast(light, sky) ? dark : light;
 }
 
-const THEMES: Record<ThemeId, Theme> = { confiserie, orbital, jardin, recif, cite, desert, montagne, foire, nuees };
+const THEMES: Record<ThemeId, Theme> = { confiserie, orbital, jardin, recif, cite, desert, montagne, foire, nuees, brume, cathedrale, volcan, noel };
 
 /** Rareté de chaque univers (V6) : richesse de la scène, jamais un avantage de jeu. */
 export const THEME_RARITY: Record<ThemeId, Rarity> = {
   confiserie: confiserie.rarity, jardin: jardin.rarity, orbital: orbital.rarity, recif: recif.rarity, cite: cite.rarity,
   desert: desert.rarity, montagne: montagne.rarity, foire: foire.rarity, nuees: nuees.rarity,
+  brume: brume.rarity, cathedrale: cathedrale.rarity, volcan: volcan.rarity, noel: noel.rarity,
 };
 
 export function isThemeId(v: unknown): v is ThemeId {
