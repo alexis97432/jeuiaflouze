@@ -35,7 +35,7 @@ describe('collection V6 : aperçus du moteur, raretés, états', () => {
     // États compréhensibles sans la couleur : Équipé (coche + mot), Équiper (bouton), provenance (cadenas + mot).
     expect(body.querySelector('[data-testid="card-skin-marbre"]')?.textContent).toContain('Équipé');
     expect([...body.querySelectorAll('[data-testid="card-skin-gomme"] button')].map((b) => b.textContent)).toEqual(['Équiper']);
-    expect(body.querySelector('[data-testid="card-skin-graphite"]')?.textContent).toContain('Boutique · 60 pièces');
+    expect(body.querySelector('[data-testid="card-skin-graphite"]')?.textContent).toContain('Boutique · 200 pièces');
     expect(body.querySelector('[data-testid="card-skin-pixel"]')?.textContent).toContain('Passe gratuit · niveau 3');
     expect(body.querySelector('[data-testid="card-skin-or"]')?.textContent).toContain('Passe premium · niveau 9');
     expect(body.querySelector('[data-testid="card-theme-orbital"]')?.textContent).toContain('À obtenir');

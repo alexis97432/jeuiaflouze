@@ -29,12 +29,16 @@ import {
 /**
  * 3 : inventaire (boutique) et passe de saison. 4 (V6) : passe de 30 niveaux, réclamations
  * renumérotées une fois (migrateSeasonState). 5 (V7) : musique équipée (`music`) et musiques
- * achetées dans l'inventaire (`musique-…`) ; rien à transformer, la musique offerte s'applique. Un onglet resté sur une version plus ancienne
- * voit une version future et cesse d'écrire (readProgressDoc) : il ne peut pas effacer ces champs.
+ * achetées dans l'inventaire (`musique-…`) ; rien à transformer, la musique offerte s'applique. 6 (V8) :
+ * prime du jour (`daily`) et plafond quotidien d'étoiles de saison (`season.today`) ; rien à
+ * transformer : pièces, XP et possessions sont gardées telles quelles. Un onglet resté sur une
+ * version plus ancienne voit une version future et cesse d'écrire (readProgressDoc) : il ne peut
+ * ni effacer ces champs ni remettre à zéro les compteurs du jour.
  */
-export const PROGRESS_VERSION = 5;
+export const PROGRESS_VERSION = 6;
 /** Prime unique : 10 pièces par objectif déjà accompli avant E1. */
 export const BACKFILL_GRANT = 'v2-objectives-backfill';
+export const BACKFILL_COINS = 10;
 export const MAX_XP = 10_000_000;
 export const MAX_COINS = 1_000_000;
 const MAX_GRANTS = 64;
@@ -63,7 +67,12 @@ export type ProgressDoc = ProgressState & {
   livesSpent?: string[];
   /** V7 : musique équipée (absente : « Premier étage », offerte). */
   music?: string;
+  /** V8 : parties déjà primées ce jour UTC (prime du jour, `DAILY_BONUS`). */
+  daily?: DailyState;
 };
+
+/** V8 : prime du jour, comptée par date UTC. */
+export type DailyState = { day: string; count: number };
 
 const INITIAL_CALENDAR: CalendarState = { lastClaimDate: null, cycle: 0, index: 0 };
 
@@ -108,7 +117,7 @@ export function migrateProgress(raw: unknown): ProgressDoc {
     return {
       ...INITIAL_DOC,
       ...base,
-      coins: fresh ? 0 : Math.min(base.completed.length * OBJECTIVE_COINS, MAX_COINS),
+      coins: fresh ? 0 : Math.min(base.completed.length * BACKFILL_COINS, MAX_COINS),
       grants: [BACKFILL_GRANT],
     };
   }
@@ -132,6 +141,7 @@ export function migrateProgress(raw: unknown): ProgressDoc {
     ...sanitizeLives(r),
     // V7 (version 5) : musique équipée gardée si elle existe ; sinon la musique offerte s'applique.
     ...(typeof r.music === 'string' && MUSIC_CATALOG.some((m) => m.id === r.music) ? { music: r.music } : {}),
+    ...sanitizeDaily(r.daily),
     // Un document v2 a déjà reçu (ou n'avait pas à recevoir) la prime : on ne la rejoue jamais.
     grants: [...new Set([BACKFILL_GRANT, ...grants])].slice(0, MAX_GRANTS),
   };
@@ -148,16 +158,30 @@ export function readProgressDoc(raw: unknown): { doc: ProgressDoc; writable: boo
   return { doc: migrateProgress(raw), writable: !future };
 }
 
-// --- XP et niveaux (E1b) -----------------------------------------------------------------
+function sanitizeDaily(raw: unknown): { daily?: DailyState } {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const r = raw as Record<string, unknown>;
+  if (typeof r.day !== 'string' || !isDateKey(r.day)) return {};
+  return { daily: { day: r.day, count: boundedInt(r.count, DAILY_BONUS.length) } };
+}
 
-export const LEVEL_MAX = 10;
+// --- XP et niveaux (E1b ; V8 : 30 niveaux) ------------------------------------------------
+
+/**
+ * V8 : 30 niveaux au lieu de 10. Les seuils des niveaux 1 à 10 sont inchangés (personne ne
+ * redescend) ; les suivants prolongent la même formule (niveau 30 = 17 400 étoiles).
+ */
+export const LEVEL_MAX = 30;
 export const LEVEL_TITLES: Partial<Record<number, string>> = {
   2: 'Apprenti',
   5: 'Architecte',
   10: 'Maître de la tour',
+  15: 'Bâtisseur des cimes',
+  20: 'Ingénieur du vertige',
+  30: 'Légende de la tour',
 };
 
-/** XP total requis pour atteindre le niveau L (1 ≤ L ≤ 10) : 20 × (L − 1) × L. */
+/** XP total requis pour atteindre le niveau L (1 ≤ L ≤ 30) : 20 × (L − 1) × L. */
 export const levelThreshold = (level: number): number => 20 * (level - 1) * level;
 
 export function runXp(run: Pick<RunSummary, 'score' | 'perfectCount'>): number {
@@ -187,19 +211,47 @@ export function levelInfo(xp: number): LevelInfo {
   };
 }
 
-// --- Pièces et fin de partie (E1c) -------------------------------------------------------
+// --- Pièces et fin de partie (E1c ; V8 : recalibrage, docs/V8-ECONOMIE.md) ---------------
 
+/** Un objectif accompli rapporte 10 pièces, une seule fois (en plus de sa récompense). */
 export const OBJECTIVE_COINS = 10;
-export const RUN_COINS_CAP = 25;
+/** V8 : plafond de pièces d'une partie (V7 : 25). */
+export const RUN_COINS_CAP = 6;
+/** V8 : hauteur minimale d'une partie qui rapporte des pièces (un abandon rapide ne paie pas). */
+export const RUN_COINS_MIN_HEIGHT = 5;
 
+/**
+ * V8 : pièces d'une partie. 1 pièce dès 5 étages, +1 par tranche de 12 étages, +1 par 5 parfaits,
+ * au plus 6. La progression vient surtout de la régularité (prime du jour, calendrier, passe),
+ * pas du nombre de parties enchaînées : voir docs/V8-ECONOMIE.md.
+ */
 export function runCoins(run: Pick<RunSummary, 'score' | 'perfectCount'>): number {
-  return Math.min(RUN_COINS_CAP, Math.floor(run.score / 3) + run.perfectCount);
+  if (run.score < RUN_COINS_MIN_HEIGHT) return 0;
+  return Math.min(RUN_COINS_CAP, 1 + Math.floor(run.score / 12) + Math.floor(run.perfectCount / 5));
+}
+
+/** V8 : prime du jour, versée aux 3 premières parties d'au moins 5 étages de chaque jour UTC. */
+export const DAILY_BONUS = [10, 10, 10] as const;
+export const DAILY_BONUS_MIN_HEIGHT = 5;
+
+/** Prime du jour qu'une partie de cette hauteur recevrait (0 si plus de prime ce jour-là). */
+export function dailyBonusFor(doc: ProgressDoc, day: string, height: number): number {
+  if (!isDateKey(day) || height < DAILY_BONUS_MIN_HEIGHT) return 0;
+  const used = doc.daily?.day === day ? doc.daily.count : 0;
+  return DAILY_BONUS[used] ?? 0;
+}
+
+/** Primes du jour restantes (0 à 3). */
+export function dailyBonusLeft(doc: ProgressDoc, day: string): number {
+  const used = doc.daily?.day === day ? doc.daily.count : 0;
+  return Math.max(0, DAILY_BONUS.length - used);
 }
 
 export type RunEconomy = {
   doc: ProgressDoc;
   completedNow: Objective[];
-  gained: { xp: number; coins: number; levelUp: { from: number; to: number } | null };
+  /** `bonus` : prime du jour comprise dans `coins` (0 si aucune). */
+  gained: { xp: number; coins: number; bonus: number; levelUp: { from: number; to: number } | null };
 };
 
 /**
@@ -207,26 +259,32 @@ export type RunEconomy = {
  * Idempotent par runId parmi les MAX_REMEMBERED_RUNS (200) dernières parties évaluées — même
  * garantie bornée qu'A3a, pour les objectifs comme pour l'XP et les pièces (revue E1 FLK, m2).
  */
-export function applyRunEconomy(doc: ProgressDoc, activeAtStart: readonly ObjectiveId[], run: RunSummary): RunEconomy {
+export function applyRunEconomy(doc: ProgressDoc, activeAtStart: readonly ObjectiveId[], run: RunSummary, day?: string): RunEconomy {
   const evaluation = applyRun(doc, activeAtStart, run);
   if (evaluation.state === doc) {
-    return { doc, completedNow: [], gained: { xp: 0, coins: 0, levelUp: null } };
+    return { doc, completedNow: [], gained: { xp: 0, coins: 0, bonus: 0, levelUp: null } };
   }
   const xpGain = runXp(run);
-  const coinGain = runCoins(run) + OBJECTIVE_COINS * evaluation.completedNow.length;
+  // Prime du jour : comptée dans la même écriture que la partie, donc jamais deux fois.
+  const bonus = day === undefined ? 0 : dailyBonusFor(doc, day, run.score);
+  const coinGain = runCoins(run) + OBJECTIVE_COINS * evaluation.completedNow.length + bonus;
   const before = levelInfo(doc.xp).level;
   const xp = Math.min(MAX_XP, doc.xp + xpGain);
   const after = levelInfo(xp).level;
+  const daily: DailyState | undefined = bonus > 0 && day !== undefined
+    ? { day, count: (doc.daily?.day === day ? doc.daily.count : 0) + 1 }
+    : doc.daily;
   return {
-    doc: { ...doc, ...evaluation.state, xp, coins: Math.min(MAX_COINS, doc.coins + coinGain) },
+    doc: { ...doc, ...evaluation.state, xp, coins: Math.min(MAX_COINS, doc.coins + coinGain), ...(daily ? { daily } : {}) },
     completedNow: evaluation.completedNow,
-    gained: { xp: xpGain, coins: coinGain, levelUp: after > before ? { from: before, to: after } : null },
+    gained: { xp: xpGain, coins: coinGain, bonus, levelUp: after > before ? { from: before, to: after } : null },
   };
 }
 
 // --- Calendrier (E1d) --------------------------------------------------------------------
 
-export const CALENDAR_REWARDS = [5, 5, 5, 5, 5, 10, 15] as const;
+/** V8 : 120 pièces par cycle de 7 réclamations (V7 : 50). */
+export const CALENDAR_REWARDS = [10, 10, 10, 15, 15, 20, 40] as const;
 
 export type CalendarStatus = { canClaim: boolean; reward: number; dayInCycle: number };
 

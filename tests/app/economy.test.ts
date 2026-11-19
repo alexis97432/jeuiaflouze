@@ -10,6 +10,7 @@ import {
   levelThreshold,
   migrateProgress,
   readProgressDoc,
+  dailyBonusLeft,
   runCoins,
   runXp,
   type ProgressDoc,
@@ -39,7 +40,7 @@ describe('E1a — migration vers le document v2', () => {
     };
     const once = migrateProgress(v1);
     expect(once).toMatchObject({
-      version: 5,
+      version: 6,
       completed: ['floors-5', 'streak-2'],
       selected: { theme: 'confiserie', skin: 'bonbon' },
       evaluatedRuns: ['a', 'b'],
@@ -80,18 +81,19 @@ describe('E1a — migration vers le document v2', () => {
   });
 
   it('version future : XP, pièces et calendrier conservés, lecture seule (m3 FLK)', () => {
-    const v3 = { version: 6, completed: ['floors-5'], xp: 900, coins: 400, calendar: { lastClaimDate: '2026-11-16', cycle: 2, index: 3 }, nouveau: { x: 1 } };
+    const v3 = { version: 7, completed: ['floors-5'], xp: 900, coins: 400, calendar: { lastClaimDate: '2026-11-16', cycle: 2, index: 3 }, nouveau: { x: 1 } };
     const { doc, writable } = readProgressDoc(v3);
     expect(doc).toMatchObject({ xp: 900, coins: 400, completed: ['floors-5'], calendar: { lastClaimDate: '2026-11-16', cycle: 2, index: 3 } });
     expect(writable).toBe(false);
     expect(readProgressDoc({ version: 2 }).writable).toBe(true);
     expect(readProgressDoc({ version: 3 }).writable).toBe(true);
     expect(readProgressDoc({ version: 4 }).writable).toBe(true);
+    expect(readProgressDoc({ version: 6 }).writable).toBe(true);
     expect(readProgressDoc(undefined).writable).toBe(true);
   });
 
   it.each([null, 'texte', 42, []])('sauvegarde illisible %j : document valide', (raw) => {
-    expect(migrateProgress(raw).version).toBe(5);
+    expect(migrateProgress(raw).version).toBe(6);
   });
 });
 
@@ -106,37 +108,46 @@ describe('E1b — XP et niveaux', () => {
     expect([2, 5, 10].map(levelThreshold)).toEqual([40, 400, 1800]);
   });
 
-  it('niveaux aux bornes, titres et absence de niveau 11', () => {
+  it('V8 : 30 niveaux, seuils des 10 premiers inchangés (personne ne redescend)', () => {
+    expect([10, 15, 20, 30].map(levelThreshold)).toEqual([1800, 4200, 7600, 17400]);
+    expect(levelInfo(1800)).toEqual({ level: 10, title: 'Maître de la tour', intoLevel: 0, toNext: 400 });
+    expect(levelInfo(4200)).toMatchObject({ level: 15, title: 'Bâtisseur des cimes' });
+    expect(levelInfo(17_400)).toEqual({ level: 30, title: 'Légende de la tour', intoLevel: 0, toNext: null });
+    expect(levelInfo(99_999)).toMatchObject({ level: 30, toNext: null });
+  });
+
+  it('niveaux aux bornes et titres', () => {
     expect(levelInfo(0)).toEqual({ level: 1, title: null, intoLevel: 0, toNext: 40 });
     expect(levelInfo(39)).toMatchObject({ level: 1, toNext: 1 });
     expect(levelInfo(40)).toMatchObject({ level: 2, title: 'Apprenti', intoLevel: 0 });
     expect(levelInfo(399)).toMatchObject({ level: 4, title: 'Apprenti' });
     expect(levelInfo(400)).toMatchObject({ level: 5, title: 'Architecte' });
-    expect(levelInfo(1800)).toEqual({ level: 10, title: 'Maître de la tour', intoLevel: 0, toNext: null });
-    expect(levelInfo(99_999)).toMatchObject({ level: 10, toNext: null });
   });
 });
 
 describe('E1c — pièces et fin de partie', () => {
   it.each([
-    [10, 2, 5],
+    [4, 3, 0],
     [5, 0, 1],
-    [25, 6, 14],
-    [50, 12, 25],
+    [10, 2, 1],
+    [20, 4, 2],
+    [25, 6, 4],
+    [38, 15, 6],
+    [80, 40, 6],
     [0, 0, 0],
-  ])('%i étages, %i parfaits → %i pièces (C5)', (score, perfectCount, coins) => {
+  ])('V8 : %i étages, %i parfaits → %i pièces', (score, perfectCount, coins) => {
     expect(runCoins({ score, perfectCount })).toBe(coins);
   });
 
   it('une partie rapporte XP, pièces et 10 par objectif, une seule fois par runId', () => {
     const first = applyRunEconomy(INITIAL_DOC, ['floors-5', 'streak-2', 'floors-12'], run({ score: 12, perfectCount: 3, longestStreak: 2 }));
     expect(first.completedNow.map((o) => o.id)).toEqual(['floors-5', 'streak-2', 'floors-12']);
-    expect(first.gained).toEqual({ xp: 18, coins: 4 + 3 + 30, levelUp: null });
-    expect(first.doc).toMatchObject({ xp: 18, coins: 37 });
+    expect(first.gained).toEqual({ xp: 18, coins: 2 + 30, bonus: 0, levelUp: null });
+    expect(first.doc).toMatchObject({ xp: 18, coins: 32 });
 
     const again = applyRunEconomy(first.doc, ['perfects-5'], run({ score: 12, perfectCount: 3 }));
     expect(again.doc).toBe(first.doc);
-    expect(again.gained).toEqual({ xp: 0, coins: 0, levelUp: null });
+    expect(again.gained).toEqual({ xp: 0, coins: 0, bonus: 0, levelUp: null });
   });
 
   it(`idempotence bornée aux ${MAX_REMEMBERED_RUNS} dernières parties (m2 FLK, documentée)`, () => {
@@ -144,7 +155,7 @@ describe('E1c — pièces et fin de partie', () => {
     for (let i = 0; i < MAX_REMEMBERED_RUNS - 1; i++) doc = applyRunEconomy(doc, [], run({ runId: `r${i}` })).doc;
     expect(applyRunEconomy(doc, [], run({ runId: 'ancienne' })).gained.coins).toBe(0); // encore mémorisée
     doc = applyRunEconomy(doc, [], run({ runId: 'une-de-plus' })).doc;
-    expect(applyRunEconomy(doc, [], run({ runId: 'ancienne' })).gained.coins).toBe(5); // oubliée : limite assumée
+    expect(applyRunEconomy(doc, [], run({ runId: 'ancienne' })).gained.coins).toBe(1); // oubliée : limite assumée
   });
 
   it('signale un passage de niveau', () => {
@@ -155,8 +166,8 @@ describe('E1c — pièces et fin de partie', () => {
 });
 
 describe('E1d — calendrier', () => {
-  it('cycle 5,5,5,5,5,10,15 = 50 pièces, puis recommence', () => {
-    expect(CALENDAR_REWARDS.reduce((a, b) => a + b, 0)).toBe(50);
+  it('V8 : cycle 10,10,10,15,15,20,40 = 120 pièces, puis recommence', () => {
+    expect(CALENDAR_REWARDS.reduce((a, b) => a + b, 0)).toBe(120);
     let doc = INITIAL_DOC;
     const got: number[] = [];
     for (let d = 1; d <= 8; d++) {
@@ -165,8 +176,8 @@ describe('E1d — calendrier', () => {
       got.push(r.reward);
       doc = r.doc;
     }
-    expect(got).toEqual([5, 5, 5, 5, 5, 10, 15, 5]);
-    expect(doc.coins).toBe(55);
+    expect(got).toEqual([10, 10, 10, 15, 15, 20, 40, 10]);
+    expect(doc.coins).toBe(130);
     expect(doc.calendar).toEqual({ lastClaimDate: '2026-12-08', cycle: 1, index: 1 });
   });
 
@@ -178,14 +189,49 @@ describe('E1d — calendrier', () => {
     expect(claimCalendar(first.doc, 'demain')).toMatchObject({ claimed: false, reason: 'invalid-date' });
     const later = claimCalendar(first.doc, '2026-11-30'); // 13 jours d'absence
     if (!later.claimed) throw new Error('attendu');
-    expect(later.reward).toBe(5); // 2e récompense, pas 13 rattrapées
-    expect(later.doc.coins).toBe(10);
+    expect(later.reward).toBe(10); // 2e récompense, pas 13 rattrapées
+    expect(later.doc.coins).toBe(20);
   });
 
   it('état du calendrier pour l’interface', () => {
-    expect(calendarStatus(INITIAL_DOC, '2026-11-16')).toEqual({ canClaim: true, reward: 5, dayInCycle: 1 });
+    expect(calendarStatus(INITIAL_DOC, '2026-11-16')).toEqual({ canClaim: true, reward: 10, dayInCycle: 1 });
     const r = claimCalendar(INITIAL_DOC, '2026-11-16');
     expect(calendarStatus(r.doc, '2026-11-16').canClaim).toBe(false);
-    expect(calendarStatus(r.doc, '2026-11-17')).toEqual({ canClaim: true, reward: 5, dayInCycle: 2 });
+    expect(calendarStatus(r.doc, '2026-11-17')).toEqual({ canClaim: true, reward: 10, dayInCycle: 2 });
+  });
+});
+
+describe('V8 — prime du jour', () => {
+  it('3 premières parties d’au moins 5 étages du jour UTC : +10 chacune, puis plus rien ; nouveau jour, nouvelle prime', () => {
+    let doc = INITIAL_DOC;
+    const got: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const e = applyRunEconomy(doc, [], run({ runId: `j1-${i}`, score: 12, perfectCount: 0 }), '2026-12-01');
+      got.push(e.gained.bonus);
+      doc = e.doc;
+    }
+    expect(got).toEqual([10, 10, 10, 0, 0]);
+    expect(doc.daily).toEqual({ day: '2026-12-01', count: 3 });
+    expect(dailyBonusLeft(doc, '2026-12-01')).toBe(0);
+    expect(dailyBonusLeft(doc, '2026-12-02')).toBe(3);
+    const next = applyRunEconomy(doc, [], run({ runId: 'j2', score: 12 }), '2026-12-02');
+    expect(next.gained).toMatchObject({ bonus: 10, coins: 2 + 10 });
+  });
+
+  it('une partie trop courte ne consomme pas la prime ; une partie déjà comptée ne la reçoit pas deux fois', () => {
+    const short = applyRunEconomy(INITIAL_DOC, [], run({ runId: 'court', score: 4 }), '2026-12-01');
+    expect(short.gained.bonus).toBe(0);
+    expect(short.doc.daily).toBeUndefined();
+    const once = applyRunEconomy(short.doc, [], run({ runId: 'ok', score: 6 }), '2026-12-01');
+    const again = applyRunEconomy(once.doc, [], run({ runId: 'ok', score: 6 }), '2026-12-01');
+    expect(once.gained.bonus).toBe(10);
+    expect(again.doc).toBe(once.doc);
+    expect(again.gained.coins).toBe(0);
+  });
+
+  it('migration : prime du jour relue, valeurs abîmées ignorées, pièces jamais touchées', () => {
+    expect(migrateProgress({ version: 5, coins: 1234, daily: { day: '2026-12-01', count: 2 } })).toMatchObject({ version: 6, coins: 1234, daily: { day: '2026-12-01', count: 2 } });
+    expect(migrateProgress({ version: 6, coins: 5, daily: { day: 'hier', count: 2 } }).daily).toBeUndefined();
+    expect(migrateProgress({ version: 6, daily: { day: '2026-12-01', count: 99 } }).daily).toEqual({ day: '2026-12-01', count: 3 });
   });
 });

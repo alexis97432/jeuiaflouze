@@ -582,17 +582,17 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     const storage = memoryStorage();
     const first = setup({ meta: createMetaStore(storage), store: createLocalStore(storage) });
     // 1. Fin de partie : 12 étages ; le faux moteur rapporte perfectCount = 1 (série de 2 via
-    //    les événements) → 12 + 2 = 14 XP ; 4 + 1 + 3 objectifs × 10 = 35 pièces.
+    //    les événements) → 12 + 2 = 14 XP ; V8 : 2 + 3 objectifs × 10 + prime du jour 10 = 42 pièces.
     first.button('Jouer').click();
     first.place([false, true, true, false, true, false, false, false, false, false, false, false]);
     await first.end(12);
-    expect(first.text('gains')).toBe('+14 étoiles · +35 pièces');
+    expect(first.text('gains')).toBe('+14 étoiles · +42 pièces');
     // 2. Réclamation du calendrier.
     first.button('Accueil').click();
-    expect(first.text('coins')).toBe('35 pièces');
+    expect(first.text('coins')).toBe('42 pièces');
     first.button('Passe').click(); first.button('Missions et cadeau').click();
-    first.button('Récupérer +5').click();
-    expect(first.text('coins')).toBe('40 pièces');
+    first.button('Récupérer +10').click();
+    expect(first.text('coins')).toBe('52 pièces');
     expect(first.text('calendar')).toContain('Déjà récupéré');
     // 3. Choix d'apparence.
     first.button('Collection').click();
@@ -601,9 +601,9 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
 
     const saved = storage.dump('poc:meta:v1:progress');
     expect(saved).toMatchObject({
-      version: 5,
+      version: 6,
       xp: 14,
-      coins: 40,
+      coins: 52,
       selected: { skin: 'marbre' },
       calendar: { lastClaimDate: '2026-11-16', index: 1 },
       completed: ['floors-5', 'streak-2', 'floors-12'],
@@ -612,7 +612,7 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     // Rechargement : nouveau shell, nouveaux magasins, même stockage.
     document.body.innerHTML = '<main id="app"></main>';
     const second = setup({ meta: createMetaStore(storage), store: createLocalStore(storage) });
-    expect(second.text('coins')).toBe('40 pièces');
+    expect(second.text('coins')).toBe('52 pièces');
     second.button('Passe').click(); second.button('Missions et cadeau').click();
     expect(second.text('xp')).toBe('Encore 26 étoiles pour le niveau 2');
     expect(second.text('calendar')).toContain('Déjà récupéré');
@@ -627,13 +627,13 @@ describe('E1 branché : sauvegarde complète et rechargement (revue E1 FLK, M1)'
     const { text, button, end } = setup({ meta: createMetaStore(storage) });
     expect(text('coins')).toBe('20 pièces');
     button('Jouer').click();
-    await end(3); // perfectCount 1 : 1 + 1 = 2 pièces, 3 + 2 = 5 XP
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 5, coins: 22, xp: 5, grants: ['v2-objectives-backfill'] });
+    await end(3); // V8 : moins de 5 étages, aucune pièce ; 3 + 2 = 5 XP
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 6, coins: 20, xp: 5, grants: ['v2-objectives-backfill'] });
   });
 
   it('sauvegarde d’une version future : lue, jamais réécrite', async () => {
     const storage = memoryStorage();
-    const future = { version: 6, completed: [], xp: 900, coins: 400, champInconnu: true };
+    const future = { version: 7, completed: [], xp: 900, coins: 400, champInconnu: true };
     storage.setItem('poc:meta:v1:progress', JSON.stringify(future));
     const { text, button, end } = setup({ meta: createMetaStore(storage) });
     expect(text('coins')).toBe('400 pièces');
@@ -682,25 +682,25 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
     const a = tab(storage, 'a');
     const b = tab(storage, 'b'); // ouvert avant la réclamation : son écran propose encore « Prendre »
     a.button('Passe').click(); a.button('Missions et cadeau').click();
-    a.button('Récupérer +5').click();
-    expect(a.text('coins')).toBe('5 pièces');
+    a.button('Récupérer +10').click();
+    expect(a.text('coins')).toBe('10 pièces');
     a.button('Jouer').click(); // onglet Jouer : retour à l'accueil
 
     b.button('Jouer').click();
-    b.game.mounts[0]!.options.onEnd(result(3)); // 3 étages, 1 parfait → 2 pièces, 5 XP
+    b.game.mounts[0]!.options.onEnd(result(3)); // V8 : 3 étages → aucune pièce, 5 XP
     await flush();
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 7, xp: 5, calendar: { lastClaimDate: '2026-11-16' } });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, xp: 5, calendar: { lastClaimDate: '2026-11-16' } });
 
     b.button('Accueil').click();
-    expect(b.text('coins')).toBe('7 pièces');
+    expect(b.text('coins')).toBe('10 pièces');
     b.button('Passe').click(); b.button('Missions et cadeau').click();
     expect(b.text('calendar')).toContain('Déjà récupéré');
 
     // A affiche encore un état ancien : sa partie relit d'abord le stockage.
     a.button('Jouer').click();
-    a.game.mounts[0]!.options.onEnd(result(6)); // 2 + 1 = 3 pièces + 10 (objectif 5 étages), 6 + 2 = 8 XP
+    a.game.mounts[0]!.options.onEnd(result(6)); // V8 : 1 pièce + 10 (objectif 5 étages) + 10 (prime du jour), 6 + 2 = 8 XP
     await flush();
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 20, xp: 13, completed: ['floors-5'] });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 31, xp: 13, completed: ['floors-5'] });
     a.shell.destroy();
     b.shell.destroy();
   });
@@ -712,9 +712,9 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
     const b = tab(storage, 'b');
     b.button('Passe').click(); b.button('Missions et cadeau').click(); // B affiche « Prendre +5 »
     a.button('Passe').click(); a.button('Missions et cadeau').click();
-    a.button('Récupérer +5').click();
-    b.button('Récupérer +5').click(); // écran de B périmé
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 5, calendar: { index: 1 } });
+    a.button('Récupérer +10').click();
+    b.button('Récupérer +10').click(); // écran de B périmé
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 10, calendar: { index: 1 } });
     expect(b.text('calendar')).toContain('Déjà récupéré');
     a.shell.destroy();
     b.shell.destroy();
@@ -726,10 +726,10 @@ describe('E1 branché : deux onglets sur le même stockage (revue FLK, M2)', () 
     const a = tab(storage, 'a');
     const b = tab(storage, 'b');
     a.button('Passe').click(); a.button('Missions et cadeau').click();
-    a.button('Récupérer +5').click();
+    a.button('Récupérer +10').click();
     expect(b.text('coins')).toBe('0 pièce');
     window.dispatchEvent(new StorageEvent('storage', { key: 'poc:meta:v1:progress' }));
-    expect(b.text('coins')).toBe('5 pièces');
+    expect(b.text('coins')).toBe('10 pièces');
     a.shell.destroy();
     b.shell.destroy();
   });
@@ -783,15 +783,15 @@ describe('E1 branché : onglets réellement concurrents sous verrou Web Locks (r
 
     // Onglet A réclame PENDANT que B tient le verrou : sa section attend.
     button('Passe').click(); button('Missions et cadeau').click();
-    button('Récupérer +5').click();
+    button('Récupérer +10').click();
     await flush();
     expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 0 }); // A n'a pas écrit
     releaseB();
     await bDone;
     await flush();
-    // A a relu APRÈS l'écriture de B : 100 + 5, réclamation conservée.
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 105, calendar: { lastClaimDate: '2026-11-16' } });
-    expect(text('coins')).toBe('105 pièces');
+    // A a relu APRÈS l'écriture de B : 100 + 10, réclamation conservée.
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ coins: 110, calendar: { lastClaimDate: '2026-11-16' } });
+    expect(text('coins')).toBe('110 pièces');
     expect(locks.requested.filter((n) => n === PROGRESS_LOCK)).toHaveLength(2);
   });
 
@@ -852,7 +852,7 @@ describe('menu V3 (lisible par un enfant de 8 ans)', () => {
     expect(tab().classList.contains('has-dot')).toBe(true);
     expect(tab().getAttribute('aria-label')).toBe('Passe, une récompense t’attend');
     button('Passe').click(); button('Missions et cadeau').click();
-    button('Récupérer +5').click();
+    button('Récupérer +10').click();
     expect(tab().classList.contains('has-dot')).toBe(false);
   });
 
@@ -1451,7 +1451,7 @@ describe('V3-A6b : secours du partage d’image, annonces, sauvegarde et récomp
     const again = setup({ meta: createMetaStore(storage) });
     again.day.now = new Date('2026-12-01T10:00:00Z');
     const doc = storage.dump('poc:meta:v1:progress') as Record<string, unknown>;
-    expect(doc).toMatchObject({ version: 5, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
+    expect(doc).toMatchObject({ version: 6, coins: 60, inventory: ['graphite'], season: { id: 's1', stars: 25, claimed: ['free:1'] } });
     expect(again.text('coins')).toBe('60 pièces');
     expect(storage.dump('poc:meta:v1:player')).toEqual({ id: 'c'.repeat(32), pseudo: 'Alex' });
     again.shell.destroy();
@@ -1524,17 +1524,17 @@ describe('vie rendue si la reprise n’a pas lieu (revue FLK A6, m4)', () => {
 describe('apparences V3 branchées (F8b, revue FLK A5 m1/m2, A6 m5)', () => {
   it('Graphite acheté en pièces, mis, monté en partie et gardé au rechargement ; Pixel pris au passe puis choisi', async () => {
     const storage = memoryStorage();
-    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 100, grants: ['v2-objectives-backfill'], season: { id: 's1', stars: 70, claimed: [] } }));
+    storage.setItem('poc:meta:v1:progress', JSON.stringify({ version: 3, coins: 240, grants: ['v2-objectives-backfill'], season: { id: 's1', stars: 70, claimed: [] } }));
     const a = setup({ meta: createMetaStore(storage) });
     // V7 : la boutique ne propose que la sélection du jour ; on se place un jour où Graphite y est.
     let day = rotationDay(Date.parse('2026-12-01T10:00:00Z'));
     while (!dailySelection(day).some((o) => o.id === 'graphite')) day++;
     a.day.now = new Date(day * DAY_MS + 10 * 3_600_000);
     a.button('Boutique').click();
-    expect(a.text('shop-graphite')).toContain('Acheter · 60');
+    expect(a.text('shop-graphite')).toContain('Acheter · 200');
     expect(a.root.querySelector('[data-testid="shop-empty"]')).toBeNull();
     a.root.querySelector<HTMLButtonElement>('[data-testid="buy-graphite"]')!.click();
-    a.button('Oui, acheter · 60').click();
+    a.button('Oui, acheter · 200').click();
     await flush();
     a.button('Équiper maintenant').click(); // fenêtre de révélation
     await flush();
@@ -1756,7 +1756,7 @@ describe('V6 : Stack or Crash, boutique, passe, raretés et aperçus', () => {
     button('Tout récupérer (7)').click();
     await flush();
     // 10 + 15 + 15 + 20 + 20 + 25 = 105 pièces, et Galaxie (niveau 9) révélée.
-    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 5, coins: 105, inventory: ['pixel', 'galaxie'] });
+    expect(storage.dump('poc:meta:v1:progress')).toMatchObject({ version: 6, coins: 105, inventory: ['pixel', 'galaxie'] });
     expect(text('reveal-name')).toBe('Galaxie');
     expect(root.querySelector('[data-testid="reveal"] .rarity')?.textContent).toBe('Légendaire');
     button('Équiper maintenant').click();

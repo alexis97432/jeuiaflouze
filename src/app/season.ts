@@ -20,7 +20,8 @@ export type SeasonReward =
   | { kind: 'theme'; id: string; name: string };
 export type SeasonTier = { tier: number; stars: number; free: SeasonReward; premium: SeasonReward };
 export type Season = { id: string; name: string; start: string; end: string; tiers: readonly SeasonTier[] };
-export type SeasonState = { id: string; stars: number; claimed: string[] };
+/** `today` (V8) : étoiles de saison déjà créditées ce jour UTC (plafond `SEASON_DAILY_STARS`). */
+export type SeasonState = { id: string; stars: number; claimed: string[]; today?: { day: string; stars: number } };
 export type Track = 'free' | 'premium';
 
 const c = (amount: number): SeasonReward => ({ kind: 'coins', amount });
@@ -78,7 +79,36 @@ export function seasonState(doc: ProgressDoc, season: Season): SeasonState {
   return doc.season?.id === season.id ? doc.season : { id: season.id, stars: 0, claimed: [] };
 }
 
-/** Ajoute les étoiles d'une partie, seulement pendant la saison. */
+/**
+ * V8 : plafond quotidien d'étoiles de saison. Les étoiles d'XP restent entières ; le passe, lui,
+ * avance d'au plus 80 étoiles par jour UTC. Il récompense la régularité plutôt que l'enchaînement
+ * de parties : 3 000 étoiles demandent au moins 38 jours de jeu (docs/V8-ECONOMIE.md).
+ */
+export const SEASON_DAILY_STARS = 80;
+
+/** Étoiles de saison encore créditables ce jour-là. */
+export function seasonStarsLeftToday(doc: ProgressDoc, season: Season, day: string): number {
+  const s = seasonState(doc, season);
+  return Math.max(0, SEASON_DAILY_STARS - (s.today?.day === day ? s.today.stars : 0));
+}
+
+/**
+ * V8 : crédite les étoiles de saison d'une partie, dans la limite du plafond du jour. Renvoie le
+ * nombre réellement crédité (0 hors saison ou plafond atteint).
+ */
+export function creditSeasonStars(doc: ProgressDoc, season: Season, day: string, stars: number): { doc: ProgressDoc; credited: number } {
+  if (stars <= 0 || seasonPhase(season, day) !== 'active') return { doc, credited: 0 };
+  const credited = Math.min(stars, seasonStarsLeftToday(doc, season, day));
+  if (credited <= 0) return { doc, credited: 0 };
+  const s = seasonState(doc, season);
+  const already = s.today?.day === day ? s.today.stars : 0;
+  return {
+    doc: { ...doc, season: { ...s, stars: Math.min(MAX_SEASON_STARS, s.stars + credited), today: { day, stars: already + credited } } },
+    credited,
+  };
+}
+
+/** Ajoute des étoiles de saison sans plafond quotidien (outil de test et de migration). */
 export function addSeasonStars(doc: ProgressDoc, season: Season, day: string, stars: number): ProgressDoc {
   if (stars <= 0 || seasonPhase(season, day) !== 'active') return doc;
   const s = seasonState(doc, season);
@@ -178,5 +208,10 @@ export function sanitizeSeason(raw: unknown): SeasonState | undefined {
   const claimed = Array.isArray(r.claimed)
     ? [...new Set(r.claimed.filter((x): x is string => typeof x === 'string' && CLAIM.test(x)))].slice(0, 64)
     : [];
-  return { id: r.id, stars, claimed };
+  const t = r.today as Record<string, unknown> | undefined;
+  const today = typeof t === 'object' && t !== null && typeof t.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.day)
+    && typeof t.stars === 'number' && Number.isInteger(t.stars) && t.stars >= 0
+    ? { today: { day: t.day, stars: Math.min(t.stars, SEASON_DAILY_STARS) } }
+    : {};
+  return { id: r.id, stars, claimed, ...today };
 }

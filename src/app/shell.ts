@@ -24,12 +24,15 @@ import { createPreviewAnimator } from './preview-animator';
 import { BONUS_HINTS, BONUS_NAMES, continuesOf, continueTicksOf, feversOf, heightOf, pointsOf, savesOf, type AnyRunResult } from './run-result';
 import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
 import { buyLife, LIFE_PRICE, livesOf, MAX_LIVES, returnLife, useLife } from './lives';
-import { claimAllFree, claimSeasonTier, SEASON_1, seasonLevel, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type SeasonTier, type TierStatus, type Track } from './season';
+import { claimAllFree, claimSeasonTier, SEASON_1, seasonLevel, seasonPhase, seasonState, tierStatus, creditSeasonStars, seasonStarsLeftToday, SEASON_DAILY_STARS, type Season, type SeasonReward, type SeasonTier, type TierStatus, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
 import { isTrackId } from './music/tracks';
 import { dayInWords, GAME_NAME, isAnySkinId, isThemeId, RARITIES, RARITY_INFO, rarityRank, renderAppearancePreview, type AnyAppearance } from '../game';
 import {
   applyRunEconomy,
+  dailyBonusLeft,
+  DAILY_BONUS,
+  DAILY_BONUS_MIN_HEIGHT,
   CALENDAR_REWARDS,
   calendarStatus,
   claimCalendar,
@@ -631,6 +634,11 @@ export function createShell(options: ShellOptions): Shell {
     } else {
       level.append(el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, 'Niveau maximal, bravo !'));
     }
+    // V8 : prime du jour (3 premières parties d'au moins 5 étages).
+    const bonusLeft = dailyBonusLeft(progress, utcDateKey(today()));
+    level.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'daily-bonus' }, bonusLeft > 0
+      ? `Prime du jour : +${DAILY_BONUS[0]} pièces pour ${bonusLeft === DAILY_BONUS.length ? 'tes' : 'les'} ${bonusLeft} prochaine${bonusLeft > 1 ? 's' : ''} partie${bonusLeft > 1 ? 's' : ''} d’au moins ${DAILY_BONUS_MIN_HEIGHT} étages.`
+      : 'Prime du jour récupérée. Elle revient demain.'));
 
     const goalsPanel = el(doc, 'section', { class: 'card', 'aria-labelledby': 'goals-title' });
     const goals = el(doc, 'ul', { class: 'missions', 'data-testid': 'goals' });
@@ -782,6 +790,13 @@ export function createShell(options: ShellOptions): Shell {
     if (lv.next && phase === 'active') hero.append(progressBar(doc, lv.into / lv.span, `Vers le niveau ${lv.level + 1}`, 'gold'));
     hero.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'season-summary' }, summary));
     hero.append(el(doc, 'p', { class: 'hint small' }, 'Les étoiles se gagnent en jouant : étages posés et parfaits.'));
+    if (phase === 'active') {
+      // V8 : le passe avance d'au plus SEASON_DAILY_STARS étoiles par jour (régularité).
+      const left = seasonStarsLeftToday(progress, season, day);
+      hero.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'season-today' }, left > 0
+        ? `Aujourd’hui : encore ${left} étoile${left > 1 ? 's' : ''} de passe sur ${SEASON_DAILY_STARS}.`
+        : `Plafond du jour atteint (${SEASON_DAILY_STARS} étoiles). Le passe repart demain.`));
+    }
     const ready = claimableTiers().length;
     if (ready > 0) {
       hero.append(uiButton(doc, {
@@ -2205,15 +2220,18 @@ export function createShell(options: ShellOptions): Shell {
         mode: current.mode,
       });
       const economy = updateDoc((doc) => {
+        const day = utcDateKey(today());
         const e = applyRunEconomy(doc, current.activeAtStart, {
           runId: current.runId,
           mode: current.mode,
           score: height, // gains sur la hauteur, jamais sur les points ×2 (accord #27, C7)
           perfectCount: result.perfectCount,
           longestStreak: current.events.longestStreak,
-        });
+        }, day);
         // Étoiles de saison : mêmes étoiles, même écriture ; 0 si la partie était déjà comptée.
-        return { doc: addSeasonStars(e.doc, season, utcDateKey(today()), e.gained.xp), result: e };
+        // V8 : plafond quotidien du passe (SEASON_DAILY_STARS).
+        const credit = creditSeasonStars(e.doc, season, day, e.gained.xp);
+        return { doc: credit.doc, result: { ...e, seasonStars: credit.credited } };
       });
       const isDailyRecord = current.day ? meta.submitDaily(current.day, height) : false;
       renderResult(current, result, {
@@ -2221,6 +2239,7 @@ export function createShell(options: ShellOptions): Shell {
         isDailyRecord,
         completedNow: economy.completedNow,
         gained: economy.gained,
+        seasonStars: economy.seasonStars,
       });
     });
   };
@@ -2229,7 +2248,9 @@ export function createShell(options: ShellOptions): Shell {
     isRecord: boolean;
     isDailyRecord: boolean;
     completedNow: Objective[];
-    gained: { xp: number; coins: number; levelUp: { from: number; to: number } | null };
+    gained: { xp: number; coins: number; bonus: number; levelUp: { from: number; to: number } | null };
+    /** V8 : étoiles réellement créditées au passe (plafond du jour). */
+    seasonStars: number;
   };
 
   const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
@@ -2290,6 +2311,19 @@ export function createShell(options: ShellOptions): Shell {
       gains.append(star, el(doc, 'span', { class: 'sr-only' }, ' · '), coin);
       card.append(gains);
       summary += ` +${plural(outcome.gained.xp, 'étoile')} · +${plural(outcome.gained.coins, 'pièce')}.`;
+      // V8 : d'où viennent les pièces, et où en est le passe aujourd'hui.
+      const notes: string[] = [];
+      if (outcome.gained.bonus > 0) notes.push(`dont ${outcome.gained.bonus} de prime du jour`);
+      if (seasonPhase(season, utcDateKey(today())) === 'active') {
+        notes.push(outcome.seasonStars < outcome.gained.xp
+          ? `passe : +${outcome.seasonStars}, plafond du jour atteint`
+          : `passe : +${outcome.seasonStars}`);
+      }
+      if (notes.length > 0) {
+        const line = el(doc, 'p', { class: 'hint small center', 'data-testid': 'gains-detail' }, `${notes.join(' · ')}.`);
+        card.append(line);
+        summary += ` ${line.textContent}`;
+      }
     }
     if (outcome.gained.levelUp) {
       const newTitle = LEVEL_TITLES[outcome.gained.levelUp.to];

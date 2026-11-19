@@ -134,7 +134,7 @@ describe('V7 — musiques : possession et équipement', () => {
     const eq = equipMusic(owned, 'gouter-lofi');
     expect(equippedMusic(eq)).toBe('gouter-lofi');
     const reloaded = migrateProgress(JSON.parse(JSON.stringify(eq)));
-    expect(reloaded.version).toBe(5);
+    expect(reloaded.version).toBe(6);
     expect(equippedMusic(reloaded)).toBe('gouter-lofi');
     // Musique inconnue ou plus possédée : la musique offerte reprend, sans erreur.
     expect(equippedMusic(migrateProgress({ ...eq, music: 'inconnue' }))).toBe(DEFAULT_MUSIC);

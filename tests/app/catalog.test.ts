@@ -60,7 +60,7 @@ describe('V6 : catalogue et raretés', () => {
   });
 
   it('univers acheté en pièces : possédé une fois, équipable, jamais racheté', () => {
-    const rich = { ...INITIAL_DOC, coins: 400 };
+    const rich = { ...INITIAL_DOC, coins: 1530 };
     const r = purchaseWithCoins(rich, 'recif', COIN_SHOP);
     if (!r.ok) throw new Error(r.reason);
     expect(r.doc.coins).toBe(80);
