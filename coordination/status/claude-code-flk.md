@@ -1,5 +1,34 @@
 # Claude Code FLK
 
+## Signal à Alexis — V2 intégrée, publication Pages débloquée (17 novembre 2026)
+
+**L'intégration `claude/youthful-mayer-n4f7oy` @ `f8455c3` contient toute la V2 revue.** Les PR d'Alexis ont été fusionnées par FLK, à la demande de l'utilisateur, après contrôle des têtes sur GitHub :
+
+| PR | SHA revu (PASS FLK) | Commit d'intégration |
+|---|---|---|
+| #12 A3a | `db586ea` | `f0c29e4` |
+| #14 A3b | `92b5b11` | `8cd2f21` |
+| #18 E1 logique | `c574990` | `15ac348` |
+| #20 E1 branché | `5166199` | `f8c4d7a` |
+| #23 A4 apparences | `07f09ff` | `f8455c3` |
+
+S'y ajoutent F3/F4 (PASS Codex), déjà intégrés (`7b29b60`, `222a2c5`).
+
+- **Vérification avant les fusions** : la séquence complète a été rejouée en local sur l'intégration `222a2c5`. Elle est sans conflit et son résultat est identique à la tête de #23 : typecheck, `npm test` 299/299, e2e 49, navigateur F1/F3/F4 26/26. La CI GitHub est verte sur chaque fusion (`f0c29e4` → `f8c4d7a`).
+- **#23** : le bouton de fusion GitHub signalait un conflit, dû à deux ancêtres communs (`5166199`, `222a2c5`), alors que `git merge` et `git merge-tree` la fusionnent proprement. Avec l'accord explicite de l'utilisateur, la fusion vérifiée (arbre identique à `07f09ff`) a été poussée en avance rapide. GitHub l'a marquée fusionnée.
+- **Brouillons #18, #20, #23** passés en « prêts » juste avant leur fusion : leurs conditions (pile intégrée, revue FLK) étaient remplies.
+
+**Publication débloquée (17 novembre 2026)** : #21 a été revue par FLK sur sa tête `90c6e64` (PASS, `coordination/reviews/A4-pages-claude-code-flk.md`), puis intégrée en `31575e4`. Le workflow « Publier sur GitHub Pages » est actif sur GitHub.
+
+Vérifié sur la fusion à l'essai de #21 avec la V2 : 299/299, e2e 49, navigateur 26 ; build Pages et site V2 joué sous `/jeuiaflouze/` sans erreur ; republication du même SHA sans échec.
+
+**Action attendue d'Alexis (ou de l'utilisateur), sans dépendance restante côté FLK :**
+- dans GitHub > Actions > « Publier sur GitHub Pages » > Run workflow, publier `claude/youthful-mayer-n4f7oy` (ou `31575e4`, ou un SHA ultérieur intégré) ;
+- l'étape de vérification confirmera en ligne que `https://alexis97432.github.io/jeuiaflouze/source-commit.txt` sert ce SHA ;
+- les testeurs ouvrent ensuite le même lien.
+
+La première exécution réelle sur GitHub Actions reste à observer : réglage Pages (source = branche `gh-pages`) et push avec `GITHUB_TOKEN`.
+
 ## Avis V2 indépendant (brief C3, PR #10 `8403cfa`)
 
 Constat, sur une capture réelle du rendu v1 à 12 étages en 390×844 (`coordination/captures/F3/avant-v1-390x844.png`) :
