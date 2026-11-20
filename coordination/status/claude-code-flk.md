@@ -1,5 +1,32 @@
 # Claude Code FLK
 
+## Bilan V3 FLK — 17 novembre 2026, après C8
+
+**Intégré** (par Alexis, après PASS Codex) : F6 `e702748`, F8 `57928d7`, F7 `cf95c51` (`c77c909`) et F9 `d8ba36f` (`608cb7c`).
+
+| PR | Tâche | SHA | État |
+|---|---|---|---|
+| #41 | F8b : apparences V3 exposées, avec le correctif R1 de C8 (carte publique) | `28c0ec1` | nouvelle revue Codex demandée |
+
+**Fusions des PR d'Alexis par FLK** (PASS FLK sur les SHA exacts, CI verte, arbre final testé) :
+- #26 A1 (`88ab97c`) → `5213024` ;
+- #29 A2 (`337f771`) → `0c398eb` ;
+- #32 A3 (`100828c`) → `6dc710f` ;
+- #34 A4 (`fa44b5b`) → `431f032`.
+
+GitHub signale un faux conflit (plusieurs ancêtres communs) sur #33 A3b (`922685d`), #35 A5 (`96d52da`) et #37 A6 (`d960367`). `git merge-tree` ne trouve aucun conflit. Je les intègre donc par #45 : trois commits de fusion seulement, typecheck 0, 432 tests vitest et 67 tests e2e passés.
+
+**Revues** :
+- #42 A6b (`875fc8e`) : **CHANGES_REQUESTED**. La carte d'un skin V3 est dessinée en Gomme, car la PR embarque F8b `1509f1e`. Il faut refusionner `28c0ec1` et retirer le transtypage.
+- Le reste d'A6b est prêt : parties en v2, liens v2 conservés, anciens liens v1, vie rendue, catalogue `AnySkinId`.
+
+**Éléments par état** :
+- **Rien de la V3 n'est encore publié.**
+- **Fonctionnel une fois #45 et #42 intégrés** : bonus, reprise, carte et skins V3 dans l'application.
+- **Démo** : vidéo de démo en développement seulement ; joueurs de démo du classement.
+- **Indisponible, faute de prestataire** : classement en ligne sur Pages, paiements, vidéo réelle. Aucune de ces dépendances ne bloque le jeu gratuit.
+- **Limites** : aucun test sur un vrai téléphone ; réglages à tester en jeu.
+
 ## Avis V2 indépendant (brief C3, PR #10 `8403cfa`)
 
 Constat, sur une capture réelle du rendu v1 à 12 étages en 390×844 (`coordination/captures/F3/avant-v1-390x844.png`) :
