@@ -57,7 +57,7 @@ Point de reprise si la session s'interrompt. Mis à jour à chaque étape.
 | V8-2 | Relief, palettes par matière, aperçus studio, police | fait (`666aaa4`) |
 | V8-3 | Collection dark (univers, matières, piano) | fait : 3 univers, 4 matières, 3 pièces de piano écrites |
 | V8-4 | Noël (univers, matières, musique, règle saisonnière) | fait : univers, 3 matières, valse « Veillée », section saisonnière |
-| V8-5 | Vérifications, PR, fusion, publication, bilan | en cours : contrôles faits (voir docs/V8.md), PR et publication à suivre |
+| V8-5 | Vérifications, PR, fusion, publication, bilan | fait : PR #59 fusionnée (`0b40e73`), publiée et vérifiée en ligne (40 contrôles) |
 
 ## Reprise
 
@@ -72,3 +72,18 @@ Reste à faire (V8-5) :
 - stabilité : fuzzeur et parties enchaînées sur les nouveaux contenus ;
 - mesures audio des pistes piano ;
 - PR, CI, fusion, Pages, contrôle en ligne.
+
+## Publication V8 (auto-vérification)
+
+- **CI :** verte sur `0acf20a` (run 44909972362). PR [#59](https://github.com/alexis97432/jeuiaflouze/pull/59) fusionnée par son auteur (exception V8) en `0b40e73`.
+- **Pages :** `pages.yml` lancé avec `ref` = `0b40e73b93ed2f5381b943c2cfb3ec8db065f365`. Le site sert ce commit (vérifié le 21 novembre à 14 h 03 UTC).
+- **Contrôles en ligne :** 40 passent, dans Chromium avec un profil Pixel 7 :
+  - sélection du jour, et section Noël en vente avec ses dates ;
+  - collection : 43 aperçus et 19 musiques ;
+  - passe et réglages ;
+  - prime du jour sur l'accueil ;
+  - une partie réelle, un lien de défi et un seul contexte audio ;
+  - migration vers la v6 ;
+  - deux parties sans erreur : Cœur d'obsidienne avec Obsidienne, Veillée de Noël avec Sapin d'or ;
+  - écran de 320 px, ressources et console.
+- **Reprise :** V8 terminée. Ce relevé ne touche que la documentation et n'est pas republié ; le site sert `0b40e73`.
