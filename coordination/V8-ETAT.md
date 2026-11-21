@@ -57,7 +57,7 @@ Point de reprise si la session s'interrompt. Mis à jour à chaque étape.
 | V8-2 | Relief, palettes par matière, aperçus studio, police | fait (`666aaa4`) |
 | V8-3 | Collection dark (univers, matières, piano) | fait : 3 univers, 4 matières, 3 pièces de piano écrites |
 | V8-4 | Noël (univers, matières, musique, règle saisonnière) | fait : univers, 3 matières, valse « Veillée », section saisonnière |
-| V8-5 | Vérifications, PR, fusion, publication, bilan | à faire |
+| V8-5 | Vérifications, PR, fusion, publication, bilan | en cours : contrôles faits (voir docs/V8.md), PR et publication à suivre |
 
 ## Reprise
 
