@@ -634,11 +634,6 @@ export function createShell(options: ShellOptions): Shell {
     } else {
       level.append(el(doc, 'p', { class: 'hint', 'data-testid': 'xp' }, 'Niveau maximal, bravo !'));
     }
-    // V8 : prime du jour (3 premières parties d'au moins 5 étages).
-    const bonusLeft = dailyBonusLeft(progress, utcDateKey(today()));
-    level.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'daily-bonus' }, bonusLeft > 0
-      ? `Prime du jour : +${DAILY_BONUS[0]} pièces pour ${bonusLeft === DAILY_BONUS.length ? 'tes' : 'les'} ${bonusLeft} prochaine${bonusLeft > 1 ? 's' : ''} partie${bonusLeft > 1 ? 's' : ''} d’au moins ${DAILY_BONUS_MIN_HEIGHT} étages.`
-      : 'Prime du jour récupérée. Elle revient demain.'));
 
     const goalsPanel = el(doc, 'section', { class: 'card', 'aria-labelledby': 'goals-title' });
     const goals = el(doc, 'ul', { class: 'missions', 'data-testid': 'goals' });
@@ -1687,7 +1682,12 @@ export function createShell(options: ShellOptions): Shell {
       `Le même pour tous · nouveau à ${formatLocalTime(nextDailyChange(now))}${dailyBest > 0 ? ` · ton record : ${floors(dailyBest)}` : ''}`);
     dailyCard.append(daily, dailyHint);
     const actions = el(doc, 'div', { class: 'home-actions' });
-    actions.append(play, dailyCard, recordLine());
+    // V8 : prime du jour (3 premières parties d'au moins 5 étages), sous le bouton Jouer.
+    const bonusLeft = dailyBonusLeft(progress, day);
+    const bonus = el(doc, 'p', { class: 'hint small center', 'data-testid': 'daily-bonus' }, bonusLeft > 0
+      ? `Prime du jour : +${DAILY_BONUS[0]} pièces pour ${bonusLeft === DAILY_BONUS.length ? 'tes' : 'les'} ${bonusLeft} prochaine${bonusLeft > 1 ? 's' : ''} partie${bonusLeft > 1 ? 's' : ''} d’au moins ${DAILY_BONUS_MIN_HEIGHT} étages.`
+      : 'Prime du jour récupérée. Elle revient demain.');
+    actions.append(play, bonus, dailyCard, recordLine());
     show('home', [brandHero(), actions, lookCard(), homeMission()], play);
     prefetchTickets();
   };

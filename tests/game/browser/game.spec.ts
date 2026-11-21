@@ -317,19 +317,19 @@ test.describe('V2 (F4) : apparences', () => {
     });
   }
 
-  test('V7 : 54 aperçus (9 univers × 6 apparences V2), tous différents ; false sans Canvas 2D', async ({ page }) => {
+  test('V8 : 78 aperçus (13 univers × 6 apparences V2), tous différents ; false sans Canvas 2D', async ({ page }) => {
     await page.goto(URL);
     const prints = await page.evaluate(() => (window as any).__flk.previewBoard());
-    expect(Object.keys(prints)).toHaveLength(54);
-    expect(new Set(Object.values(prints)).size).toBe(54);
+    expect(Object.keys(prints)).toHaveLength(78);
+    expect(new Set(Object.values(prints)).size).toBe(78);
     expect(await page.evaluate(() => (window as any).__flk.previewWithoutContext())).toBe(false);
   });
 
-  test('V7 : 207 aperçus (9 univers × 23 matières), tous différents', async ({ page }) => {
+  test('V8 : 390 aperçus (13 univers × 30 matières), tous différents', async ({ page }) => {
     await page.goto(URL);
     const prints = await page.evaluate(() => (window as any).__flk.previewBoard({ w: 120, h: 84 }, true));
-    expect(Object.keys(prints)).toHaveLength(207);
-    expect(new Set(Object.values(prints)).size).toBe(207);
+    expect(Object.keys(prints)).toHaveLength(390);
+    expect(new Set(Object.values(prints)).size).toBe(390);
   });
 
   test('appearance transmise au montage : le jeu applique univers et apparence', async ({ page }) => {

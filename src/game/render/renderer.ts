@@ -1648,14 +1648,16 @@ export class Renderer {
   }
 
   /**
-   * V8 : ombre portée de la tour sur le décor (lumière haute à gauche) et ombre au sol. Deux
-   * aplats translucides décalés suffisent à donner un flou bon marché ; rien n'est dessiné pour le
-   * bloc mobile (sa limite reste nette).
+   * V8 : ombre portée de la tour sur le décor (sous les débords) et ombre au sol. Deux aplats
+   * translucides suffisent à donner un flou bon marché ; rien n'est dessiné pour le bloc mobile
+   * (sa limite reste nette).
    */
   private towerShadow(view: ViewState, from: number, to: number, yTop: (i: number) => number, groundY: number): void {
     const { ctx } = this;
     ctx.save();
-    for (const [dx, dy, a] of [[3, 2, 0.14], [7, 5, 0.09]] as const) {
+    // Ombre verticale seulement : elle assombrit le décor sous les débords, jamais à côté d'une
+    // brique (règle V2 : le relief n'élargit jamais la zone perçue comme valide).
+    for (const [dx, dy, a] of [[0, 3, 0.16], [0, 7, 0.09]] as const) {
       ctx.fillStyle = `rgba(6,4,4,${a})`;
       ctx.beginPath();
       for (let i = from; i < to; i++) {

@@ -46,7 +46,7 @@ async function play(page: Page, isMobile: boolean) {
   await playUntilResult(page, () => (isMobile ? page.touchscreen.tap(x, y) : page.mouse.click(x, y)));
 }
 
-const RICH = { version: 5, coins: 2000, xp: 260, grants: ['v2-objectives-backfill'] };
+const RICH = { version: 6, coins: 2000, xp: 260, grants: ['v2-objectives-backfill'] };
 async function seeded(page: Page, doc: Record<string, unknown> = RICH) {
   await page.addInitScript((seed) => {
     if (!sessionStorage.getItem('seeded')) {
@@ -113,7 +113,8 @@ test('sélection du jour : stable dans la journée et après rechargement, renou
   await page.clock.install({ time: new Date('2026-12-03T23:58:00Z') });
   await page.goto('/');
   await page.getByTestId('nav-shop').click();
-  const offers = () => page.locator('[data-testid^="shop-"].item, li[data-testid^="shop-"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')).filter((id) => id && !['shop-lives', 'shop-empty'].includes(id)));
+  // V8 : seules les sections de la sélection du jour (la collection de Noël a sa section à part).
+  const offers = () => page.locator('[data-testid="shop-section-skin"] li[data-testid^="shop-"], [data-testid="shop-section-theme"] li[data-testid^="shop-"], [data-testid="shop-section-music"] li[data-testid^="shop-"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')).filter((id) => id && !['shop-lives', 'shop-empty'].includes(id)));
   const before = await offers();
   expect(before.length).toBe(6);
   await expect(page.getByTestId('shop-renewal')).toContainText('dans 2 min');
@@ -129,17 +130,18 @@ test('sélection du jour : stable dans la journée et après rechargement, renou
 });
 
 test('achat ouvert à minuit UTC : au-delà du délai de grâce, refusé sans débit', async ({ page }) => {
-  await seeded(page);
+  await seeded(page, { ...RICH, coins: 10_000 });
   await page.clock.install({ time: new Date('2026-12-03T23:59:00Z') });
   await page.goto('/');
   await page.getByTestId('nav-shop').click();
-  const buy = page.locator('[data-testid^="buy-"]:not([data-testid="buy-life"])').first();
+  // Une offre de la sélection du jour (pas la collection de Noël, encore en vente le lendemain).
+  const buy = page.getByTestId('shop-section-skin').locator('[data-testid^="buy-"]').first();
   await buy.click();
   await expect(page.getByTestId('confirm')).toBeVisible();
   await page.clock.fastForward('07:00'); // minuit + 6 min : l'offre a expiré
   await page.getByTestId('confirm-buy').click();
   await expect(page.getByTestId('shop-expired')).toContainText('Rien n’a été débité');
-  expect(JSON.parse((await page.evaluate(() => localStorage.getItem('poc:meta:v1:progress')))!).coins).toBe(2000);
+  expect(JSON.parse((await page.evaluate(() => localStorage.getItem('poc:meta:v1:progress')))!).coins).toBe(10_000);
 });
 
 test('diagnostic : une partie interrompue par un rechargement est notée, le rapport se copie', async ({ page, context }) => {

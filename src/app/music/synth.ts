@@ -174,7 +174,7 @@ function playNote(k: Kit, n: NoteEvent, out: AudioNode): void {
       const tau = Math.min(2.6, Math.max(0.35, 1.5 * Math.pow(261.6 / f, 0.45)));
       const damp = Math.max(end, t + 0.12);
       const stop = damp + 0.6;
-      const partials: readonly [number, number][] = [[1, 1], [2, 0.42], [3, 0.2], [4, 0.1], [5, 0.05]];
+      const partials: readonly [number, number][] = [[1, 1], [2, 0.42], [3, 0.2], [4, 0.1]];
       for (const [p, amp] of partials) {
         const fp = f * p * Math.sqrt(1 + B * p * p);
         if (fp > 9000) break;
@@ -184,7 +184,8 @@ function playNote(k: Kit, n: NoteEvent, out: AudioNode): void {
         pg.gain.setTargetAtTime(peak * amp * 0.35, t + 0.004, tau / p);
         pg.gain.setTargetAtTime(0, damp, 0.09);
         osc(k, 'sine', fp, t, stop, pg, p === 1 ? -1.5 : 0);
-        if (p === 1) osc(k, 'sine', fp, t, stop, pg, 1.5);
+        // Deuxième corde (battement) seulement au médium et à l'aigu : moins d'oscillateurs au grave.
+        if (p === 1 && n.m >= 55) osc(k, 'sine', fp, t, stop, pg, 1.5);
       }
       const hammer = k.ctx.createBufferSource();
       hammer.buffer = k.noise;
