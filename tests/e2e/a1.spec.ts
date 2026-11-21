@@ -337,7 +337,7 @@ test('E1 : XP, pièces et récompense de connexion conservées après rechargeme
   await page.getByRole('button', { name: 'Accueil' }).tap();
   await page.getByTestId('nav-season').tap();
   await page.getByRole('button', { name: 'Missions et cadeau' }).tap();
-  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap();
+  await page.getByRole('button', { name: /^Récupérer \+10$/ }).tap();
   await expect(page.getByTestId('calendar')).toContainText('Déjà récupéré');
   const before = {
     coins: await page.getByTestId('coins').textContent(),
@@ -353,7 +353,7 @@ test('E1 : XP, pièces et récompense de connexion conservées après rechargeme
   await expect(page.getByTestId('xp')).toHaveText(before.xp!);
   await expect(page.getByTestId('calendar')).toContainText('Déjà récupéré');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
-  expect(saved).toMatchObject({ version: 5, grants: ['v2-objectives-backfill'] });
+  expect(saved).toMatchObject({ version: 6, grants: ['v2-objectives-backfill'] });
 });
 
 test('E1 : deux onglets du même navigateur ne perdent ni gains ni réclamation', async ({ page, context }) => {
@@ -362,10 +362,10 @@ test('E1 : deux onglets du même navigateur ne perdent ni gains ni réclamation'
   await other.goto('/');
   await page.getByTestId('nav-season').tap();
   await page.getByRole('button', { name: 'Missions et cadeau' }).tap();
-  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap();
-  await expect(page.getByTestId('coins')).toHaveText('5 pièces');
+  await page.getByRole('button', { name: /^Récupérer \+10$/ }).tap();
+  await expect(page.getByTestId('coins')).toHaveText('10 pièces');
   // Vrai événement storage : l'autre onglet se met à jour sans rechargement.
-  await expect(other.getByTestId('coins')).toHaveText('5 pièces'); // accueil mis à jour par l'événement storage
+  await expect(other.getByTestId('coins')).toHaveText('10 pièces'); // accueil mis à jour par l'événement storage
   await other.getByTestId('nav-season').tap();
   await other.getByRole('button', { name: 'Missions et cadeau' }).tap();
   await expect(other.getByTestId('calendar')).toContainText('Déjà récupéré');
@@ -375,7 +375,7 @@ test('E1 : deux onglets du même navigateur ne perdent ni gains ni réclamation'
   await tapUntilResult(other);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
   expect(saved.calendar.lastClaimDate).not.toBeNull(); // réclamation de l'onglet 1 conservée
-  expect(saved.coins).toBeGreaterThanOrEqual(5); // une partie courte peut rapporter 0 pièce
+  expect(saved.coins).toBeGreaterThanOrEqual(10); // une partie courte peut rapporter 0 pièce
   expect(saved.xp).toBeGreaterThan(0); // mais toujours de l'XP (le 1er étage ne se rate pas)
   await other.close();
 });
@@ -399,10 +399,10 @@ test('E1 : sous le vrai verrou Web Locks, un onglet concurrent ne perd pas la r�
   });
   await page.getByTestId('nav-season').tap();
   await page.getByRole('button', { name: 'Missions et cadeau' }).tap();
-  await page.getByRole('button', { name: /^Récupérer \+5$/ }).tap(); // pendant que l'autre tient le verrou
-  await expect(page.getByTestId('coins')).toHaveText('105 pièces');
+  await page.getByRole('button', { name: /^Récupérer \+10$/ }).tap(); // pendant que l'autre tient le verrou
+  await expect(page.getByTestId('coins')).toHaveText('110 pièces');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress')!));
-  expect(saved).toMatchObject({ coins: 105 });
+  expect(saved).toMatchObject({ coins: 110 });
   expect(saved.calendar.lastClaimDate).not.toBeNull();
   await other.close();
 });
@@ -417,7 +417,7 @@ test('A4 : aperçus de collection dessinés par le moteur, apparence appliquée 
   await page.goto('/');
   await page.getByTestId('nav-collection').tap();
   const previews = page.locator('canvas.swatch.preview');
-  await expect(previews).toHaveCount(32); // V7 : 23 matières et 9 univers, tous dessinés par le moteur
+  await expect(previews).toHaveCount(43); // V8 : 30 matières et 13 univers, tous dessinés par le moteur
   const colorsPerPreview = await previews.evaluateAll((canvases) =>
     (canvases as HTMLCanvasElement[]).map((c) => {
       const { data } = c.getContext('2d')!.getImageData(0, 0, c.width, c.height);
@@ -509,7 +509,7 @@ test('sauvegarde V2 publiée : migrée en v3 sans perte (XP, pièces, objectifs,
   await page.getByRole('button', { name: 'Jouer', exact: true }).tap();
   await tapUntilResult(page);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('poc:meta:v1:progress') ?? 'null'));
-  expect(saved).toMatchObject({ version: 5, completed: expect.arrayContaining(['floors-5']) });
+  expect(saved).toMatchObject({ version: 6, completed: expect.arrayContaining(['floors-5']) });
   expect(saved.xp).toBeGreaterThanOrEqual(140);
   expect(saved.coins).toBeGreaterThanOrEqual(37);
 });

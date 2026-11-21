@@ -189,8 +189,28 @@ export function composeSection(track: TrackDef, index: number): SectionScore {
     });
   }
 
+  // — V8 : mélodie écrite (phrases composées), si la piste en a une —
+  if (plays('melody') && track.written) {
+    const tokens = parseWritten(track.written[clamp(Math.floor(index), 0, 3)]!);
+    let pos = 0;
+    // Nuances de phrase : on monte vers le milieu de chaque groupe de 4 mesures, on se pose à la fin.
+    const phrase = 4 * track.meter;
+    for (const tok of tokens) {
+      if (tok.degree !== null && pos < track.bars * track.meter) {
+        const deg = tok.degree - 1;
+        const semis = scale[deg % 7]! + 12 * tok.octave + tok.accidental;
+        const m = key + 12 + semis;
+        const inPhrase = (pos % phrase) / phrase;
+        const shape = 0.82 + 0.22 * Math.sin(Math.PI * inPhrase);
+        const t = Math.floor(pos / track.meter) * bar + (pos % track.meter) * beat;
+        add('melody', t, tok.dur * beat * 0.96, m, vel(0.7 * shape));
+      }
+      pos += tok.dur;
+    }
+  }
+
   // — Mélodie : motif de 2 mesures, varié, cadence sur la tonique —
-  if (plays('melody')) {
+  if (plays('melody') && !track.written) {
     const themeSeed = hashString(`${track.id}:${index === 0 || index === 2 ? 'theme' : `motif${index}`}`);
     const { low, high, density } = track.melody;
     const stepsPerBar = track.meter * 2;
@@ -242,6 +262,26 @@ export function composeSection(track: TrackDef, index: number): SectionScore {
   notes.sort((a, b) => a.t - b.t);
   drums.sort((a, b) => a.t - b.t);
   return { duration, notes, drums };
+}
+
+/** V8 : lit une mélodie écrite (voir `TrackDef.written`). Jetons invalides ignorés. */
+export function parseWritten(text: string): { degree: number | null; octave: number; accidental: number; dur: number }[] {
+  const out: { degree: number | null; octave: number; accidental: number; dur: number }[] = [];
+  for (const raw of text.split(/\s+/)) {
+    if (raw === '' || raw === '|') continue;
+    const m = /^(r|([#b]?)([1-7])('*|,*)):(\d+(?:\.\d+)?)$/.exec(raw);
+    if (!m) continue;
+    const dur = Number(m[5]);
+    if (!(dur > 0)) continue;
+    if (m[1] === 'r') {
+      out.push({ degree: null, octave: 0, accidental: 0, dur });
+      continue;
+    }
+    const marks = m[4] ?? '';
+    const octave = marks.startsWith("'") ? marks.length : -marks.length;
+    out.push({ degree: Number(m[3]), octave, accidental: m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0, dur });
+  }
+  return out;
 }
 
 function drumPattern(

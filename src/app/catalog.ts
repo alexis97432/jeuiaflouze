@@ -22,11 +22,14 @@ import type { ObjectiveId } from './progression';
 import { TRACKS } from './music/tracks';
 
 export type CosmeticKind = 'skin' | 'theme' | 'music';
+/** V8 : événements saisonniers de la boutique (règle de dates dans rotation.ts). */
+export type ShopEventId = 'noel';
 
 export type Source =
   | { kind: 'default' }
   | { kind: 'mission'; objective: ObjectiveId }
-  | { kind: 'shop'; price: number }
+  /** `season` (V8) : vendu seulement pendant l'événement (section dédiée, hors rotation). */
+  | { kind: 'shop'; price: number; season?: ShopEventId }
   | { kind: 'pass'; track: 'free' | 'premium'; tier: number }
   /** V7 : musique d'un univers, possédée avec lui. */
   | { kind: 'universe'; theme: ThemeId };
@@ -46,6 +49,7 @@ const skin = (id: AnySkinId, name: string, blurb: string, source: Source): Catal
 const theme = (id: ThemeId, name: string, blurb: string, source: Source): CatalogItem =>
   ({ kind: 'theme', id, name, rarity: THEME_RARITY[id], blurb, source });
 const shop = (price: number): Source => ({ kind: 'shop', price });
+const noel = (price: number): Source => ({ kind: 'shop', price, season: 'noel' });
 const free = (tier: number): Source => ({ kind: 'pass', track: 'free', tier });
 const premium = (tier: number): Source => ({ kind: 'pass', track: 'premium', tier });
 const mission = (objective: ObjectiveId): Source => ({ kind: 'mission', objective });
@@ -55,15 +59,15 @@ export const SKIN_CATALOG: readonly CatalogItem[] = [
   skin('gomme', 'Gomme', 'Caoutchouc doux au grain fin.', { kind: 'default' }),
   skin('strie', 'Strié', 'Plastique côtelé en relief.', mission('floors-18')),
   skin('bonbon', 'Bonbon', 'Sucre d’orge verni et cristaux de sucre.', mission('streak-2')),
-  skin('graphite', 'Graphite', 'Mine sombre au liseré métallique.', shop(60)),
-  skin('bois', 'Bois', 'Bois verni : le fil et les nœuds suivent chaque pièce.', shop(60)),
+  skin('graphite', 'Graphite', 'Mine sombre au liseré métallique.', shop(200)),
+  skin('bois', 'Bois', 'Bois verni : le fil et les nœuds suivent chaque pièce.', shop(220)),
   skin('marbre', 'Marbré', 'Marbre poli aux veines profondes.', mission('floors-5')),
   skin('ceramique', 'Céramique', 'Émail craquelé et grand reflet.', mission('streak-4')),
   skin('verre', 'Verre dépoli', 'Verre givré, bulles prises dans la masse.', mission('perfects-5')),
-  skin('nacre', 'Nacré', 'Nacre irisée qui change de teinte.', shop(120)),
+  skin('nacre', 'Nacré', 'Nacre irisée qui change de teinte.', shop(600)),
   skin('pixel', 'Pixel', 'Carreaux 8-bit et éclat qui défile.', free(3)),
-  skin('circuit', 'Circuit', 'Pistes dorées parcourues d’impulsions lumineuses.', shop(280)),
-  skin('holographique', 'Holographique', 'Bandes arc-en-ciel qui glissent et scintillent.', shop(240)),
+  skin('circuit', 'Circuit', 'Pistes dorées parcourues d’impulsions lumineuses.', shop(1400)),
+  skin('holographique', 'Holographique', 'Bandes arc-en-ciel qui glissent et scintillent.', shop(1300)),
   skin('lave', 'Lave', 'Magma qui coule sous une croûte fendue, braises à la pose.', free(15)),
   skin('or', 'Or', 'Or brossé et gravé, reflets qui passent, éclats.', premium(9)),
   skin('neon', 'Néon', 'Tube néon qui bourdonne dans le verre fumé.', premium(4)),
@@ -72,23 +76,38 @@ export const SKIN_CATALOG: readonly CatalogItem[] = [
   skin('aurore', 'Aurore', 'Rideaux d’aurore qui ondulent dans une nuit étoilée.', free(30)),
   skin('abysse', 'Abysse', 'L’océan profond, ses reflets et un poisson qui passe.', premium(30)),
   // V7 : une matière de plus par rareté, vendues en pièces dans la sélection du jour.
-  skin('papier', 'Papier', 'Papier fait main : fibres, pli et bord déchiré.', shop(70)),
-  skin('mosaique', 'Mosaïque', 'Tesselles émaillées posées à la main ; le reflet glisse.', shop(140)),
-  skin('vitrail', 'Vitrail', 'Verres de couleur sertis de plomb, traversés par la lumière.', shop(260)),
-  skin('phenix', 'Phénix', 'Un plumage de feu traverse toute la tour, braises qui montent.', shop(520)),
+  skin('papier', 'Papier', 'Papier fait main : fibres, pli et bord déchiré.', shop(160)),
+  skin('mosaique', 'Mosaïque', 'Tesselles émaillées posées à la main ; le reflet glisse.', shop(650)),
+  skin('vitrail', 'Vitrail', 'Verres de couleur sertis de plomb, traversés par la lumière.', shop(1500)),
+  skin('phenix', 'Phénix', 'Un plumage de feu traverse toute la tour, braises qui montent.', shop(3000)),
+  // V8 : collection sombre, une matière par rareté.
+  skin('ardoise', 'Ardoise', 'Schiste en feuillets, arêtes taillées au ciseau.', shop(240)),
+  skin('fer', 'Fer forgé', 'Plaques martelées et rivetées ; la pose fait jaillir des étincelles de forge.', shop(700)),
+  skin('ebene', 'Ébène', 'Bois noir au fil serré, marqueterie d’ivoire et filets de laiton alignés d’un étage à l’autre.', shop(1450)),
+  skin('obsidienne', 'Obsidienne', 'Verre volcanique : des veines de magma traversent toute la tour et respirent ; cassures aux reflets nets.', shop(3200)),
+  // V8 : Noël, vendus chaque année du 20 novembre au 6 janvier.
+  skin('givre', 'Givre', 'Verre gelé : des fougères de glace poussent depuis les bords, paillettes qui scintillent.', noel(600)),
+  skin('velours', 'Velours', 'Velours bordeaux capitonné, boutons et galon dorés, lustre qui glisse.', noel(1350)),
+  skin('sapin', 'Sapin d’or', 'Aiguilles serrées et neige poudrée ; une guirlande lumineuse court sur toute la tour.', noel(2900)),
 ];
 
 export const THEME_CATALOG: readonly CatalogItem[] = [
   theme('confiserie', 'Confiserie', 'Du village sucré à la nuit bonbon et sa lune en chocolat.', { kind: 'default' }),
   theme('jardin', 'Jardin', 'Du potager aux cerfs-volants, jusqu’à la nuit des lucioles.', mission('daily-8')),
   theme('orbital', 'Orbital', 'Du pas de tir à la nébuleuse, en passant par l’orbite.', mission('floors-12')),
-  theme('recif', 'Récif', 'Du fond marin à la surface, puis l’aurore sur la mer.', shop(320)),
+  theme('recif', 'Récif', 'Du fond marin à la surface, puis l’aurore sur la mer.', shop(1450)),
   theme('cite', 'Cité néon', 'De la rue sous la pluie jusqu’à l’anneau orbital.', premium(24)),
   // V7 : un univers de plus par rareté, vendus en pièces dans la sélection du jour.
-  theme('desert', 'Désert', 'Du campement dans les dunes à la Voie lactée, caravane et mirage.', shop(140)),
-  theme('montagne', 'Montagne', 'Des chalets du col aux sommets roses du soir, téléphérique et aigle.', shop(220)),
-  theme('foire', 'Fête foraine', 'Grande roue, manège et montagnes russes, jusqu’aux feux d’artifice.', shop(320)),
-  theme('nuees', 'Royaume des nuées', 'Îles suspendues et cascades, baleine céleste et citadelle dorée.', shop(560)),
+  theme('desert', 'Désert', 'Du campement dans les dunes à la Voie lactée, caravane et mirage.', shop(350)),
+  theme('montagne', 'Montagne', 'Des chalets du col aux sommets roses du soir, téléphérique et aigle.', shop(800)),
+  theme('foire', 'Fête foraine', 'Grande roue, manège et montagnes russes, jusqu’aux feux d’artifice.', shop(1600)),
+  theme('nuees', 'Royaume des nuées', 'Îles suspendues et cascades, baleine céleste et citadelle dorée.', shop(3400)),
+  // V8 : collection sombre.
+  theme('brume', 'Forêt de brume', 'Sous-bois, menhirs aux runes qui s’allument, ruines englouties, jusqu’aux feux follets.', shop(850)),
+  theme('cathedrale', 'Cathédrale oubliée', 'Nef aux cierges, grande rose et rayons colorés, orgues, voûtes effondrées, clocher sous la lune.', shop(1700)),
+  theme('volcan', 'Cœur d’obsidienne', 'Coulées de lave, forge des géants, escalier des titans, caldeira, puis l’éclipse.', shop(3600)),
+  // V8 : Noël.
+  theme('noel', 'Veillée de Noël', 'Village sous la neige, marché et grand sapin, atelier illuminé, forêt d’hiver, étoile du berger.', noel(1500)),
 ];
 
 /**
@@ -98,14 +117,15 @@ export const THEME_CATALOG: readonly CatalogItem[] = [
 const UNIVERSE_TRACK: Partial<Record<ThemeId, string>> = {
   confiserie: 'sucre-glace', jardin: 'rosee', orbital: 'apesanteur', recif: 'lagon', cite: 'nocturne-neon',
   desert: 'mirage', montagne: 'cimes', foire: 'manege', nuees: 'nuees',
+  brume: 'sous-bois', cathedrale: 'vitraux', volcan: 'cendres', noel: 'veillee',
 };
 const MUSIC_SOURCE: Record<string, Source> = {
   'premier-etage': { kind: 'default' },
-  'gouter-lofi': shop(90),
-  'pixel-parade': shop(150),
-  'fanfare-de-poche': shop(150),
-  'funk-des-briques': shop(240),
-  'aurore-polaire': shop(420),
+  'gouter-lofi': shop(180),
+  'pixel-parade': shop(450),
+  'fanfare-de-poche': shop(450),
+  'funk-des-briques': shop(900),
+  'aurore-polaire': shop(1800),
 };
 
 /** Musique d'un univers (mode « musique de l'univers »), ou undefined. */
@@ -151,7 +171,7 @@ export function sourceLabel(source: Source): string {
   switch (source.kind) {
     case 'default': return 'Offert';
     case 'mission': return 'Mission';
-    case 'shop': return `Boutique · ${source.price} pièces`;
+    case 'shop': return source.season === 'noel' ? `Noël · ${source.price} pièces (20 nov. – 6 janv.)` : `Boutique · ${source.price} pièces`;
     case 'pass': return source.track === 'free' ? `Passe gratuit · niveau ${source.tier}` : `Passe premium · niveau ${source.tier}`;
     case 'universe': return `Avec l’univers ${THEME_CATALOG.find((t) => t.id === source.theme)?.name ?? source.theme}`;
   }

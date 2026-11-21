@@ -1,4 +1,4 @@
-# Stack or Crash : musiques (V7)
+# Stack or Crash : musiques (V7, V8)
 
 ## Droits et crédits
 
@@ -8,6 +8,8 @@ Chaque piste est une **composition originale écrite pour Stack or Crash**. Le j
 - le synthétiseur du jeu joue ces notes dans le navigateur du joueur (`synth.ts`).
 
 Licence : celle du dépôt, sans droit de tiers ni attribution due. Aucune bibliothèque, aucun échantillon et aucun enregistrement n'ont été intégrés : il n'y a donc aucune source externe à citer.
+
+V8 : le piano est lui aussi synthétisé (aucune banque de sons ni échantillon de piano). Les mélodies des quatre pièces au piano sont écrites note à note dans `tracks.ts` (champ `written`) ; ce sont des compositions originales, pas des airs existants ni des chants de Noël traditionnels.
 
 Les crédits du jeu l'indiquent dans Réglages (« Musiques : compositions originales de Stack or Crash… »). Cette page tient lieu de crédits dans le dépôt.
 
@@ -41,13 +43,32 @@ Les crédits du jeu l'indiquent dans Réglages (« Musiques : compositions origi
 | Manège | Épique | Univers Fête foraine | Valse, orgue et glockenspiel |
 | Hymne des nuées | Légendaire | Univers Royaume des nuées | Cordes, harpe, cor |
 | Premier étage | Commun | **Offerte à tous** | Pop douce |
-| Goûter lo-fi | Commun | Boutique, 90 pièces | Hip-hop feutré, accords jazz |
-| Pixel parade | Rare | Boutique, 150 pièces | Chiptune rapide |
-| Fanfare de poche | Rare | Boutique, 150 pièces | Cuivres et caisse claire de défilé |
-| Funk des briques | Épique | Boutique, 240 pièces | Basse funk, clavinet |
-| Aurore polaire | Légendaire | Boutique, 420 pièces | Ambient lumineuse |
+| Goûter lo-fi | Commun | Boutique, 180 pièces | Hip-hop feutré, accords jazz |
+| Pixel parade | Rare | Boutique, 450 pièces | Chiptune rapide |
+| Fanfare de poche | Rare | Boutique, 450 pièces | Cuivres et caisse claire de défilé |
+| Funk des briques | Épique | Boutique, 900 pièces | Basse funk, clavinet |
+| Aurore polaire | Légendaire | Boutique, 1 800 pièces | Ambient lumineuse |
+| Sous-bois (V8) | Rare | Univers Forêt de brume | Piano mystérieux, mode dorien, nappe chaude et verre |
+| Vitraux brisés (V8) | Épique | Univers Cathédrale oubliée | Piano mélancolique en mineur harmonique, orgue lointain, cordes |
+| Cendres (V8) | Légendaire | Univers Cœur d'obsidienne | Piano dramatique, basses en octaves pulsées, cordes |
+| Veillée (V8) | Épique | Univers Veillée de Noël (saison) | Valse au piano, clochettes et cordes douces |
 
 La musique d'un univers est possédée avec l'univers. Les musiques de la boutique s'achètent avec les pièces du jeu et restent possédées quand elles quittent la sélection du jour.
+
+## Pièces au piano (V8)
+
+**Écriture :** chaque section (A, B, C, D) a une mélodie écrite, en phrases de quatre mesures :
+- une question qui finit en suspens, puis une réponse qui se pose sur la tonique ;
+- A et C portent le thème de la pièce, B le contraste, D la respiration ;
+- la main gauche joue des arpèges brisés, des accords de valse ou des octaves pulsées, selon la pièce.
+
+Le lecteur enchaîne les sections comme pour les autres pistes : la boucle est faite de phrases complètes, jamais coupée au milieu d'une phrase.
+
+**Piano synthétisé** (`synth.ts`, voix `piano`) :
+- quatre partiels légèrement inharmoniques, comme une corde raide ;
+- chaque partiel s'éteint plus vite que le précédent, les aigus plus vite que les graves ;
+- deux cordes très légèrement désaccordées au médium et à l'aigu, pour le battement ;
+- une frappe de marteau très courte (bruit filtré) et un étouffoir à la fin de la note.
 
 ## Choix techniques
 
@@ -97,6 +118,13 @@ La musique d'un univers est possédée avec l'univers. Les musiques de la boutiq
 - un seul contexte audio sur trois parties ;
 - écoute arrêtée en changeant d'écran ;
 - contexte suspendu en arrière-plan, puis repris.
+
+**Mesures V8 des pièces au piano** (même méthode) :
+- crêtes entre −7 et −11 dBFS ; RMS entre −19,5 et −22 dBFS ;
+- queues sous −58 dBFS ; aucune valeur invalide ;
+- aux raccords, le saut entre échantillons reste inférieur aux sauts mesurés alentour.
+
+**Coût du rendu :** 0,4 à 3,2 s par section dans ce conteneur. C'est plus que les autres pistes, car chaque note de piano compte plusieurs partiels. Le rendu se fait hors de l'affichage et jamais pendant une partie ; sur un téléphone modeste, le délai avant la première note n'a pas été mesuré.
 
 **Limite :** aucune piste n'a été écoutée par une personne pendant ce travail. Personne n'a jugé la qualité, l'équilibre avec les effets ni le confort d'écoute sur de nombreuses parties.
 

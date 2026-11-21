@@ -92,3 +92,40 @@ export function glow(ctx: CanvasRenderingContext2D, x: number, y: number, r: num
   });
   ctx.globalAlpha = a0;
 }
+
+/**
+ * V8 : corniche de falaise qui avance depuis un bord de l'écran (`side` −1 gauche, 1 droite)
+ * jusqu'à `reach` px, dessus à `y`. Les éléments d'altitude (menhirs, échoppes, statues) s'y
+ * posent au lieu de flotter ; le corps s'efface vers le bas dans le ciel (profondeur).
+ */
+export function ledge(ctx: CanvasRenderingContext2D, w: number, h: number, side: -1 | 1, y: number, reach: number, top: Rgb, body: Rgb, alpha = 1): void {
+  if (alpha <= 0.01 || y > h + 10 || y < -300) return;
+  const x0 = side < 0 ? -4 : w + 4;
+  const x1 = side < 0 ? reach : w - reach;
+  const depth = Math.min(170, Math.max(50, h - y + 40));
+  const a0 = ctx.globalAlpha;
+  ctx.globalAlpha = a0 * alpha;
+  const g = ctx.createLinearGradient(0, y, 0, y + depth);
+  g.addColorStop(0, css(body));
+  g.addColorStop(0.35, css(body, 0.7));
+  g.addColorStop(1, css(body, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(x0, y - 1);
+  ctx.lineTo(x1, y - 1);
+  ctx.quadraticCurveTo(x1 - side * 4, y + depth * 0.2, x1 - side * 18, y + depth * 0.55);
+  ctx.lineTo(x1 - side * 40, y + depth);
+  ctx.lineTo(x0, y + depth);
+  ctx.closePath();
+  ctx.fill();
+  // Arête éclairée du dessus (neige, mousse, braise selon l'univers).
+  ctx.fillStyle = css(top);
+  ctx.beginPath();
+  ctx.moveTo(x0, y - 2.5);
+  ctx.lineTo(x1 + side * 2, y - 2.5);
+  ctx.quadraticCurveTo(x1 - side * 1, y + 1.5, x1 - side * 6, y + 2);
+  ctx.lineTo(x0, y + 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = a0;
+}

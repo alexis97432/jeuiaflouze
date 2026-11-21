@@ -327,7 +327,7 @@ const MARBLE: TexSpec = {
       const cloud = smoothstep(0.5, 0.85, turb);
       const dark = Math.max(core * 0.9 + halo, hair);
       if (dark > cloud * 0.5) {
-        d[i] = 46; d[i + 1] = 48; d[i + 2] = 70;
+        d[i] = 62; d[i + 1] = 56; d[i + 2] = 52;
         d[i + 3] = Math.round(Math.min(1, dark) * 175);
       } else {
         d[i] = d[i + 1] = d[i + 2] = 255;
@@ -436,10 +436,12 @@ const MAGMA: TexSpec = {
 const NEBULA: TexSpec = {
   key: 'nebula', w: 512, h: 512,
   paint: (x, w, h) => {
-    x.fillStyle = 'rgb(9,7,26)';
+    x.fillStyle = 'rgb(10,7,7)';
     x.fillRect(0, 0, w, h);
     const r = prng(1234);
-    const palette: Rgb[] = [[110, 50, 200], [40, 90, 220], [210, 60, 170], [40, 170, 190], [255, 120, 90], [150, 90, 255]];
+    // V8 : nébuleuses chaudes (poussières rouille, gaz ambré, bulles d'hydrogène rouge, rares nuages
+    // sarcelle) au lieu du bleu-violet : la Galaxie ne ressemble plus à l'Aurore ni à l'Abysse.
+    const palette: Rgb[] = [[200, 86, 40], [236, 150, 60], [176, 36, 52], [40, 140, 130], [240, 206, 150], [130, 56, 36]];
     x.globalCompositeOperation = 'lighter';
     for (let k = 0; k < 34; k++) {
       const cx = r() * w;
@@ -531,11 +533,12 @@ const AURORA: TexSpec = {
       const len = h * (0.42 + fold * 0.38);
       const bright = 0.35 + 0.65 * smoothstep(0.3, 0.75, fold);
       const g = x.createLinearGradient(0, top, 0, top + len);
-      g.addColorStop(0, `rgba(190,110,255,${0.0})`);
-      g.addColorStop(0.08, `rgba(190,110,255,${0.55 * bright})`);
-      g.addColorStop(0.3, `rgba(80,255,170,${0.9 * bright})`);
-      g.addColorStop(0.75, `rgba(40,220,190,${0.35 * bright})`);
-      g.addColorStop(1, 'rgba(40,220,190,0)');
+      // V8 : aurore verte, frange rose rare en haut (comme une vraie aurore boréale).
+      g.addColorStop(0, `rgba(255,90,130,${0.0})`);
+      g.addColorStop(0.08, `rgba(255,90,130,${0.38 * bright})`);
+      g.addColorStop(0.3, `rgba(70,255,140,${0.9 * bright})`);
+      g.addColorStop(0.75, `rgba(30,200,110,${0.35 * bright})`);
+      g.addColorStop(1, 'rgba(30,200,110,0)');
       x.fillStyle = g;
       x.fillRect(px, top, 2, len);
     }
@@ -717,8 +720,8 @@ const PIXELS: TexSpec = {
 
 // ——— Couleurs de base des matières ———
 
-const GRAPHITE: Rgb = [58, 60, 70];
-const GALAXY: Rgb = [22, 18, 58];
+const GRAPHITE: Rgb = [60, 60, 62];
+const GALAXY: Rgb = [24, 16, 14];
 const ROCK: Rgb = [52, 30, 24];
 const GOLD: Rgb = [226, 178, 64];
 const WOOD_TONE: Rgb = [186, 128, 78];
@@ -920,23 +923,24 @@ const FLAMES: TexSpec = {
 };
 
 const PCB: Rgb = [22, 70, 58];
-const SMOKE: Rgb = [24, 20, 40];
-const NIGHT: Rgb = [14, 22, 52];
+const SMOKE: Rgb = [26, 20, 20];
+const NIGHT: Rgb = [8, 24, 20];
 const EMBER_DARK: Rgb = [74, 18, 26];
 const DEEP: Rgb = [6, 44, 78];
 const HOLO: readonly Rgb[] = [[255, 128, 206], [255, 214, 120], [130, 240, 170], [120, 196, 255], [196, 140, 255]];
-const NEON_TUBES: readonly Rgb[] = [[60, 240, 255], [255, 70, 200], [180, 255, 80], [255, 190, 60]];
+const NEON_TUBES: readonly Rgb[] = [[255, 60, 70], [255, 176, 50], [255, 96, 150], [255, 236, 190]];
 
 export type MaterialSkin =
   | 'gomme' | 'marbre' | 'bonbon' | 'verre' | 'strie' | 'ceramique'
   | 'graphite' | 'nacre' | 'holographique' | 'pixel' | 'galaxie' | 'lave' | 'or' | 'cristal'
   | 'bois' | 'circuit' | 'neon' | 'aurore' | 'abysse'
-  | 'papier' | 'mosaique' | 'vitrail' | 'phenix';
+  | 'papier' | 'mosaique' | 'vitrail' | 'phenix'
+  | 'ardoise' | 'fer' | 'ebene' | 'obsidienne' | 'givre' | 'velours' | 'sapin';
 
 /** Teinte moyenne de la face (contour, lisibilité). */
 export function faceTone(color: Rgb, skin: MaterialSkin, sky: Rgb): Rgb {
   switch (skin) {
-    case 'marbre': return lighten(color, 0.5);
+    case 'marbre': return color;
     case 'ceramique': return darken(color, 0.15);
     // « Verre » est dessiné à 72 % d'opacité : le ciel transparaît dans la face.
     case 'verre': return mix(color, sky, 0.28);
@@ -956,6 +960,8 @@ export function faceTone(color: Rgb, skin: MaterialSkin, sky: Rgb): Rgb {
     case 'mosaique': return color;
     case 'vitrail': return mix(color, [120, 90, 140], 0.35);
     case 'phenix': return mix(color, EMBER_DARK, 0.86);
+    case 'obsidienne': return mix(color, [10, 8, 12], 0.5);
+    case 'givre': return lighten(color, 0.15);
     default: return color;
   }
 }
@@ -966,7 +972,7 @@ export function faceGradient(ctx: CanvasRenderingContext2D, color: Rgb, skin: Ma
   const stops = (...s: [number, Rgb][]) => { for (const [k, c] of s) g.addColorStop(k, css(c)); };
   switch (skin) {
     case 'ceramique': stops([0, lighten(color, 0.05)], [1, darken(color, 0.32)]); break;
-    case 'marbre': stops([0, lighten(color, 0.66)], [1, lighten(color, 0.4)]); break;
+    case 'marbre': stops([0, lighten(color, 0.14)], [0.6, color], [1, darken(color, 0.1)]); break;
     case 'graphite': { const c = mix(color, GRAPHITE, 0.78); stops([0, lighten(c, 0.16)], [0.5, c], [1, darken(c, 0.25)]); break; }
     case 'nacre': { const c = lighten(color, 0.55); stops([0, mix(c, [255, 222, 238], 0.45)], [0.5, mix(c, [222, 236, 255], 0.45)], [1, mix(c, [236, 255, 240], 0.35)]); break; }
     case 'holographique': { const c = lighten(color, 0.3); HOLO.forEach((h, i) => g.addColorStop(i / (HOLO.length - 1), css(mix(c, h, 0.55)))); break; }
@@ -982,6 +988,9 @@ export function faceGradient(ctx: CanvasRenderingContext2D, color: Rgb, skin: Ma
     case 'papier': { const c = mix(lighten(color, 0.3), [250, 244, 230], 0.25); stops([0, lighten(c, 0.2)], [0.6, c], [1, darken(c, 0.1)]); break; }
     case 'vitrail': { const c = mix(color, [120, 90, 140], 0.35); stops([0, lighten(c, 0.2)], [1, darken(c, 0.25)]); break; }
     case 'phenix': { const c = mix(color, EMBER_DARK, 0.86); stops([0, mix(c, [255, 140, 60], 0.25)], [0.55, c], [1, darken(c, 0.45)]); break; }
+    case 'obsidienne': stops([0, lighten(color, 0.08)], [0.5, color], [1, [4, 2, 4]]); break;
+    case 'givre': stops([0, lighten(color, 0.3)], [0.6, lighten(color, 0.1)], [1, color]); break;
+    case 'velours': stops([0, lighten(color, 0.1)], [0.5, color], [1, darken(color, 0.35)]); break;
     default: stops([0, lighten(color, 0.14)], [0.55, color], [1, darken(color, 0.16)]);
   }
   return g;
@@ -1217,7 +1226,7 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
     }
     ctx.strokeStyle = 'rgba(255,255,255,0.6)';
     ctx.lineWidth = 2;
-    roundedRect(ctx, 3, 3, Math.max(0, w - 6), H - 6, RADIUS - 3);
+    roundedRect(ctx, 3, 3, Math.max(0, w - 6), H - 6, Math.max(0.5, RADIUS - 2));
     ctx.stroke();
     void color;
   },
@@ -1458,16 +1467,16 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
     void color;
   },
   aurore: (ctx, w, _color, env, real) => {
-    // Aurore : nuit étoilée continue sur toute la tour, rideaux verts et violets qui ondulent.
+    // Aurore : nuit étoilée continue sur toute la tour, rideaux verts frangés de rose qui ondulent.
     const drift = env.motion ? env.t : 0;
     if (real && fillTex(ctx, w, STARS_FAR, env.wx, env.wy + env.cam * 0.4, 1, 'lighter')) {
       fillTex(ctx, w, AURORA, env.wx * 0.9 + drift * 9, env.wy * 0.5 + env.cam * 0.35 + Math.sin(drift * 0.6) * 6, 0.95, 'lighter');
       if (env.full) fillTex(ctx, w, AURORA, -env.wx * 0.7 + drift * 15 + 130, env.wy * 0.45 + env.cam * 0.2 + 40, 0.5, 'lighter');
     } else {
       const g = ctx.createLinearGradient(0, 4, 0, H);
-      g.addColorStop(0, 'rgba(190,110,255,0.35)');
-      g.addColorStop(0.45, 'rgba(80,255,170,0.55)');
-      g.addColorStop(1, 'rgba(40,220,190,0)');
+      g.addColorStop(0, 'rgba(255,90,130,0.25)');
+      g.addColorStop(0.45, 'rgba(70,255,140,0.55)');
+      g.addColorStop(1, 'rgba(30,200,110,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(0, 6);
@@ -1643,6 +1652,284 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
     innerDepth(ctx, w, 0.7);
     if (env.full) sheen(ctx, w, env, 0.18, [255, 220, 150], 20);
   },
+  // ——— V8 : collection sombre ———
+  ardoise: (ctx, w, color, env, real) => {
+    // Ardoise : schiste en feuillets irréguliers, arête claire de chaque feuillet, éclats de taille.
+    if (real) fillTex(ctx, w, GRAIN, objX(env, env.floor), objY(env.floor), 0.7);
+    for (let k = 0; k < 4; k++) {
+      const y0 = 8.5 + k * 5.2 + vary(env.floor, k) * 1.6;
+      ctx.fillStyle = css(darken(color, 0.42), 0.6);
+      ctx.beginPath();
+      ctx.moveTo(0, y0);
+      for (let x = 0; x <= w + 12; x += 12) ctx.lineTo(x, y0 + (vary(env.floor * 37 + Math.round(x), k) - 0.5) * 1.8);
+      ctx.lineTo(w, y0 + 1.3);
+      ctx.lineTo(0, y0 + 1.3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = css(lighten(color, 0.4), 0.3);
+      ctx.fillRect(0, y0 - 0.7, w, 0.6);
+    }
+    ctx.fillStyle = css(darken(color, 0.5), 0.55);
+    for (let k = 0; k < Math.min(6, Math.floor(w / 20)); k++) {
+      const x = vary(env.floor, 50 + k) * w;
+      const y = 9 + vary(env.floor, 60 + k) * (H - 14);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 3, y + 1.2);
+      ctx.lineTo(x + 0.6, y + 2.6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    sideShade(ctx, w, 1.1);
+  },
+  fer: (ctx, w, color, env, real) => {
+    // Fer forgé : plaques martelées, joints, rivets, teinte de recuit bronze sur le bas.
+    if (real) fillTex(ctx, w, GRAIN, objX(env, env.floor), objY(env.floor), 0.85);
+    for (let k = 0; k < Math.min(14, Math.floor(w / 8)); k++) {
+      ctx.fillStyle = vary(env.floor, 70 + k) > 0.5 ? 'rgba(255,240,220,0.07)' : 'rgba(0,0,0,0.14)';
+      ctx.beginPath();
+      ctx.ellipse(vary(env.floor, 80 + k) * w, 10 + vary(env.floor, 90 + k) * (H - 14), 3 + vary(env.floor, 95 + k) * 3, 1.6, 0, 0, TAU);
+      ctx.fill();
+    }
+    const plate = 46;
+    for (let x = plate - vary(env.floor, 7) * plate * 0.6; x < w - 4; x += plate) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(x, 7, 1.2, H - 8);
+      ctx.fillStyle = 'rgba(255,230,200,0.14)';
+      ctx.fillRect(x + 1.2, 7, 0.6, H - 8);
+    }
+    for (let x = 5; x < w - 3; x += 13) {
+      for (const y of [10.5, H - 5.5]) {
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath();
+        ctx.arc(x + 0.4, y + 0.4, 1.5, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = css(lighten(color, 0.35));
+        ctx.beginPath();
+        ctx.arc(x, y, 1.3, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,240,220,0.6)';
+        ctx.fillRect(x - 0.6, y - 0.7, 0.6, 0.6);
+      }
+    }
+    const g = ctx.createLinearGradient(0, H * 0.55, 0, H);
+    g.addColorStop(0, 'rgba(160,100,40,0)');
+    g.addColorStop(1, 'rgba(160,100,40,0.2)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, H * 0.55, w, H * 0.45);
+    sideShade(ctx, w, 1.25);
+  },
+  ebene: (ctx, w, color, env, real) => {
+    // Ébène : bois noir au fil serré, filets de laiton, marqueterie d'ivoire alignée sur la tour.
+    if (real) fillTex(ctx, w, WOOD, objX(env, env.floor), objY(env.floor) + 40, 0.22);
+    ctx.fillStyle = 'rgba(214,170,90,0.85)';
+    ctx.fillRect(0, 9.2, w, 0.9);
+    ctx.fillRect(0, H - 4.6, w, 0.9);
+    const step = 26;
+    const first = (((step - (env.wx % step)) % step) + step) % step;
+    for (let x = first; x < w; x += step) {
+      const y = H * 0.6;
+      ctx.fillStyle = 'rgba(236,226,200,0.88)';
+      ctx.beginPath();
+      ctx.moveTo(x, y - 4.2);
+      ctx.lineTo(x + 3.4, y);
+      ctx.lineTo(x, y + 4.2);
+      ctx.lineTo(x - 3.4, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(214,170,90,0.95)';
+      ctx.beginPath();
+      ctx.arc(x, y, 1.1, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(236,226,200,0.6)';
+      ctx.fillRect(x - 9, y - 0.5, 3.5, 1);
+      ctx.fillRect(x + 5.5, y - 0.5, 3.5, 1);
+    }
+    if (env.full) sheen(ctx, w, env, 0.12, [255, 230, 190], 14);
+    sideShade(ctx, w, 1.2);
+    void color;
+  },
+  obsidienne: (ctx, w, _color, env) => {
+    // Obsidienne : verre volcanique noir, veines de magma qui traversent toute la tour et
+    // respirent, cassures conchoïdales aux reflets nets.
+    const pulse = env.motion ? 0.6 + 0.4 * Math.sin(env.t * 1.3 + env.floor * 0.7) : 0.8;
+    // Une veine principale et une branche fine, tracés irréguliers (somme de sinus incommensurables).
+    for (let k = 0; k < 2; k++) {
+      const X = (x: number) => env.wx + x;
+      const yAt = (x: number) => H * (0.5 + k * 0.12)
+        + (Math.sin(X(x) * 0.031 + env.wy * 0.07 + k * 2.3) * 0.18
+          + Math.sin(X(x) * 0.083 + env.wy * 0.013 + k) * 0.09
+          + Math.sin(X(x) * 0.21 + k * 5.1) * 0.03) * H;
+      const glowW = k === 0 ? 3.4 : 2;
+      const coreW = k === 0 ? 1.1 : 0.6;
+      for (const [lw, c, a] of [[glowW, '255,60,30', 0.2], [coreW, '255,120,50', 0.9]] as const) {
+        ctx.strokeStyle = `rgba(${c},${(a * pulse * (k === 0 ? 1 : 0.7)).toFixed(3)})`;
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        for (let x = 0; x <= w + 4; x += 4) {
+          if (x === 0) ctx.moveTo(x, yAt(x));
+          else ctx.lineTo(x, yAt(x));
+        }
+        ctx.stroke();
+      }
+    }
+    const cell = 40;
+    const c0 = Math.floor(env.wx / cell);
+    for (let c = c0; c * cell < env.wx + w + cell; c++) {
+      const n = c * 13 + Math.round(env.wy / 30);
+      const cx = c * cell - env.wx + vary(n, 1) * cell;
+      const cy = 8 + vary(n, 2) * (H - 10);
+      const r = 10 + vary(n, 3) * 12;
+      const a0 = vary(n, 4) * TAU;
+      ctx.strokeStyle = 'rgba(235,230,245,0.24)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, a0, a0 + 1.4);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(235,230,245,0.1)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.7, a0 + 0.2, a0 + 1.2);
+      ctx.stroke();
+    }
+    innerDepth(ctx, w, 0.8);
+    if (env.full) sheen(ctx, w, env, 0.16, [235, 230, 245], 12);
+  },
+  // ——— V8 : collection de Noël ———
+  givre: (ctx, w, color, env, real) => {
+    // Givre : verre gelé, fougères de glace qui partent des bords, voile laiteux.
+    if (real) fillTex(ctx, w, GRAIN, objX(env, env.floor), objY(env.floor), 0.55, 'lighter');
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 0.7;
+    ctx.lineCap = 'round';
+    const ferns = Math.min(6, Math.max(1, Math.floor(w / 22)));
+    for (let k = 0; k < ferns; k++) {
+      const x0 = vary(env.floor, 200 + k) * w;
+      const up = k % 2 === 0;
+      const y0 = up ? H : 7;
+      const dir = up ? -1 : 1;
+      const len = 9 + vary(env.floor, 210 + k) * 9;
+      const lean = (vary(env.floor, 220 + k) - 0.5) * 0.9;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + lean * len, y0 + dir * len);
+      for (let j = 1; j < 5; j++) {
+        const px = x0 + lean * len * (j / 5);
+        const py = y0 + dir * len * (j / 5);
+        const b = (5 - j) * 1.1;
+        ctx.moveTo(px, py);
+        ctx.lineTo(px - b, py + dir * b * 0.8);
+        ctx.moveTo(px, py);
+        ctx.lineTo(px + b, py + dir * b * 0.8);
+      }
+      ctx.stroke();
+    }
+    const g = ctx.createLinearGradient(0, H * 0.6, 0, H);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(1, 'rgba(255,255,255,0.28)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, H * 0.6, w, H * 0.4);
+    sideShade(ctx, w, 0.6);
+    void color;
+  },
+  velours: (ctx, w, color, env) => {
+    // Velours capitonné : losanges en relief, boutons dorés, galon torsadé en haut et en bas.
+    const step = 16;
+    const first = (((step - (env.wx % step)) % step) + step) % step;
+    for (let row = 0; row < 2; row++) {
+      const cy = row === 0 ? H * 0.46 : H * 0.8;
+      for (let x = first - step + (row ? step / 2 : 0); x < w + step; x += step) {
+        const g = ctx.createRadialGradient(x - 2, cy - 2, 0, x, cy, step * 0.6);
+        g.addColorStop(0, css(lighten(color, 0.22), 0.55));
+        g.addColorStop(1, css(darken(color, 0.3), 0.5));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(x, cy - 5);
+        ctx.lineTo(x + step / 2, cy);
+        ctx.lineTo(x, cy + 5);
+        ctx.lineTo(x - step / 2, cy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = 'rgba(232,190,100,0.95)';
+        ctx.beginPath();
+        ctx.arc(x + step / 2, cy, 1.1, 0, TAU);
+        ctx.fill();
+      }
+    }
+    ctx.strokeStyle = 'rgba(232,190,100,0.9)';
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    for (let x = 0; x < w; x += 3) {
+      for (const y of [8.6, H - 3.2]) {
+        ctx.moveTo(x, y + 1);
+        ctx.lineTo(x + 2, y - 1);
+      }
+    }
+    ctx.stroke();
+    if (env.full) sheen(ctx, w, env, 0.1, [255, 210, 210], 18);
+    sideShade(ctx, w, 1.3);
+  },
+  sapin: (ctx, w, color, env) => {
+    // Sapin d'or : aiguilles serrées, neige poudrée, guirlande lumineuse continue d'un étage à
+    // l'autre, boules de verre.
+    ctx.lineWidth = 0.8;
+    const n = Math.min(90, Math.floor(w * 0.9));
+    for (let k = 0; k < n; k++) {
+      const x = vary(env.floor, 300 + k) * w;
+      const y = 9 + vary(env.floor, 400 + k) * (H - 11);
+      ctx.strokeStyle = k % 2 ? css(lighten(color, 0.3), 0.7) : css(darken(color, 0.3), 0.7);
+      ctx.beginPath();
+      ctx.moveTo(x - 2, y - 1.6);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + 2, y - 1.6);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(240,244,248,0.85)';
+    for (let x = 0; x < w; x += 5) {
+      ctx.beginPath();
+      ctx.ellipse(x + 2.5, 7.4, 1.6 + vary(env.floor * 7 + Math.round(x), 5) * 1.6, 1, 0, 0, TAU);
+      ctx.fill();
+    }
+    const yAt = (x: number) => H * 0.56 + Math.sin(((env.wx + x) / 120) * TAU + env.floor * 1.3) * H * 0.2;
+    ctx.strokeStyle = 'rgba(40,26,14,0.6)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    for (let x = 0; x <= w + 6; x += 6) {
+      if (x === 0) ctx.moveTo(x, yAt(x));
+      else ctx.lineTo(x, yAt(x));
+    }
+    ctx.stroke();
+    const bulbs: Rgb[] = [[255, 200, 110], [255, 120, 80], [255, 236, 190], [255, 170, 60]];
+    const step = 11;
+    const first = (((step - (env.wx % step)) % step) + step) % step;
+    for (let x = first; x < w; x += step) {
+      const idx = Math.round((env.wx + x) / step) + env.floor * 3;
+      const on = env.motion ? 0.55 + 0.45 * Math.sin(env.t * 2.6 + idx * 1.7) : 0.85;
+      const c = bulbs[((idx % 4) + 4) % 4]!;
+      const y = yAt(x) + 1.4;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 5);
+      g.addColorStop(0, css(c, 0.75 * on));
+      g.addColorStop(1, css(c, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 5, y - 5, 10, 10);
+      ctx.fillStyle = css(lighten(c, 0.5), on);
+      ctx.beginPath();
+      ctx.arc(x, y, 1.1, 0, TAU);
+      ctx.fill();
+    }
+    for (let k = 0; k < Math.min(3, Math.floor(w / 40)); k++) {
+      const x = 8 + vary(env.floor, 500 + k) * (w - 16);
+      const y = H - 7;
+      ctx.fillStyle = k % 2 ? 'rgb(214,170,70)' : 'rgb(170,30,40)';
+      ctx.beginPath();
+      ctx.arc(x, y, 3.2, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath();
+      ctx.arc(x - 1.1, y - 1.2, 0.9, 0, TAU);
+      ctx.fill();
+    }
+    innerDepth(ctx, w, 0.45);
+  },
 };
 
 /**
@@ -1650,6 +1937,14 @@ const PAINTERS: Record<MaterialSkin, Painter> = {
  * base pour que le renderer mette la base en cache et ne redessine que ce calque léger.
  */
 const LIVE: Partial<Record<MaterialSkin, (ctx: CanvasRenderingContext2D, w: number, env: MaterialEnv) => void>> = {
+  givre: (ctx, w, env) => {
+    // V8 : paillettes de givre qui scintillent.
+    for (let k = 0; k < Math.min(3, Math.floor(w / 30)); k++) {
+      const tw = env.motion ? Math.max(0, Math.sin(env.t * (1.6 + k * 0.5) + env.floor * 2 + k)) : 0.6;
+      glint(ctx, vary(env.floor, 600 + k) * w, 10 + vary(env.floor, 610 + k) * (H - 14), 2.4, tw * 0.9);
+    }
+    sheen(ctx, w, env, 0.35, [240, 250, 255], 14);
+  },
   marbre: (ctx, w, env) => sheen(ctx, w, env, 0.45),
   ceramique: (ctx, w, env) => sheen(ctx, w, env, 0.5),
   verre: (ctx, w, env) => sheen(ctx, w, env, 0.55, [235, 250, 255]),
@@ -1670,7 +1965,7 @@ const LIVE: Partial<Record<MaterialSkin, (ctx: CanvasRenderingContext2D, w: numb
 };
 
 /** Matières dont la base ne dépend ni du temps ni de la caméra : le renderer peut la mettre en cache. */
-export const CACHEABLE = new Set<MaterialSkin>(['gomme', 'strie', 'bonbon', 'graphite', 'bois', 'papier', 'marbre', 'ceramique', 'verre', 'nacre', 'pixel', 'mosaique']);
+export const CACHEABLE = new Set<MaterialSkin>(['gomme', 'strie', 'bonbon', 'graphite', 'bois', 'papier', 'marbre', 'ceramique', 'verre', 'nacre', 'pixel', 'mosaique', 'ardoise', 'fer', 'givre']);
 
 /** Motif propre à la matière, dessiné dans la brique déjà découpée (sous la face supérieure). */
 export function paintMaterial(ctx: CanvasRenderingContext2D, w: number, color: Rgb, skin: MaterialSkin, env: MaterialEnv): void {
@@ -1692,6 +1987,20 @@ export interface SkinFx {
 }
 
 export const SKIN_FX: Partial<Record<MaterialSkin, SkinFx>> = {
+  // V8
+  fer: { place: { kind: 'spark', colors: [[255, 170, 60], [255, 230, 160]], count: 7, speed: 170 } },
+  ebene: { place: { kind: 'glint', colors: [[236, 226, 200], [214, 170, 90]], count: 6, speed: 100 } },
+  velours: { place: { kind: 'glint', colors: [[232, 190, 100], [255, 230, 170]], count: 6, speed: 100 } },
+  obsidienne: {
+    place: { kind: 'ember', colors: [[255, 110, 40], [255, 60, 30]], count: 8, speed: 130 },
+    perfect: { kind: 'spark', colors: [[255, 140, 60], [255, 220, 160], [255, 255, 255]], count: 12, ring: [255, 90, 40] },
+    aura: [255, 70, 40],
+  },
+  sapin: {
+    place: { kind: 'star', colors: [[255, 214, 120], [255, 240, 200]], count: 8, speed: 110 },
+    perfect: { kind: 'star', colors: [[255, 214, 120], [255, 120, 80], [255, 255, 255]], count: 12, ring: [255, 214, 120] },
+    aura: [255, 200, 110],
+  },
   circuit: { place: { kind: 'spark', colors: [[120, 255, 230], [255, 220, 120]], count: 6, speed: 150 } },
   holographique: { place: { kind: 'glint', colors: [...HOLO], count: 6, speed: 110 } },
   lave: { place: { kind: 'ember', colors: [[255, 150, 50], [255, 90, 30]], count: 7, speed: 120 } },
@@ -1704,9 +2013,9 @@ export const SKIN_FX: Partial<Record<MaterialSkin, SkinFx>> = {
     aura: [255, 140, 60],
   },
   galaxie: {
-    place: { kind: 'star', colors: [[200, 180, 255], [140, 200, 255], [255, 255, 255]], count: 8, speed: 120 },
-    perfect: { kind: 'star', colors: [[220, 160, 255], [120, 220, 255], [255, 200, 240]], count: 12, ring: [190, 150, 255] },
-    aura: [150, 110, 255],
+    place: { kind: 'star', colors: [[255, 210, 150], [255, 160, 90], [255, 255, 255]], count: 8, speed: 120 },
+    perfect: { kind: 'star', colors: [[255, 190, 110], [120, 220, 200], [255, 230, 200]], count: 12, ring: [255, 180, 110] },
+    aura: [255, 150, 80],
   },
   cristal: {
     place: { kind: 'glint', colors: [[255, 255, 255], [200, 240, 255]], count: 7, speed: 120 },
@@ -1714,8 +2023,8 @@ export const SKIN_FX: Partial<Record<MaterialSkin, SkinFx>> = {
     aura: [200, 240, 255],
   },
   aurore: {
-    place: { kind: 'star', colors: [[120, 255, 190], [200, 140, 255]], count: 8, speed: 100 },
-    perfect: { kind: 'spark', colors: [[120, 255, 190], [200, 140, 255], [255, 255, 255]], count: 12, ring: [120, 255, 200] },
+    place: { kind: 'star', colors: [[120, 255, 170], [255, 130, 170]], count: 8, speed: 100 },
+    perfect: { kind: 'spark', colors: [[120, 255, 170], [255, 130, 170], [255, 255, 255]], count: 12, ring: [120, 255, 180] },
     aura: [110, 255, 200],
   },
   abysse: {

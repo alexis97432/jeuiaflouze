@@ -7,6 +7,7 @@
  */
 import { BLOCK_HEIGHT, drawBlock, type DrawSkinId } from './blocks';
 import { STATIC_ENV, type MaterialEnv } from './materials';
+import { skinColor } from './palette';
 import { resolveAnyAppearance, type AnyAppearance, type Appearance } from './mount';
 import type { SceneEnv } from './scene';
 import { css, getTheme, mix, skyAt, stageAt, TIER_FLOORS, type DecorItem, type Rgb, type TierIndex } from './themes';
@@ -132,33 +133,74 @@ export function drawAppearancePreview(
     const y = -(i + 1) * BLOCK_HEIGHT;
     const behind = mix(sky.top, sky.bottom, Math.min(1, Math.max(0, (groundY + y * s) / h)));
     const env: MaterialEnv = { ...STATIC_ENV, t, motion: animated, wx: offsets[i]!, wy: y, ox: offsets[i]!, cam: 0, floor: floor0 + i };
-    drawBlock(ctx, offsets[i]!, y, bw, theme.blocks[(floor0 + i) % theme.blocks.length]!, { skin, sky: behind, alpha: 1, variant: floor0 + i, env });
+    drawBlock(ctx, offsets[i]!, y, bw, skinColor(skin, floor0 + i), { skin, sky: behind, alpha: 1, variant: floor0 + i, env });
   });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   return true;
 }
 
-/** Cadrage « matière » : deux grandes briques décalées, la matière remplit l'aperçu. */
+/** V8 : fond de studio neutre des aperçus de matières (anthracite chaud, sol de pierre). */
+export const STUDIO_TOP: Rgb = [58, 54, 52];
+export const STUDIO_BOTTOM: Rgb = [26, 24, 24];
+
+/**
+ * Cadrage « matière » (V8) : deux grandes briques posées dans un studio neutre, éclairées en haut
+ * à gauche, avec leur ombre au sol. Le fond n'emprunte rien à l'univers : chaque matière se lit
+ * seule, avec sa propre couleur (avant la V8, toutes passaient sur le ciel pastel de Confiserie).
+ */
 function drawMaterialFocus(
   ctx: CanvasRenderingContext2D,
   o: { theme: ReturnType<typeof getTheme>; skin: DrawSkinId; w: number; h: number; dpr: number; t: number; animated: boolean; sky: { top: Rgb; bottom: Rgb } },
 ): boolean {
-  const { theme, skin, w, h, dpr, t, animated, sky } = o;
-  // Deux briques de 30 unités et un liseré de sol : la hauteur tient en 72 unités.
+  const { skin, w, h, dpr, t, animated } = o;
   const s = h / 72;
   const units = w / s;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = css(theme.ground.body);
-  ctx.fillRect(0, h - 6 * s, w, 6 * s);
-  ctx.fillStyle = css(theme.ground.top);
-  ctx.fillRect(0, h - 6 * s, w, 2 * s);
-  ctx.setTransform(dpr * s, 0, 0, dpr * s, 0, dpr * (h - 6 * s));
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, css(STUDIO_TOP));
+  bg.addColorStop(1, css(STUDIO_BOTTOM));
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  // Projecteur haut gauche.
+  const spot = ctx.createRadialGradient(w * 0.28, h * 0.05, 0, w * 0.28, h * 0.05, Math.max(w, h) * 0.85);
+  spot.addColorStop(0, 'rgba(255,240,220,0.22)');
+  spot.addColorStop(1, 'rgba(255,240,220,0)');
+  ctx.fillStyle = spot;
+  ctx.fillRect(0, 0, w, h);
+  // Sol : dalle sombre et arête claire.
+  const floorY = h - 6 * s;
+  ctx.fillStyle = 'rgb(20,18,18)';
+  ctx.fillRect(0, floorY, w, h - floorY);
+  ctx.fillStyle = 'rgba(255,240,220,0.12)';
+  ctx.fillRect(0, floorY, w, Math.max(1, 0.6 * s));
+  ctx.setTransform(dpr * s, 0, 0, dpr * s, 0, dpr * floorY);
   const rows: [number, number][] = [[units * 0.06, units * 0.86], [units * 0.16, units * 0.74]];
+  // Ombre au sol et ombre portée de la brique du haut sur celle du bas.
+  const g = ctx.createRadialGradient(units * 0.52, 0, 0, units * 0.52, 0, units * 0.5);
+  g.addColorStop(0, 'rgba(0,0,0,0.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.scale(1, 0.12);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, -units * 0.5, units, units);
+  ctx.restore();
   rows.forEach(([x, bw], i) => {
     const y = -(i + 1) * BLOCK_HEIGHT;
     const env: MaterialEnv = { ...STATIC_ENV, t, motion: animated, wx: x, wy: y, ox: x, cam: 0, floor: i + 1 };
-    const behind = mix(sky.top, sky.bottom, i === 0 ? 0.85 : 0.6);
-    drawBlock(ctx, x, y, bw, theme.blocks[(i + 1) % theme.blocks.length]!, { skin, sky: behind, alpha: 1, variant: i + 1, env });
+    drawBlock(ctx, x, y, bw, skinColor(skin, i + 1), { skin, sky: STUDIO_TOP, alpha: 1, variant: i + 1, env });
+    if (i === 0) {
+      const [ux, uw] = rows[1]!;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, bw, BLOCK_HEIGHT);
+      ctx.clip();
+      const sh = ctx.createLinearGradient(0, y, 0, y + 10);
+      sh.addColorStop(0, 'rgba(8,6,6,0.5)');
+      sh.addColorStop(1, 'rgba(8,6,6,0)');
+      ctx.fillStyle = sh;
+      ctx.fillRect(ux + 1.5, y, uw + 1.5, 10);
+      ctx.restore();
+    }
   });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   return true;

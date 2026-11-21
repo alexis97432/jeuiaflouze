@@ -1,5 +1,6 @@
-// Police Fredoka (SIL OFL 1.1, voir docs/LICENCES-TIERS.md), servie avec le jeu : aucun appel externe.
-import '@fontsource-variable/fredoka';
+// V8 : police Oswald (SIL OFL 1.1, voir docs/LICENCES-TIERS.md) pour les titres, servie avec le jeu ;
+// le texte courant utilise la police du système. Aucun appel externe.
+import '@fontsource-variable/oswald';
 import './styles.css';
 import { RULES_VERSION } from './app/game-contract';
 import { loadGame } from './app/game-loader';

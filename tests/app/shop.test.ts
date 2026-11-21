@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { INITIAL_DOC, migrateProgress, type ProgressDoc } from '../../src/app/economy';
 import { selectAppearance, unlockedSkins } from '../../src/app/progression';
+import { catalogItem } from '../../src/app/catalog';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from '../../src/app/shop';
 
 const catalog: ShopItem[] = [
@@ -10,15 +11,25 @@ const catalog: ShopItem[] = [
 const rich = (coins: number): ProgressDoc => ({ ...INITIAL_DOC, coins });
 
 describe('catalogue', () => {
-  it('prix fixés (V5 inchangés, V6 par rareté), univers Récif, aucune apparence d’objectif à vendre', () => {
+  it('V8 : prix recalibrés par rareté (docs/V8-ECONOMIE.md), aucune apparence d’objectif à vendre', () => {
     expect(COIN_SHOP.map((i) => [i.id, i.kind, i.price])).toEqual([
-      ['graphite', 'skin', 60], ['bois', 'skin', 60], ['nacre', 'skin', 120], ['circuit', 'skin', 280], ['holographique', 'skin', 240],
-      // V7 : une matière et un univers de plus par rareté.
-      ['papier', 'skin', 70], ['mosaique', 'skin', 140], ['vitrail', 'skin', 260], ['phenix', 'skin', 520],
-      ['recif', 'theme', 320], ['desert', 'theme', 140], ['montagne', 'theme', 220], ['foire', 'theme', 320], ['nuees', 'theme', 560],
-      // V7 : musiques en pièces du jeu (compositions originales).
-      ['gouter-lofi', 'music', 90], ['pixel-parade', 'music', 150], ['fanfare-de-poche', 'music', 150], ['funk-des-briques', 'music', 240], ['aurore-polaire', 'music', 420],
+      ['graphite', 'skin', 200], ['bois', 'skin', 220], ['nacre', 'skin', 600], ['circuit', 'skin', 1400], ['holographique', 'skin', 1300],
+      ['papier', 'skin', 160], ['mosaique', 'skin', 650], ['vitrail', 'skin', 1500], ['phenix', 'skin', 3000],
+      ['ardoise', 'skin', 240], ['fer', 'skin', 700], ['ebene', 'skin', 1450], ['obsidienne', 'skin', 3200],
+      ['givre', 'skin', 600], ['velours', 'skin', 1350], ['sapin', 'skin', 2900],
+      ['recif', 'theme', 1450], ['desert', 'theme', 350], ['montagne', 'theme', 800], ['foire', 'theme', 1600], ['nuees', 'theme', 3400],
+      ['brume', 'theme', 850], ['cathedrale', 'theme', 1700], ['volcan', 'theme', 3600], ['noel', 'theme', 1500],
+      ['gouter-lofi', 'music', 180], ['pixel-parade', 'music', 450], ['fanfare-de-poche', 'music', 450], ['funk-des-briques', 'music', 900], ['aurore-polaire', 'music', 1800],
     ]);
+    // Bandes de prix par rareté : jamais un rare moins cher qu'un commun, etc.
+    const band = { commun: [150, 400], rare: [400, 900], epique: [900, 2000], legendaire: [1800, 4000] } as const;
+    // Noël : seulement pendant l'événement (section dédiée), jamais dans la rotation.
+    expect(COIN_SHOP.filter((i) => i.season === 'noel').map((i) => i.id)).toEqual(['givre', 'velours', 'sapin', 'noel']);
+    for (const i of COIN_SHOP) {
+      const rarity = catalogItem(i.kind, i.id)!.rarity;
+      expect(i.price, i.id).toBeGreaterThanOrEqual(band[rarity][0]);
+      expect(i.price, i.id).toBeLessThanOrEqual(band[rarity][1]);
+    }
     const objectiveSkins = ['marbre', 'bonbon', 'verre', 'strie', 'ceramique'];
     expect(COIN_SHOP.some((i) => objectiveSkins.includes(i.id))).toBe(false);
   });

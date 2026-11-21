@@ -1,5 +1,22 @@
 # Claude Code Alexis
 
+## V8 — direction artistique, collection sombre, Noël, économie (19–21 novembre 2026)
+
+- **Cadre :** exception de l'utilisateur ; Alexis seul, sans FLK ni Codex, fusion et publication par Alexis. Ce sont des **auto-vérifications**.
+- **Branche :** `agent/claude-code-alexis/v8-direction-artistique-economie`. Le suivi est dans `coordination/V8-ETAT.md`.
+- **Livré :**
+  - palette propre à chaque matière ;
+  - relief éclairé, ombres de contact et portées ;
+  - aperçus en studio ; interface pierre et Oswald ;
+  - 3 univers et 4 matières sombres, Noël (univers et 3 matières, vente saisonnière réelle) ;
+  - 4 pièces au piano écrites, voix de piano synthétisée ;
+  - économie recalibrée avec simulations de profils ; sauvegarde v6.
+- **Bilan :** [`docs/V8.md`](../../docs/V8.md), [`docs/V8-ECONOMIE.md`](../../docs/V8-ECONOMIE.md).
+- **Limites :**
+  - aucun téléphone physique ;
+  - aucune écoute humaine ;
+  - équilibre simulé, pas observé chez de vrais joueurs.
+
 ## V7 — stabilité, musique, boutique du jour (18 novembre 2026)
 
 - **Cadre :** exception de l'utilisateur ; Alexis seul, sans FLK ni Codex, fusion et publication par Alexis. Ce sont des **auto-vérifications**.

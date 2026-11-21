@@ -55,17 +55,18 @@ describe('V7 — sélection du jour de la boutique', () => {
       const today = dailySelection(d);
       const yesterday = d > day0 ? dailySelection(d - 1) : [];
       for (const kind of ['skin', 'theme', 'music'] as const) {
-        const pool = COIN_SHOP.filter((i) => i.kind === kind).length;
+        const pool = COIN_SHOP.filter((i) => i.kind === kind && !i.season).length;
         if (pool < 2 * SLOTS[kind]) continue;
         const ids = new Set(yesterday.filter((o) => o.kind === kind).map((o) => o.id));
         expect(today.filter((o) => o.kind === kind && ids.has(o.id)), `jour ${d}, ${kind}`).toEqual([]);
       }
       for (const o of today) seen.set(o.id, [...(seen.get(o.id) ?? []), d]);
     }
-    for (const item of COIN_SHOP) {
+    // V8 : les objets saisonniers (Noël) ont leur section et ne tournent pas.
+    for (const item of COIN_SHOP.filter((i) => !i.season)) {
       const days = seen.get(item.id) ?? [];
       expect(days.length, item.id).toBeGreaterThan(0);
-      const pool = COIN_SHOP.filter((i) => i.kind === item.kind).length;
+      const pool = COIN_SHOP.filter((i) => i.kind === item.kind && !i.season).length;
       const bound = Math.ceil(pool / SLOTS[item.kind]) + 3;
       for (let k = 1; k < days.length; k++) expect(days[k]! - days[k - 1]!, `${item.id} revient`).toBeLessThanOrEqual(bound);
     }
@@ -134,7 +135,7 @@ describe('V7 — musiques : possession et équipement', () => {
     const eq = equipMusic(owned, 'gouter-lofi');
     expect(equippedMusic(eq)).toBe('gouter-lofi');
     const reloaded = migrateProgress(JSON.parse(JSON.stringify(eq)));
-    expect(reloaded.version).toBe(5);
+    expect(reloaded.version).toBe(6);
     expect(equippedMusic(reloaded)).toBe('gouter-lofi');
     // Musique inconnue ou plus possédée : la musique offerte reprend, sans erreur.
     expect(equippedMusic(migrateProgress({ ...eq, music: 'inconnue' }))).toBe(DEFAULT_MUSIC);

@@ -30,6 +30,7 @@ type Bus = { input: GainNode };
 
 /** Niveau de base de chaque instrument (avant nuance). */
 const LEVEL: Record<Instrument, number> = {
+  piano: 0.1,
   pad: 0.085, warmPad: 0.13, strings: 0.06, organ: 0.11, flute: 0.22, brass: 0.11, ep: 0.24, clav: 0.11,
   pluck: 0.17, guitar: 0.17, marimba: 0.28, kalimba: 0.24, harp: 0.22, bell: 0.14, glass: 0.14,
   chip: 0.055, chipLead: 0.07, sawLead: 0.075, bass: 0.34, subBass: 0.44, synthBass: 0.2, chipBass: 0.3, tuba: 0.27,
@@ -164,6 +165,42 @@ function playNote(k: Kit, n: NoteEvent, out: AudioNode): void {
   const peak = LEVEL[n.inst] * n.v;
   const g = gainNode(k, out);
   switch (n.inst) {
+    case 'piano': {
+      // V8 : piano synthétisé. Partiels légèrement inharmoniques (corde raide), chaque partiel
+      // s'éteint plus vite que le précédent, les aigus plus vite que les graves ; deux cordes très
+      // légèrement désaccordées sur la fondamentale (battement) ; frappe du marteau (bruit filtré,
+      // très court) ; étouffoir à la fin de la note.
+      const B = 0.00035;
+      const tau = Math.min(2.6, Math.max(0.35, 1.5 * Math.pow(261.6 / f, 0.45)));
+      const damp = Math.max(end, t + 0.12);
+      const stop = damp + 0.6;
+      const partials: readonly [number, number][] = [[1, 1], [2, 0.42], [3, 0.2], [4, 0.1]];
+      for (const [p, amp] of partials) {
+        const fp = f * p * Math.sqrt(1 + B * p * p);
+        if (fp > 9000) break;
+        const pg = gainNode(k, out);
+        pg.gain.setValueAtTime(0, t);
+        pg.gain.linearRampToValueAtTime(peak * amp, t + 0.004);
+        pg.gain.setTargetAtTime(peak * amp * 0.35, t + 0.004, tau / p);
+        pg.gain.setTargetAtTime(0, damp, 0.09);
+        osc(k, 'sine', fp, t, stop, pg, p === 1 ? -1.5 : 0);
+        // Deuxième corde (battement) seulement au médium et à l'aigu : moins d'oscillateurs au grave.
+        if (p === 1 && n.m >= 55) osc(k, 'sine', fp, t, stop, pg, 1.5);
+      }
+      const hammer = k.ctx.createBufferSource();
+      hammer.buffer = k.noise;
+      const bp = k.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = Math.min(5000, f * 4);
+      bp.Q.value = 0.8;
+      const hg = gainNode(k, out);
+      struck(hg.gain, t, peak * 0.18, 0.001, 0.012);
+      hammer.connect(bp).connect(hg);
+      hammer.start(t, (n.m * 0.017) % 0.8);
+      hammer.stop(t + 0.08);
+      g.disconnect();
+      break;
+    }
     case 'pad': {
       const stop = sustained(g.gain, t, end, peak, 0.35, 0.8);
       osc(k, 'sawtooth', f, t, stop, g, -7);

@@ -16,7 +16,7 @@ import { PLAY_RULES_VERSION, type GameEvent, type GameHandle } from './game-cont
 import type { ShellPrefs, StartGame } from './game-loader';
 import { cosmeticCard, previewOrSwatch, rarityChip, renderCollection, stateLine, type CollectionFilter, type PreviewFn } from './collection-view';
 import { byRarity, catalogItem, MUSIC_CATALOG, sourceLabel, universeTrack, type CatalogItem } from './catalog';
-import { checkOpenOffer, dailySelection, nextRotationAt, rotationDay, rotationLocalTime, untilRotation } from './rotation';
+import { activeEvents, checkOpenOffer, dailySelection, nextRotationAt, rotationDay, rotationLocalTime, seasonalOffers, untilRotation } from './rotation';
 import type { AudioHub } from '../platform/audio-hub';
 import type { MusicPlayer, PlayerState } from './music/player';
 import type { DeviceInfo, Diagnostics } from './diagnostics';
@@ -24,12 +24,15 @@ import { createPreviewAnimator } from './preview-animator';
 import { BONUS_HINTS, BONUS_NAMES, continuesOf, continueTicksOf, feversOf, heightOf, pointsOf, savesOf, type AnyRunResult } from './run-result';
 import { AD_MESSAGES, createRewardGate, noAds, type RewardedAdProvider } from '../platform/ads/rewarded';
 import { buyLife, LIFE_PRICE, livesOf, MAX_LIVES, returnLife, useLife } from './lives';
-import { claimAllFree, claimSeasonTier, SEASON_1, seasonLevel, seasonPhase, seasonState, tierStatus, addSeasonStars, type Season, type SeasonReward, type SeasonTier, type TierStatus, type Track } from './season';
+import { claimAllFree, claimSeasonTier, SEASON_1, seasonLevel, seasonPhase, seasonState, tierStatus, creditSeasonStars, seasonStarsLeftToday, SEASON_DAILY_STARS, type Season, type SeasonReward, type SeasonTier, type TierStatus, type Track } from './season';
 import { COIN_SHOP, itemState, purchaseWithCoins, sellableItems, type ShopItem } from './shop';
 import { isTrackId } from './music/tracks';
 import { dayInWords, GAME_NAME, isAnySkinId, isThemeId, RARITIES, RARITY_INFO, rarityRank, renderAppearancePreview, type AnyAppearance } from '../game';
 import {
   applyRunEconomy,
+  dailyBonusLeft,
+  DAILY_BONUS,
+  DAILY_BONUS_MIN_HEIGHT,
   CALENDAR_REWARDS,
   calendarStatus,
   claimCalendar,
@@ -782,6 +785,13 @@ export function createShell(options: ShellOptions): Shell {
     if (lv.next && phase === 'active') hero.append(progressBar(doc, lv.into / lv.span, `Vers le niveau ${lv.level + 1}`, 'gold'));
     hero.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'season-summary' }, summary));
     hero.append(el(doc, 'p', { class: 'hint small' }, 'Les étoiles se gagnent en jouant : étages posés et parfaits.'));
+    if (phase === 'active') {
+      // V8 : le passe avance d'au plus SEASON_DAILY_STARS étoiles par jour (régularité).
+      const left = seasonStarsLeftToday(progress, season, day);
+      hero.append(el(doc, 'p', { class: 'hint small', 'data-testid': 'season-today' }, left > 0
+        ? `Aujourd’hui : encore ${left} étoile${left > 1 ? 's' : ''} de passe sur ${SEASON_DAILY_STARS}.`
+        : `Plafond du jour atteint (${SEASON_DAILY_STARS} étoiles). Le passe repart demain.`));
+    }
     const ready = claimableTiers().length;
     if (ready > 0) {
       hero.append(uiButton(doc, {
@@ -975,7 +985,7 @@ export function createShell(options: ShellOptions): Shell {
     const note = el(doc, 'p', { class: 'hint small center' }, 'Tes réglages restent sur cet appareil.');
     // Licences de la police et des icônes, livrées avec le jeu (OFL 1.1, ISC, MIT).
     const credits = el(doc, 'p', { class: 'hint small center' });
-    const creditsLink = el(doc, 'a', { href: 'licences-tiers.txt', class: 'credits', 'data-testid': 'credits', target: '_blank', rel: 'noopener' }, 'Crédits : police Fredoka, icônes Lucide');
+    const creditsLink = el(doc, 'a', { href: 'licences-tiers.txt', class: 'credits', 'data-testid': 'credits', target: '_blank', rel: 'noopener' }, 'Crédits : police Oswald, icônes Lucide');
     credits.append(creditsLink);
     const musicCredits = el(doc, 'p', { class: 'hint small center', 'data-testid': 'music-credits' }, 'Musiques : compositions originales de Stack or Crash, jouées par le synthétiseur du jeu (aucun fichier externe).');
     show('settings', [header, theme, musicCard, sound, vibration, motion, effects, diagnostic, help, note, credits, musicCredits], title);
@@ -1270,24 +1280,29 @@ export function createShell(options: ShellOptions): Shell {
     );
     parts.push(daily);
 
-    const section = (kind: 'skin' | 'theme' | 'music', iconName: IconName, label: string) => {
+    const section = (
+      kind: 'skin' | 'theme' | 'music' | 'noel', iconName: IconName, label: string,
+      pool: readonly ShopItem[] = offers.filter((i) => i.kind === kind),
+    ) => {
       const box = el(doc, 'section', { class: 'card', 'aria-labelledby': `shop-${kind}-title`, 'data-testid': `shop-section-${kind}` });
       box.append(cardTitle(doc, iconName, label, `shop-${kind}-title`));
       const list = el(doc, 'ul', { class: 'items' });
-      const ofKind = offers.filter((i) => i.kind === kind);
-      const ordered = byRarity(ofKind.map((i) => catalogItem(i.kind, i.id)).filter((c): c is CatalogItem => !!c));
+      const ordered = kind === 'noel'
+        ? pool.map((i) => catalogItem(i.kind, i.id)).filter((c): c is CatalogItem => !!c)
+        : byRarity(pool.map((i) => catalogItem(i.kind, i.id)).filter((c): c is CatalogItem => !!c));
       for (const item of ordered) {
-        const shopItem = ofKind.find((i) => i.id === item.id)!;
+        const shopItem = pool.find((i) => i.id === item.id && i.kind === item.kind)!;
+        const k = item.kind;
         const st = itemState(progress, shopItem);
-        const equipped = st === 'owned' && (kind === 'skin' ? progress.selected.skin === item.id
-          : kind === 'theme' ? progress.selected.theme === item.id
+        const equipped = st === 'owned' && (k === 'skin' ? progress.selected.skin === item.id
+          : k === 'theme' ? progress.selected.theme === item.id
             : prefs.musicSource === 'equipee' && equippedMusic(progress) === item.id);
-        const visual = kind === 'music'
+        const visual = k === 'music'
           ? musicArt(item)
-          : previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin' });
+          : previewOrSwatch(doc, item.id, appearanceOf(k, item.id), shopPreview, { animate, climb: k === 'theme', material: k === 'skin' });
         const tail: HTMLElement[] = [];
-        if (kind === 'music') tail.push(listenButton(item));
-        const fem = kind === 'music' ? 'e' : '';
+        if (k === 'music') tail.push(listenButton(item));
+        const fem = k === 'music' ? 'e' : '';
         if (equipped) tail.push(stateLine(doc, 'check', `Équipé${fem}`, 'equipped'));
         else if (st === 'owned') {
           tail.push(stateLine(doc, 'check', `Possédé${fem}`, 'owned'), uiButton(doc, { label: 'Équiper', variant: 'secondary', size: 'sm', block: true, testId: `equip-${item.id}`, ariaLabel: `Équiper ${item.name}`, onClick: () => equipItem(item) }));
@@ -1296,7 +1311,7 @@ export function createShell(options: ShellOptions): Shell {
             title: `Acheter ${item.name} ?`,
             name: item.name,
             price: shopItem.price,
-            art: kind === 'music' ? musicArt(item, true) : previewOrSwatch(doc, item.id, appearanceOf(kind, item.id), shopPreview, { animate, climb: kind === 'theme', material: kind === 'skin', size: { width: 280, height: 140 } }),
+            art: k === 'music' ? musicArt(item, true) : previewOrSwatch(doc, item.id, appearanceOf(k, item.id), shopPreview, { animate, climb: k === 'theme', material: k === 'skin', size: { width: 280, height: 140 } }),
             extra: [rarityChip(doc, item.rarity), el(doc, 'p', { class: 'hint' }, item.blurb)],
             onYes: () => startPurchase(shopItem, item, day),
             yesTestId: 'confirm-buy',
@@ -1309,6 +1324,18 @@ export function createShell(options: ShellOptions): Shell {
       box.append(list);
       return box;
     };
+    // V8 : collection saisonnière (Noël), vendue chaque année aux mêmes dates, hors rotation.
+    const seasonal = seasonalOffers(day, sellable);
+    for (const ev of activeEvents(day)) {
+      const items = seasonal.filter((o) => o.season === ev.id);
+      if (items.length === 0) continue;
+      const head = el(doc, 'section', { class: 'card event-head', 'aria-labelledby': `shop-event-${ev.id}`, 'data-testid': `shop-event-${ev.id}` });
+      head.append(
+        cardTitle(doc, 'gift', `Collection de ${ev.name}`, `shop-event-${ev.id}`),
+        el(doc, 'p', { class: 'hint', 'data-testid': 'shop-event-dates' }, `En vente jusqu’au ${ev.toLabel} inclus, puis chaque année du ${ev.fromLabel} au ${ev.toLabel}. Ce que tu achètes reste à toi après la saison.`),
+      );
+      parts.push(head, section('noel', 'gift', `${ev.name} : univers, matières et musique`, items));
+    }
     if (offers.length === 0) {
       const empty = el(doc, 'section', { class: 'card' });
       empty.append(el(doc, 'p', { 'data-testid': 'shop-empty' }, 'Rien à vendre pour l’instant. Reviens bientôt !'));
@@ -1655,7 +1682,12 @@ export function createShell(options: ShellOptions): Shell {
       `Le même pour tous · nouveau à ${formatLocalTime(nextDailyChange(now))}${dailyBest > 0 ? ` · ton record : ${floors(dailyBest)}` : ''}`);
     dailyCard.append(daily, dailyHint);
     const actions = el(doc, 'div', { class: 'home-actions' });
-    actions.append(play, dailyCard, recordLine());
+    // V8 : prime du jour (3 premières parties d'au moins 5 étages), sous le bouton Jouer.
+    const bonusLeft = dailyBonusLeft(progress, day);
+    const bonus = el(doc, 'p', { class: 'hint small center', 'data-testid': 'daily-bonus' }, bonusLeft > 0
+      ? `Prime du jour : +${DAILY_BONUS[0]} pièces pour ${bonusLeft === DAILY_BONUS.length ? 'tes' : 'les'} ${bonusLeft} prochaine${bonusLeft > 1 ? 's' : ''} partie${bonusLeft > 1 ? 's' : ''} d’au moins ${DAILY_BONUS_MIN_HEIGHT} étages.`
+      : 'Prime du jour récupérée. Elle revient demain.');
+    actions.append(play, bonus, dailyCard, recordLine());
     show('home', [brandHero(), actions, lookCard(), homeMission()], play);
     prefetchTickets();
   };
@@ -2205,15 +2237,18 @@ export function createShell(options: ShellOptions): Shell {
         mode: current.mode,
       });
       const economy = updateDoc((doc) => {
+        const day = utcDateKey(today());
         const e = applyRunEconomy(doc, current.activeAtStart, {
           runId: current.runId,
           mode: current.mode,
           score: height, // gains sur la hauteur, jamais sur les points ×2 (accord #27, C7)
           perfectCount: result.perfectCount,
           longestStreak: current.events.longestStreak,
-        });
+        }, day);
         // Étoiles de saison : mêmes étoiles, même écriture ; 0 si la partie était déjà comptée.
-        return { doc: addSeasonStars(e.doc, season, utcDateKey(today()), e.gained.xp), result: e };
+        // V8 : plafond quotidien du passe (SEASON_DAILY_STARS).
+        const credit = creditSeasonStars(e.doc, season, day, e.gained.xp);
+        return { doc: credit.doc, result: { ...e, seasonStars: credit.credited } };
       });
       const isDailyRecord = current.day ? meta.submitDaily(current.day, height) : false;
       renderResult(current, result, {
@@ -2221,6 +2256,7 @@ export function createShell(options: ShellOptions): Shell {
         isDailyRecord,
         completedNow: economy.completedNow,
         gained: economy.gained,
+        seasonStars: economy.seasonStars,
       });
     });
   };
@@ -2229,7 +2265,9 @@ export function createShell(options: ShellOptions): Shell {
     isRecord: boolean;
     isDailyRecord: boolean;
     completedNow: Objective[];
-    gained: { xp: number; coins: number; levelUp: { from: number; to: number } | null };
+    gained: { xp: number; coins: number; bonus: number; levelUp: { from: number; to: number } | null };
+    /** V8 : étoiles réellement créditées au passe (plafond du jour). */
+    seasonStars: number;
   };
 
   const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
@@ -2290,6 +2328,19 @@ export function createShell(options: ShellOptions): Shell {
       gains.append(star, el(doc, 'span', { class: 'sr-only' }, ' · '), coin);
       card.append(gains);
       summary += ` +${plural(outcome.gained.xp, 'étoile')} · +${plural(outcome.gained.coins, 'pièce')}.`;
+      // V8 : d'où viennent les pièces, et où en est le passe aujourd'hui.
+      const notes: string[] = [];
+      if (outcome.gained.bonus > 0) notes.push(`dont ${outcome.gained.bonus} de prime du jour`);
+      if (seasonPhase(season, utcDateKey(today())) === 'active') {
+        notes.push(outcome.seasonStars < outcome.gained.xp
+          ? `passe : +${outcome.seasonStars}, plafond du jour atteint`
+          : `passe : +${outcome.seasonStars}`);
+      }
+      if (notes.length > 0) {
+        const line = el(doc, 'p', { class: 'hint small center', 'data-testid': 'gains-detail' }, `${notes.join(' · ')}.`);
+        card.append(line);
+        summary += ` ${line.textContent}`;
+      }
     }
     if (outcome.gained.levelUp) {
       const newTitle = LEVEL_TITLES[outcome.gained.levelUp.to];

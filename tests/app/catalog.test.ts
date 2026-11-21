@@ -22,9 +22,9 @@ describe('V6 : catalogue et raretés', () => {
       expect(item.rarity, item.id).toBe(expected);
     }
     for (const r of RARITIES) expect(CATALOG.some((i) => i.kind === 'skin' && i.rarity === r), r).toBe(true);
-    // V7 : 23 matières (4 nouvelles) et 9 univers (4 nouveaux), une nouveauté par rareté.
-    expect(CATALOG.filter((i) => i.kind === 'skin')).toHaveLength(23);
-    expect(CATALOG.filter((i) => i.kind === 'theme')).toHaveLength(9);
+    // V8 : 30 matières (7 nouvelles : 4 sombres, 3 de Noël) et 13 univers (4 nouveaux).
+    expect(CATALOG.filter((i) => i.kind === 'skin')).toHaveLength(30);
+    expect(CATALOG.filter((i) => i.kind === 'theme')).toHaveLength(13);
     for (const r of RARITIES) expect(CATALOG.some((i) => i.kind === 'theme' && i.rarity === r), r).toBe(true);
   });
 
@@ -60,7 +60,7 @@ describe('V6 : catalogue et raretés', () => {
   });
 
   it('univers acheté en pièces : possédé une fois, équipable, jamais racheté', () => {
-    const rich = { ...INITIAL_DOC, coins: 400 };
+    const rich = { ...INITIAL_DOC, coins: 1530 };
     const r = purchaseWithCoins(rich, 'recif', COIN_SHOP);
     if (!r.ok) throw new Error(r.reason);
     expect(r.doc.coins).toBe(80);

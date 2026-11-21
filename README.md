@@ -23,7 +23,7 @@ Lire le [protocole de coordination autonome](coordination/AUTONOMIE.md) : les se
 
 ## Version actuelle
 
-[V7 : stabilité, musique originale, boutique du jour, nouveaux univers et matières](docs/V7.md), sur la base de la [V6](docs/V6.md) (« Stack or Crash », matières vivantes, raretés, passe de 30 niveaux), de la [V5](docs/V5.md) et de la [V4](docs/V4.md). Musiques : [docs/MUSIQUE.md](docs/MUSIQUE.md). Réalisée par Claude Code Alexis seul, sur exception décidée par l'utilisateur : auto-vérification, sans revue indépendante.
+[V8 : direction artistique affirmée, collection sombre, Noël, économie recalibrée](docs/V8.md) (économie : [docs/V8-ECONOMIE.md](docs/V8-ECONOMIE.md)), après la [V7 : stabilité, musique originale, boutique du jour, nouveaux univers et matières](docs/V7.md), sur la base de la [V6](docs/V6.md) (« Stack or Crash », matières vivantes, raretés, passe de 30 niveaux), de la [V5](docs/V5.md) et de la [V4](docs/V4.md). Musiques : [docs/MUSIQUE.md](docs/MUSIQUE.md). Réalisée par Claude Code Alexis seul, sur exception décidée par l'utilisateur : auto-vérification, sans revue indépendante.
 
 [Jouer au prototype publié](https://alexis97432.github.io/jeuiaflouze/) — instantané déployé ; le commit publié est dans `source-commit.txt`.
 

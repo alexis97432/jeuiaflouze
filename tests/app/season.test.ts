@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { INITIAL_DOC, migrateProgress, type ProgressDoc } from '../../src/app/economy';
 import {
-  addSeasonStars, claimAllFree, claimSeasonTier, LEGACY_TIER_MAP, nextTier, SEASON_1, seasonLevel, seasonPhase, tierStatus, type SeasonReward,
+  addSeasonStars, claimAllFree, claimSeasonTier, creditSeasonStars, LEGACY_TIER_MAP, nextTier, SEASON_1, SEASON_DAILY_STARS, seasonLevel, seasonPhase, seasonStarsLeftToday, tierStatus, type SeasonReward,
 } from '../../src/app/season';
 
 const draws = (r: SeasonReward) => r.kind === 'coins' || r.id !== 'lave';
@@ -61,7 +61,7 @@ describe('passe de saison', () => {
       version: 2, xp: 120, coins: 30, inventory: ['graphite'], grants: ['v2-objectives-backfill'],
       season: { id: 's1', stars: 70, claimed: ['free:1', 'free:1', 'pirate', 'premium:2'] },
     });
-    expect(migrated).toMatchObject({ version: 5, xp: 120, coins: 30, inventory: ['graphite'], season: { id: 's1', stars: 70, claimed: ['free:1', 'premium:3'] } });
+    expect(migrated).toMatchObject({ version: 6, xp: 120, coins: 30, inventory: ['graphite'], season: { id: 's1', stars: 70, claimed: ['free:1', 'premium:3'] } });
     expect(migrateProgress({ version: 3, season: { id: '<x>', stars: 5 } }).season).toBeUndefined();
     expect(nextTier(migrated, SEASON_1)?.tier).toBe(4);
   });
@@ -109,5 +109,30 @@ describe('passe de saison', () => {
     const d = addSeasonStars(doc(), SEASON_1, ACTIVE, 650);
     expect(seasonLevel(d, SEASON_1)).toMatchObject({ level: 14, into: 10, span: 80 });
     expect(seasonLevel(addSeasonStars(doc(), SEASON_1, ACTIVE, 5000), SEASON_1)).toMatchObject({ level: 30, next: null });
+  });
+});
+
+describe('V8 — plafond quotidien du passe', () => {
+  const D = '2026-12-01';
+  it('au plus 80 étoiles de saison par jour UTC ; l’XP n’est pas touchée ; nouveau jour, nouveau plafond', () => {
+    let d = doc();
+    const credited: number[] = [];
+    for (const xp of [30, 30, 30, 30]) {
+      const r = creditSeasonStars(d, SEASON_1, D, xp);
+      credited.push(r.credited);
+      d = r.doc;
+    }
+    expect(credited).toEqual([30, 30, 20, 0]);
+    expect(d.season).toMatchObject({ stars: 80, today: { day: D, stars: 80 } });
+    expect(seasonStarsLeftToday(d, SEASON_1, D)).toBe(0);
+    expect(seasonStarsLeftToday(d, SEASON_1, '2026-12-02')).toBe(SEASON_DAILY_STARS);
+    expect(creditSeasonStars(d, SEASON_1, '2026-12-02', 50)).toMatchObject({ credited: 50, doc: { season: { stars: 130, today: { day: '2026-12-02', stars: 50 } } } });
+  });
+
+  it('hors saison : rien ; plafond relu à la migration, valeurs abîmées ignorées', () => {
+    expect(creditSeasonStars(doc(), SEASON_1, '2027-03-01', 40)).toMatchObject({ credited: 0 });
+    const m = migrateProgress({ version: 6, season: { id: 's1', stars: 90, claimed: [], today: { day: D, stars: 999 } } });
+    expect(m.season).toMatchObject({ stars: 90, today: { day: D, stars: 80 } });
+    expect(migrateProgress({ version: 6, season: { id: 's1', stars: 9, claimed: [], today: { day: 'x', stars: 3 } } }).season?.today).toBeUndefined();
   });
 });
