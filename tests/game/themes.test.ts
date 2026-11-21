@@ -11,7 +11,6 @@ import {
   hex,
   isThemeId,
   mix,
-  outlineFor,
   skyAt,
   THEME_IDS,
   tierIndex,
